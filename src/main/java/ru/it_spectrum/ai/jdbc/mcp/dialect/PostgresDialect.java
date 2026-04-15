@@ -160,6 +160,83 @@ public class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String tableStatsQuery() {
+        // Single-row, schema-qualified view over pg_class + pg_stat_user_tables.
+        // Works for regular tables, partitioned tables, materialized views and toast owners.
+        // n_live_tup / seq_scan / last_analyze are NULL for objects not tracked in pg_stat_user_tables
+        // (e.g. views) — the LEFT JOIN keeps the row.
+        return """
+                SELECT n.nspname                                                   AS schema,
+                       c.relname                                                   AS table_name,
+                       c.relkind::text                                             AS relkind,
+                       c.reltuples::bigint                                         AS estimated_rows,
+                       pg_total_relation_size(c.oid)                               AS total_size_bytes,
+                       pg_relation_size(c.oid)                                     AS table_size_bytes,
+                       pg_indexes_size(c.oid)                                      AS indexes_size_bytes,
+                       (pg_total_relation_size(c.oid)
+                          - pg_relation_size(c.oid)
+                          - pg_indexes_size(c.oid))                                AS toast_size_bytes,
+                       s.n_live_tup                                                AS live_tuples,
+                       s.n_dead_tup                                                AS dead_tuples,
+                       CASE WHEN COALESCE(s.n_live_tup, 0) + COALESCE(s.n_dead_tup, 0) > 0
+                            THEN ROUND(100.0 * s.n_dead_tup
+                                       / (s.n_live_tup + s.n_dead_tup)::numeric, 2)
+                            ELSE NULL
+                       END                                                         AS dead_tuple_pct,
+                       s.seq_scan,
+                       s.seq_tup_read,
+                       s.idx_scan,
+                       s.idx_tup_fetch,
+                       s.n_tup_ins                                                 AS tup_ins,
+                       s.n_tup_upd                                                 AS tup_upd,
+                       s.n_tup_del                                                 AS tup_del,
+                       s.last_vacuum,
+                       s.last_autovacuum,
+                       s.last_analyze,
+                       s.last_autoanalyze
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+                WHERE n.nspname = ?
+                  AND c.relname = ?
+                  AND c.relkind IN ('r', 'p', 'm', 't')
+                """;
+    }
+
+    @Override
+    public String indexStatsQuery() {
+        // Column list is reconstructed via pg_get_indexdef per column ordinal, which
+        // works for both plain-column indexes and expression indexes.
+        return """
+                SELECT n.nspname                                   AS schema,
+                       t.relname                                   AS table_name,
+                       i.relname                                   AS index_name,
+                       am.amname                                   AS index_type,
+                       ix.indisunique                              AS is_unique,
+                       ix.indisprimary                             AS is_primary,
+                       ix.indisvalid                               AS is_valid,
+                       pg_relation_size(i.oid)                     AS size_bytes,
+                       COALESCE(s.idx_scan, 0)                     AS idx_scans,
+                       COALESCE(s.idx_tup_read, 0)                 AS idx_tup_read,
+                       COALESCE(s.idx_tup_fetch, 0)                AS idx_tup_fetch,
+                       (SELECT string_agg(pg_get_indexdef(ix.indexrelid, k::int, false),
+                                          ', ' ORDER BY k)
+                          FROM generate_series(1, ix.indnatts) AS k) AS columns,
+                       pg_get_indexdef(ix.indexrelid)              AS definition
+                FROM pg_class t
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN pg_index ix    ON ix.indrelid = t.oid
+                JOIN pg_class i     ON i.oid = ix.indexrelid
+                JOIN pg_am am       ON am.oid = i.relam
+                LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.oid
+                WHERE n.nspname = ?
+                  AND (? IS NULL OR t.relname = ?)
+                  AND t.relkind IN ('r', 'p', 'm')
+                ORDER BY t.relname, i.relname
+                """;
+    }
+
+    @Override
     public List<String> systemSchemas() {
         return List.of("pg_catalog", "information_schema", "pg_toast");
     }

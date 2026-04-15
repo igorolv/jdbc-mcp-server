@@ -64,6 +64,30 @@ public interface SqlDialect {
     /** SQL that returns {@code (schema, name, kind, language)} for routines (functions / procedures). */
     String listRoutinesQuery();
 
+    /**
+     * Per-table statistics: row-count estimate, size, dead tuples, last analyze/vacuum, scan counters.
+     * Params: {@code (schema, table)}. Both expected to be non-null.
+     * Column set is engine-specific — callers render it as-is.
+     */
+    String tableStatsQuery();
+
+    /**
+     * Per-index statistics: size, usage counters, columns, uniqueness, cardinality.
+     * Params: {@code (schema, table, table)} — if table is {@code null} the query returns all
+     * indexes in the schema (the second occurrence is for the {@code ? IS NULL OR ... = ?} pattern).
+     * Column set is engine-specific.
+     */
+    String indexStatsQuery();
+
+    /**
+     * Optional per-segment size lookup (Oracle uses {@code DBA_SEGMENTS}). Returns {@code null}
+     * on engines where sizing is already included in {@link #tableStatsQuery()} (PostgreSQL).
+     * Params: {@code (schema, name)}. The query must return a single column named {@code SEGMENT_BYTES}.
+     */
+    default String segmentSizeQuery() {
+        return null;
+    }
+
     /** System schemas that should be hidden from {@code listSchemas} / {@code listTables} by default. */
     List<String> systemSchemas();
 

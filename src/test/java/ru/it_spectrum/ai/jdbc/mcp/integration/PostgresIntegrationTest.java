@@ -12,6 +12,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.PostgresDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -42,6 +43,7 @@ class PostgresIntegrationTest {
 
     private SqlExecutor executor;
     private MetadataService metadata;
+    private StatsService stats;
 
     @BeforeAll
     void setup() throws Exception {
@@ -66,6 +68,26 @@ class PostgresIntegrationTest {
         ReadOnlyGuard guard = new ReadOnlyGuard(props);
         executor = new SqlExecutor(ds, dialect, props, guard);
         metadata = new MetadataService(executor, dialect, props);
+        stats    = new StatsService(executor, dialect, props);
+
+        // Seed extra objects used by stats tests: a table with a redundant-prefix index,
+        // a FK without an index, and an ANALYZE pass so pg_stat_user_tables has rows.
+        try (Connection c = pgAdmin(); var st = c.createStatement()) {
+            st.execute("CREATE TABLE IF NOT EXISTS line_items ("
+                    + "id SERIAL PRIMARY KEY, "
+                    + "order_id INT REFERENCES orders(id), "
+                    + "sku TEXT, "
+                    + "qty INT)");
+            // Composite index with leading (order_id, sku) makes a pure (order_id) index redundant.
+            st.execute("CREATE INDEX IF NOT EXISTS idx_li_order_sku ON line_items(order_id, sku)");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_li_order     ON line_items(order_id)");
+            // Seed rows so size/row counts are non-zero.
+            st.execute("INSERT INTO line_items(order_id, sku, qty) VALUES (1,'a',1),(1,'b',2),(2,'a',3) "
+                    + "ON CONFLICT DO NOTHING");
+            st.execute("ANALYZE customers");
+            st.execute("ANALYZE orders");
+            st.execute("ANALYZE line_items");
+        }
     }
 
     private Connection pgAdmin() throws SQLException {
@@ -168,5 +190,68 @@ class PostgresIntegrationTest {
         QueryResult r = metadata.searchObjects("customer");
         assertThat(r.rows()).extracting(m -> m.get("name"))
                 .contains("customers", "v_customer_totals");
+    }
+
+    @Test
+    void tableStatsReturnsSizeAndRowCounts() throws Exception {
+        Map<String, Object> s = stats.tableStats("public", "customers");
+        assertThat(s.get("found")).isEqualTo(Boolean.TRUE);
+        assertThat(s.get("table_name")).isEqualTo("customers");
+        // After seeding + ANALYZE, live_tuples is > 0 and sizes are non-null.
+        assertThat(((Number) s.get("live_tuples")).longValue()).isGreaterThanOrEqualTo(2L);
+        assertThat(((Number) s.get("total_size_bytes")).longValue()).isGreaterThan(0L);
+        assertThat(((Number) s.get("indexes_size_bytes")).longValue()).isGreaterThan(0L);
+    }
+
+    @Test
+    void indexStatsListsAllIndexes() throws Exception {
+        QueryResult r = stats.indexStats("public", "customers");
+        assertThat(r.rows()).extracting(m -> m.get("index_name"))
+                .contains("customers_pkey", "idx_customers_name");
+        // PK must be flagged as such.
+        assertThat(r.rows()).anyMatch(m ->
+                "customers_pkey".equals(m.get("index_name")) && Boolean.TRUE.equals(m.get("is_primary")));
+    }
+
+    @Test
+    void fkIndexCoverageFlagsUnindexedFk() throws Exception {
+        // orders(customer_id) references customers(id) but has no index on customer_id.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> r = stats.fkIndexCoverage("public", "orders");
+        assertThat(((Number) r.get("uncovered_count")).intValue()).isGreaterThanOrEqualTo(1);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> list = (List<Map<String, Object>>) r.get("uncovered");
+        assertThat(list).anyMatch(e ->
+                "orders".equals(e.get("table"))
+                        && e.get("fk_columns") instanceof List<?> cs
+                        && cs.contains("customer_id"));
+    }
+
+    @Test
+    void redundantIndexesDetectsPrefixShadowing() throws Exception {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> r = stats.redundantIndexes("public", "line_items");
+        assertThat(((Number) r.get("count")).intValue()).isGreaterThanOrEqualTo(1);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> findings = (List<Map<String, Object>>) r.get("findings");
+        // idx_li_order (order_id) is shadowed by idx_li_order_sku (order_id, sku)
+        assertThat(findings).anyMatch(f ->
+                "idx_li_order".equals(f.get("shadowed_index"))
+                        && "idx_li_order_sku".equals(f.get("covered_by_index")));
+    }
+
+    @Test
+    void unusedIndexesReturnsList() throws Exception {
+        // Freshly-created indexes have zero scans; the helper must return them, while
+        // excluding PK / unique indexes (they cannot be dropped without losing the constraint).
+        @SuppressWarnings("unchecked")
+        Map<String, Object> r = stats.unusedIndexes("public", null);
+        assertThat(r.get("supported")).isEqualTo(Boolean.TRUE);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> indexes = (List<Map<String, Object>>) r.get("indexes");
+        // The PK (customers_pkey) must NOT be in the list.
+        assertThat(indexes).noneMatch(e -> "customers_pkey".equals(e.get("index")));
+        // Our non-unique idx_customers_name is a candidate.
+        assertThat(indexes).anyMatch(e -> "idx_customers_name".equals(e.get("index")));
     }
 }
