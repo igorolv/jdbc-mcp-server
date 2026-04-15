@@ -134,6 +134,93 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
+    public String tableStatsQuery() {
+        // Pure ALL_TABLES — does not hit DBA_SEGMENTS. Size information is fetched separately
+        // via segmentSizeQuery() so we can degrade gracefully when DBA_SEGMENTS is not accessible.
+        return """
+                SELECT t.owner            AS schema,
+                       t.table_name       AS table_name,
+                       t.num_rows         AS estimated_rows,
+                       t.blocks           AS blocks,
+                       t.empty_blocks     AS empty_blocks,
+                       t.avg_row_len      AS avg_row_len,
+                       t.chain_cnt        AS chain_count,
+                       t.last_analyzed    AS last_analyzed,
+                       t.sample_size      AS sample_size,
+                       t.partitioned      AS partitioned,
+                       t.temporary        AS temporary,
+                       t.global_stats     AS global_stats,
+                       t.user_stats       AS user_stats,
+                       t.compression      AS compression
+                FROM all_tables t
+                WHERE t.owner = UPPER(?)
+                  AND t.table_name = UPPER(?)
+                """;
+    }
+
+    @Override
+    public String indexStatsQuery() {
+        // Columns intentionally aligned with PostgreSQL's indexStatsQuery so downstream aggregation
+        // (redundant / unused indexes) can work on a uniform shape:
+        //   schema, table_name, index_name, index_type, is_unique, is_primary,
+        //   size_bytes, idx_scans, columns
+        // Oracle-specific extras (num_rows, distinct_keys, clustering_factor, blevel, ...)
+        // follow the common prefix.
+        // CLUSTERING_FACTOR vs NUM_ROWS is the classic selectivity / clustering signal;
+        // LAST_ANALYZED indicates stats freshness.
+        // size_bytes and idx_scans are NULL on Oracle: the first requires DBA_SEGMENTS
+        // (fetched separately for tables), the second is not exposed in ALL_INDEXES.
+        return """
+                SELECT i.owner                                   AS schema,
+                       i.table_name                              AS table_name,
+                       i.index_name                              AS index_name,
+                       i.index_type                              AS index_type,
+                       CASE WHEN i.uniqueness = 'UNIQUE' THEN 'Y' ELSE 'N' END AS is_unique,
+                       CASE WHEN (SELECT MAX(cn.constraint_type)
+                                  FROM all_constraints cn
+                                  WHERE cn.owner = i.owner
+                                    AND cn.index_name = i.index_name
+                                    AND cn.constraint_type IN ('P', 'U')) = 'P'
+                            THEN 'Y' ELSE 'N' END               AS is_primary,
+                       CAST(NULL AS NUMBER)                      AS size_bytes,
+                       CAST(NULL AS NUMBER)                      AS idx_scans,
+                       (SELECT LISTAGG(c.column_name, ',')
+                               WITHIN GROUP (ORDER BY c.column_position)
+                        FROM all_ind_columns c
+                        WHERE c.index_owner = i.owner
+                          AND c.index_name  = i.index_name)      AS columns,
+                       i.status                                   AS status,
+                       i.num_rows                                 AS num_rows,
+                       i.distinct_keys                            AS distinct_keys,
+                       i.clustering_factor                        AS clustering_factor,
+                       i.leaf_blocks                              AS leaf_blocks,
+                       i.blevel                                   AS blevel,
+                       i.last_analyzed                            AS last_analyzed,
+                       (SELECT MAX(cn.constraint_type)
+                        FROM all_constraints cn
+                        WHERE cn.owner = i.owner
+                          AND cn.index_name = i.index_name
+                          AND cn.constraint_type IN ('P', 'U'))   AS constraint_type
+                FROM all_indexes i
+                WHERE i.owner = UPPER(?)
+                  AND (? IS NULL OR i.table_name = UPPER(?))
+                ORDER BY i.table_name, i.index_name
+                """;
+    }
+
+    @Override
+    public String segmentSizeQuery() {
+        // Best-effort segment size. Requires DBA_SEGMENTS privilege (commonly granted via
+        // SELECT_CATALOG_ROLE). If it fails, StatsService logs and skips size info.
+        return """
+                SELECT SUM(bytes) AS segment_bytes
+                FROM dba_segments
+                WHERE owner = UPPER(?)
+                  AND segment_name = UPPER(?)
+                """;
+    }
+
+    @Override
     public List<String> systemSchemas() {
         return List.of("SYS", "SYSTEM", "CTXSYS", "MDSYS", "XDB", "GSMADMIN_INTERNAL",
                 "DBSNMP", "OUTLN", "APPQOSSYS", "AUDSYS", "ORDSYS", "OJVMSYS", "DVSYS",

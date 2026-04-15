@@ -1,8 +1,9 @@
 # JDBC MCP Server — Setup Guide for AI Agents
 
 This is a local MCP server that provides read-only access to PostgreSQL and Oracle databases.
-It exposes 13 read-only tools for executing SELECT queries, obtaining execution plans,
-and exploring database schema, tables, columns, indexes, foreign keys, views, routines and sequences.
+It exposes 18 read-only tools for executing SELECT queries, obtaining execution plans,
+exploring database schema, tables, columns, indexes, foreign keys, views, routines and sequences,
+and gathering object-level statistics that help with query optimisation.
 
 The server communicates over stdio (stdin/stdout). Both PostgreSQL and Oracle JDBC drivers
 are bundled inside the fat jar.
@@ -99,7 +100,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **13 read-only MCP tools**.
+The server exposes **18 read-only MCP tools**.
 
 ### Query tools
 
@@ -129,6 +130,16 @@ The server exposes **13 read-only MCP tools**.
 | `sampleRows` | Return a few rows from a table or view. Shortcut for `SELECT * FROM t LIMIT N`. Params: `schema`, `table`, `limit` (default 10, max 100) |
 | `columnStats` | Basic column statistics: `total_rows`, `non_null_rows`, `distinct_values`, `min`, `max`. Params: `schema`, `table`, `column` |
 
+### Object statistics tools (query optimisation)
+
+| Tool | Description |
+|---|---|
+| `tableStats` | Per-table size + row-count estimate + activity counters. PG: `pg_class` + `pg_stat_user_tables` (total/heap/indexes/toast bytes, live/dead tuples, last vacuum/analyze, seq vs idx scans). Oracle: `ALL_TABLES` (NUM_ROWS, BLOCKS, LAST_ANALYZED) plus best-effort `DBA_SEGMENTS` size. Params: `schema`, `table` |
+| `indexStats` | Per-index stats for a table or the whole schema: size, scan counters, column list, unique/primary flags. PG extras: `idx_tup_read`, `idx_tup_fetch`, `pg_get_indexdef`. Oracle extras: `distinct_keys`, `clustering_factor`, `blevel`, `leaf_blocks`, `last_analyzed`. Params: `schema`, `table` (optional) |
+| `unusedIndexes` | Indexes with zero recorded scans — candidates for removal. Skips PK / UNIQUE-backing indexes. Params: `schema`, `minSizeBytes` (optional). PostgreSQL only; on Oracle returns a note pointing to `DBA_INDEX_USAGE` / `V$OBJECT_USAGE` |
+| `redundantIndexes` | Indexes whose leading columns are a strict prefix of another index on the same table — the shorter one is redundant. Skips unique indexes; requires matching index type. Params: `schema`, `table` (optional) |
+| `fkIndexCoverage` | Foreign keys on the child side that lack a supporting index. A classic cause of slow DELETE / UPDATE cascades. Returns a `suggested_index_columns` list ready for `CREATE INDEX`. Params: `schema`, `table` (optional — omit to scan the whole schema) |
+
 All tools are **read-only**. Any attempt to run a non-SELECT statement is rejected by the
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
 read-only, PostgreSQL uses `default_transaction_read_only=on`, and Oracle uses
@@ -146,6 +157,20 @@ Recommended flow when the user asks a data question:
 5. Call `explainQuery` if the query might be expensive.
 6. Call `executeQuery`. Use `limit` to keep the response small.
 7. If the response has `"truncated": true`, either narrow the query or raise `limit`.
+
+Recommended flow when the user asks to optimise / audit queries or schema:
+
+1. Call `tableStats` for each large table involved — gives the row-count magnitude,
+   on-disk size and dead-tuple ratio. Without this the agent cannot tell a 1 K-row
+   table from a 100 M-row one.
+2. Call `indexStats` on the same tables — size, scan count, uniqueness, columns.
+3. Call `fkIndexCoverage` (schema-wide or per-table) to find FK columns without a
+   supporting index — each entry already includes `suggested_index_columns`.
+4. Call `redundantIndexes` — safe drops that shrink storage and write overhead.
+5. Call `unusedIndexes` (PostgreSQL) — indexes that have had zero scans since the
+   last stats reset; treat as a strong hint only if the workload has run long enough.
+6. For a specific slow query, combine `explainQuery` + `indexStats` on the relevant
+   tables and propose concrete `CREATE INDEX` / rewrite actions.
 
 ## Troubleshooting
 

@@ -11,6 +11,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.OracleDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -42,6 +43,7 @@ class OracleIntegrationTest {
 
     private SqlExecutor executor;
     private MetadataService metadata;
+    private StatsService stats;
     private String schema;
 
     @BeforeAll
@@ -71,6 +73,14 @@ class OracleIntegrationTest {
         ReadOnlyGuard guard = new ReadOnlyGuard(props);
         executor = new SqlExecutor(ds, dialect, props, guard);
         metadata = new MetadataService(executor, dialect, props);
+        stats    = new StatsService(executor, dialect, props);
+
+        // Gather Oracle optimiser stats for the seeded tables so tableStats / indexStats
+        // return meaningful NUM_ROWS / DISTINCT_KEYS values.
+        try (Connection c = oraAdmin(); var st = c.createStatement()) {
+            st.execute("BEGIN DBMS_STATS.GATHER_TABLE_STATS(USER, 'CUSTOMERS'); END;");
+            st.execute("BEGIN DBMS_STATS.GATHER_TABLE_STATS(USER, 'ORDERS'); END;");
+        }
     }
 
     private Connection oraAdmin() throws SQLException {
@@ -146,5 +156,41 @@ class OracleIntegrationTest {
         QueryResult r = metadata.searchObjects("CUSTOMER");
         assertThat(r.rows()).extracting(m -> m.get("NAME"))
                 .contains("CUSTOMERS", "V_CUSTOMER_TOTALS");
+    }
+
+    @Test
+    void tableStatsReturnsRowCount() throws Exception {
+        Map<String, Object> s = stats.tableStats(schema, "CUSTOMERS");
+        assertThat(s.get("found")).isEqualTo(Boolean.TRUE);
+        // ALL_TABLES aliases table_name → uppercase column label on Oracle.
+        Object rows = s.get("ESTIMATED_ROWS");
+        if (rows == null) rows = s.get("estimated_rows");
+        assertThat(((Number) rows).longValue()).isGreaterThanOrEqualTo(2L);
+    }
+
+    @Test
+    void indexStatsExposesPkAndSecondary() throws Exception {
+        QueryResult r = stats.indexStats(schema, "CUSTOMERS");
+        // Oracle reports column labels in upper case.
+        String nameKey = r.columns().contains("INDEX_NAME") ? "INDEX_NAME" : "index_name";
+        assertThat(r.rows()).extracting(m -> m.get(nameKey))
+                .contains("IDX_CUSTOMERS_NAME");
+        // is_primary 'Y' on exactly one row (the PK-backing index).
+        String pkKey = r.columns().contains("IS_PRIMARY") ? "IS_PRIMARY" : "is_primary";
+        assertThat(r.rows()).anyMatch(m -> "Y".equals(m.get(pkKey)));
+    }
+
+    @Test
+    void fkIndexCoverageFlagsUnindexedFk() throws Exception {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> r = stats.fkIndexCoverage(schema, "ORDERS");
+        assertThat(((Number) r.get("uncovered_count")).intValue()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void unusedIndexesReportsNotSupportedOnOracle() throws Exception {
+        Map<String, Object> r = stats.unusedIndexes(schema, null);
+        assertThat(r.get("supported")).isEqualTo(Boolean.FALSE);
+        assertThat((String) r.get("note")).contains("DBA_INDEX_USAGE");
     }
 }

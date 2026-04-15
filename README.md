@@ -65,6 +65,20 @@
 | `sampleRows` | Несколько строк из таблицы/вью (`SELECT * FROM t LIMIT N`). Параметры: `schema`, `table`, `limit` (по умолчанию 10, макс 100) |
 | `columnStats` | Базовая статистика колонки: `total_rows`, `non_null_rows`, `distinct_values`, `min`, `max` |
 
+### Статистика объектов (оптимизация запросов)
+
+Эти инструменты дают LLM масштаб и признаки здоровья объектов, без чего советы по оптимизации
+превращаются в угадывание: данные достаются из системных каталогов (`pg_class`, `pg_stat_*`,
+`ALL_TABLES`, `ALL_INDEXES`, `DBA_SEGMENTS`) и агрегируются на стороне Java.
+
+| Tool | Описание |
+|---|---|
+| `tableStats` | Размер таблицы и индексов в байтах, оценочное количество строк, dead tuples (PG), last vacuum / analyze, счётчики seq/idx сканов. На Oracle дополнительно best-effort `DBA_SEGMENTS` (если доступно) |
+| `indexStats` | По каждому индексу: размер, счётчик сканов, колонки, признак unique/primary, тип индекса. Extras для PG: `idx_tup_read/fetch`, `pg_get_indexdef`. Extras для Oracle: `distinct_keys`, `clustering_factor`, `blevel`, `leaf_blocks`, `last_analyzed` |
+| `unusedIndexes` | Индексы с нулём сканов (PG: `pg_stat_user_indexes`). PK и UNIQUE индексы исключаются. Oracle: возвращает диагностическое сообщение (`ALL_INDEXES` не раскрывает счётчики — нужен `DBA_INDEX_USAGE` 12.2+ или `V$OBJECT_USAGE` с `ALTER INDEX ... MONITORING USAGE`) |
+| `redundantIndexes` | Индексы, чей список колонок — строгий префикс другого индекса той же таблицы. Unique-индексы не репортятся (их удаление убирает ограничение). Тип индекса должен совпадать |
+| `fkIndexCoverage` | Внешние ключи на дочерней стороне без поддерживающего индекса — классическая причина медленных `DELETE`/`UPDATE CASCADE` и медленных JOIN. В результате — готовый `suggested_index_columns` под `CREATE INDEX` |
+
 Все инструменты **read-only** — данные не изменяются.
 
 ## Защита от записи (read-only)
@@ -238,14 +252,16 @@ JDBC_PASSWORD=secret \
 │   │   ├── QueryResult.java            — структура результата
 │   │   └── SqlExecutor.java            — исполнение запросов с лимитами
 │   ├── metadata/
-│   │   └── MetadataService.java        — DatabaseMetaData + dialect-specific
+│   │   ├── MetadataService.java        — DatabaseMetaData + dialect-specific
+│   │   └── StatsService.java           — table/index stats, FK coverage, redundant/unused indexes
 │   ├── format/
 │   │   ├── OutputFormat.java
 │   │   └── ResultFormatter.java        — JSON / Markdown / CSV
 │   └── tools/
 │       ├── QueryTools.java             — executeQuery, explainQuery, validateQuery
 │       ├── MetadataTools.java          — schemas / tables / describe / view / routines / sequences / search
-│       └── SampleTools.java            — sampleRows, columnStats
+│       ├── SampleTools.java            — sampleRows, columnStats
+│       └── StatsTools.java             — tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 └── src/main/resources/
     ├── application.yml                 — MCP stdio + JDBC properties
     └── logback-spring.xml              — логи в stderr (stdout занят MCP)
