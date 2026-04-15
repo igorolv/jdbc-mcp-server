@@ -1,0 +1,83 @@
+package ru.it_spectrum.ai.jdbc.mcp.config;
+
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import javax.sql.DataSource;
+
+/**
+ * Builds a read-only HikariCP-backed {@link DataSource} and exposes the detected {@link DatabaseKind}.
+ *
+ * <p>Read-only enforcement at the connection layer:
+ * <ul>
+ *   <li>{@code hikariConfig.setReadOnly(true)} — connections are marked read-only at the pool level;</li>
+ *   <li>For PostgreSQL, we append {@code options=-c default_transaction_read_only=on} to the URL
+ *       (unless the user already specified {@code options=} themselves) so that every transaction
+ *       in the session is read-only on the server side — this blocks even DDL.</li>
+ *   <li>For Oracle, {@link ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor} issues
+ *       {@code SET TRANSACTION READ ONLY} before each user query (DDL on Oracle bypasses
+ *       transactions, so the upstream {@code ReadOnlyGuard} is the primary defence there).</li>
+ * </ul>
+ */
+@Configuration
+@EnableConfigurationProperties(JdbcProperties.class)
+public class DataSourceConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);
+
+    @Bean
+    public DatabaseKind databaseKind(JdbcProperties properties) {
+        DatabaseKind kind = DatabaseKind.fromUrl(properties.url());
+        log.info("Detected database kind: {}", kind);
+        return kind;
+    }
+
+    @Bean(destroyMethod = "close")
+    public DataSource dataSource(JdbcProperties properties, DatabaseKind kind) {
+        HikariConfig hikari = new HikariConfig();
+        hikari.setPoolName("jdbc-mcp-pool");
+        hikari.setJdbcUrl(applyDialectUrlTweaks(properties.url(), kind));
+        hikari.setUsername(properties.username());
+        hikari.setPassword(properties.password());
+        hikari.setReadOnly(true);
+        hikari.setAutoCommit(true);
+        hikari.setMaximumPoolSize(4);
+        hikari.setMinimumIdle(1);
+        hikari.setConnectionTimeout(10_000);
+        hikari.setValidationTimeout(5_000);
+
+        if (properties.defaultSchema() != null && !properties.defaultSchema().isBlank()) {
+            hikari.setSchema(properties.defaultSchema());
+        }
+
+        log.info("Creating read-only JDBC pool (url={}, user={})",
+                maskUrl(hikari.getJdbcUrl()), properties.username());
+        return new HikariDataSource(hikari);
+    }
+
+    /**
+     * For PostgreSQL, force server-side read-only transactions by default via JDBC URL options.
+     * Leaves the URL untouched if the user already provided their own {@code options=} parameter
+     * or for non-PG engines.
+     */
+    public static String applyDialectUrlTweaks(String url, DatabaseKind kind) {
+        if (kind != DatabaseKind.POSTGRESQL || url == null) {
+            return url;
+        }
+        if (url.toLowerCase().contains("options=")) {
+            return url;
+        }
+        String extra = "options=-c%20default_transaction_read_only%3Don";
+        return url + (url.contains("?") ? "&" : "?") + extra;
+    }
+
+    private static String maskUrl(String url) {
+        if (url == null) return "";
+        return url.replaceAll("(?i)(password=)[^&]*", "$1***");
+    }
+}
