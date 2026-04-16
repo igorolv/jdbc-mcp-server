@@ -1,9 +1,10 @@
 # JDBC MCP Server — Setup Guide for AI Agents
 
 This is a local MCP server that provides read-only access to PostgreSQL and Oracle databases.
-It exposes 18 read-only tools for executing SELECT queries, obtaining execution plans,
+It exposes 24 read-only tools for executing SELECT queries, obtaining execution plans,
 exploring database schema, tables, columns, indexes, foreign keys, views, routines and sequences,
-and gathering object-level statistics that help with query optimisation.
+gathering object-level statistics that help with query optimisation, and analysing column-level
+distribution, null ratios, predicate selectivity and join cardinality estimates.
 
 The server communicates over stdio (stdin/stdout). Both PostgreSQL and Oracle JDBC drivers
 are bundled inside the fat jar.
@@ -100,7 +101,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **18 read-only MCP tools**.
+The server exposes **24 read-only MCP tools**.
 
 ### Query tools
 
@@ -130,6 +131,20 @@ The server exposes **18 read-only MCP tools**.
 |---|---|
 | `sampleRows` | Return a few rows from a table or view. Shortcut for `SELECT * FROM t LIMIT N`. Params: `schema`, `table`, `limit` (default 10, max 100) |
 | `columnStats` | Basic column statistics: `total_rows`, `non_null_rows`, `distinct_values`, `min`, `max`. Params: `schema`, `table`, `column` |
+
+### Selectivity and distribution tools (predicate / join tuning)
+
+`columnStats` only reports extremes. These tools answer "how selective is this predicate?" and
+"how skewed are the values?" — the information an LLM needs to pick an index column order, add
+a partial index, or rewrite a join.
+
+| Tool | Description |
+|---|---|
+| `columnDistribution` | Top-N most frequent values of a column plus their share of the table. Surfaces skew (e.g. `70 %` of rows have `status='OK'` — a plain index on `status` is nearly useless). Executes `GROUP BY + COUNT` — prefer a small `topN` on very large tables. Params: `schema`, `table`, `column`, `topN` (default 20, max 1000) |
+| `columnHistogram` | Percentile summary for an orderable column: `min`, `max`, `P25`, `P50`, `P75`, `P90`, `P95`, `P99`, plus null counts. Uses SQL:2003 `WITHIN GROUP`: `percentile_cont` for numeric types (interpolated), `percentile_disc` for dates / timestamps / text. Params: `schema`, `table`, `column` |
+| `nullRatio` | Null / non-null ratio for **every column** of a table in one scan. Columns returned sorted by descending `null_ratio`; the `sparse` flag is set when more than 50 % of rows are null (candidate for a partial index with `WHERE col IS NOT NULL`). Params: `schema`, `table` |
+| `estimateSelectivity` | Planner's row estimate for `SELECT 1 FROM t WHERE <predicate>` — **without running the query**. Uses `EXPLAIN (FORMAT JSON)` (PostgreSQL) or `EXPLAIN PLAN` (Oracle). Returns `estimated_rows`, a `baseline_rows` count (no predicate) and the `selectivity` ratio. Reject `;` in the predicate. Params: `schema`, `table`, `predicate` (raw SQL, no `WHERE` keyword) |
+| `joinCardinality` | Planner's row estimate for an equi-join between two tables, without executing it. Returns `estimated_rows`, per-side row estimates and `selectivity_vs_cartesian`. Join types: `INNER` (default), `LEFT`, `RIGHT`, `FULL`. Params: `leftSchema`, `leftTable`, `leftColumn`, `rightSchema`, `rightTable`, `rightColumn`, `joinType` |
 
 ### Object statistics tools (query optimisation)
 
@@ -174,6 +189,11 @@ Recommended flow when the user asks to optimise / audit queries or schema:
    full scans, estimation errors, nested-loop risks, sort spills) + `indexStats` on the
    relevant tables and propose concrete `CREATE INDEX` / rewrite actions. Fall back to
    `explainQuery` only when you need the full textual plan.
+7. Before proposing a composite index, call `estimateSelectivity` for each candidate
+   predicate on the involved table — place the most selective column first. Use
+   `columnDistribution` / `nullRatio` on the same columns to detect skew or high null
+   ratio (strong signals for a partial index). For join-heavy queries, `joinCardinality`
+   predicts the output size without executing the join.
 
 ## Troubleshooting
 

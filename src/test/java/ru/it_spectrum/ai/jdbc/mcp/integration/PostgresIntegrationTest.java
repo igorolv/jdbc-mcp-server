@@ -11,6 +11,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.PostgresDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
@@ -28,6 +29,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 /**
  * End-to-end check against a real PostgreSQL instance via Testcontainers.
@@ -47,6 +49,7 @@ class PostgresIntegrationTest {
     private SqlExecutor executor;
     private MetadataService metadata;
     private StatsService stats;
+    private DistributionService distribution;
     private SqlDialect dialect;
 
     @BeforeAll
@@ -73,6 +76,7 @@ class PostgresIntegrationTest {
         executor = new SqlExecutor(ds, dialect, props, guard);
         metadata = new MetadataService(executor, dialect, props);
         stats    = new StatsService(executor, dialect, props);
+        distribution = new DistributionService(executor, dialect, props, new PostgresPlanParser());
 
         // Seed extra objects used by stats tests: a table with a redundant-prefix index,
         // a FK without an index, and an ANALYZE pass so pg_stat_user_tables has rows.
@@ -88,9 +92,25 @@ class PostgresIntegrationTest {
             // Seed rows so size/row counts are non-zero.
             st.execute("INSERT INTO line_items(order_id, sku, qty) VALUES (1,'a',1),(1,'b',2),(2,'a',3) "
                     + "ON CONFLICT DO NOTHING");
+            // Events table with heavy skew on "status" + some NULLs on "category".
+            // Distribution/null-ratio/selectivity tests reason over this table.
+            st.execute("CREATE TABLE IF NOT EXISTS events ("
+                    + "id SERIAL PRIMARY KEY, "
+                    + "status TEXT NOT NULL, "
+                    + "category TEXT, "
+                    + "amount NUMERIC(10,2), "
+                    + "created_at TIMESTAMP DEFAULT NOW())");
+            // Deterministic seed: 90 OK + 10 FAIL; category populated only on OK rows.
+            st.execute("INSERT INTO events(status, category, amount) "
+                    + "SELECT 'OK', CASE WHEN g % 2 = 0 THEN 'A' ELSE 'B' END, (g * 1.5)::numeric(10,2) "
+                    + "FROM generate_series(1, 90) g");
+            st.execute("INSERT INTO events(status, category, amount) "
+                    + "SELECT 'FAIL', NULL, (g * 0.1)::numeric(10,2) "
+                    + "FROM generate_series(1, 10) g");
             st.execute("ANALYZE customers");
             st.execute("ANALYZE orders");
             st.execute("ANALYZE line_items");
+            st.execute("ANALYZE events");
         }
     }
 
@@ -263,6 +283,98 @@ class PostgresIntegrationTest {
         Map<String, Object> summary = (Map<String, Object>) (Map<?, ?>) PlanAnalyzer.summarize(plan);
         assertThat(summary).containsKeys("engine", "analyzed", "node_count", "top_expensive_nodes");
         assertThat(summary.get("engine")).isEqualTo("postgresql");
+    }
+
+    @Test
+    void columnDistributionExposesSkew() throws Exception {
+        // events has 90 rows with status='OK' and 10 with status='FAIL' — top distribution
+        // must reflect that 9:1 ratio and sum to 100 % of the table.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> r = distribution.columnDistribution("public", "events", "status", 5);
+        assertThat(((Number) r.get("total_rows")).longValue()).isEqualTo(100L);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> values = (List<Map<String, Object>>) r.get("values");
+        assertThat(values).hasSize(2);
+        assertThat(values.get(0).get("value")).isEqualTo("OK");
+        assertThat(((Number) values.get(0).get("frequency")).longValue()).isEqualTo(90L);
+        assertThat(((Number) values.get(0).get("ratio")).doubleValue()).isCloseTo(0.9, within(1e-6));
+        assertThat(values.get(1).get("value")).isEqualTo("FAIL");
+        // All rows are covered by the top-N, so other_rows should be zero.
+        assertThat(((Number) r.get("other_rows")).longValue()).isEqualTo(0L);
+    }
+
+    @Test
+    void columnHistogramReportsPercentiles() throws Exception {
+        Map<String, Object> r = distribution.columnHistogram("public", "events", "amount");
+        assertThat(((Number) r.get("total_rows")).longValue()).isEqualTo(100L);
+        assertThat(r.get("percentile_function")).isEqualTo("percentile_cont");
+        // All 100 rows non-null → null_ratio == 0.
+        assertThat(((Number) r.get("null_rows")).longValue()).isEqualTo(0L);
+        // P50 must fall between MIN and MAX.
+        double min = ((Number) r.get("min")).doubleValue();
+        double max = ((Number) r.get("max")).doubleValue();
+        double p50 = ((Number) r.get("p50")).doubleValue();
+        double p99 = ((Number) r.get("p99")).doubleValue();
+        assertThat(p50).isBetween(min, max);
+        assertThat(p99).isGreaterThanOrEqualTo(p50);
+    }
+
+    @Test
+    void nullRatioFlagsSparseColumns() throws Exception {
+        Map<String, Object> r = distribution.nullRatio("public", "events");
+        assertThat(((Number) r.get("total_rows")).longValue()).isEqualTo(100L);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cols = (List<Map<String, Object>>) r.get("columns");
+        // The 'category' column is null on 10 rows out of 100 (10 %) — non-sparse.
+        Map<String, Object> category = cols.stream()
+                .filter(c -> "category".equals(c.get("column")))
+                .findFirst().orElseThrow();
+        assertThat(((Number) category.get("null_rows")).longValue()).isEqualTo(10L);
+        assertThat(((Number) category.get("null_ratio")).doubleValue()).isCloseTo(0.1, within(1e-6));
+        assertThat(category.get("sparse")).isEqualTo(Boolean.FALSE);
+        // status / id / amount / created_at are all non-nullable → zero nulls.
+        Map<String, Object> status = cols.stream()
+                .filter(c -> "status".equals(c.get("column")))
+                .findFirst().orElseThrow();
+        assertThat(((Number) status.get("null_rows")).longValue()).isEqualTo(0L);
+    }
+
+    @Test
+    void estimateSelectivityUsesExplain() throws Exception {
+        // status='FAIL' matches 10/100 rows — planner estimate should be in that ballpark
+        // and strictly smaller than the baseline.
+        Map<String, Object> r = distribution.estimateSelectivity(
+                "public", "events", "status = 'FAIL'");
+        Long estimated = ((Number) r.get("estimated_rows")).longValue();
+        Long baseline  = ((Number) r.get("baseline_rows")).longValue();
+        assertThat(estimated).isNotNull();
+        assertThat(baseline).isNotNull();
+        assertThat(baseline).isGreaterThan(0L);
+        assertThat(estimated).isLessThan(baseline);
+        // Selectivity expressed as a ratio in [0, 1].
+        double sel = ((Number) r.get("selectivity")).doubleValue();
+        assertThat(sel).isBetween(0.0, 1.0);
+    }
+
+    @Test
+    void joinCardinalityEstimatesInnerJoin() throws Exception {
+        Map<String, Object> r = distribution.joinCardinality(
+                "public", "customers", "id",
+                "public", "orders", "customer_id", "INNER");
+        assertThat(r.get("join_type")).isEqualTo("INNER");
+        Long estimated = ((Number) r.get("estimated_rows")).longValue();
+        assertThat(estimated).isNotNull();
+        // 3 orders all match a customer → planner should estimate ~3; allow a loose bound.
+        assertThat(estimated).isGreaterThan(0L);
+        assertThat(estimated).isLessThan(1000L);
+    }
+
+    @Test
+    void estimateSelectivityRejectsSemicolon() {
+        assertThatThrownBy(() -> distribution.estimateSelectivity(
+                "public", "events", "status = 'OK'; DROP TABLE events"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("single boolean expression");
     }
 
     @Test
