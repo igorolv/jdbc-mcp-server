@@ -58,6 +58,27 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
+    public String buildStructuredExplain(String sql, boolean analyze) {
+        // Oracle populates PLAN_TABLE statically regardless of `analyze` — no actual execution.
+        return buildExplain(sql, analyze);
+    }
+
+    @Override
+    public String structuredPlanQuery() {
+        // Only the columns the parser reasons over. Reading the most recently-populated plan
+        // from the session's PLAN_TABLE (ordered by plan_id, id) — EXPLAIN PLAN assigns a fresh
+        // plan_id per call, so taking MAX(plan_id) gives us the just-generated plan.
+        return """
+                SELECT id, parent_id, operation, options, object_owner, object_name,
+                       cardinality, cost, bytes, cpu_cost, io_cost, time,
+                       access_predicates, filter_predicates, depth
+                FROM plan_table
+                WHERE plan_id = (SELECT MAX(plan_id) FROM plan_table)
+                ORDER BY id
+                """;
+    }
+
+    @Override
     public String viewDefinitionQuery() {
         // TEXT_VC is a VARCHAR2 version of TEXT (LONG); fall back to TEXT if needed.
         return """

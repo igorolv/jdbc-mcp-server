@@ -43,6 +43,7 @@
 |---|---|
 | `executeQuery` | Выполнить `SELECT` / `WITH` / `EXPLAIN`. Параметры: `sql`, `params` (массив для `?`), `limit`, `timeoutSeconds`, `format` (`json` по умолчанию, `markdown`, `csv`). Результат помечается `truncated: true`, если превысил лимит |
 | `explainQuery` | План выполнения запроса. PG: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. Флаг `analyze=true` (PG) включает `EXPLAIN ANALYZE` — осторожно, запрос реально выполнится |
+| `analyzePlan` | Компактная LLM-ориентированная сводка плана вместо многостраничного дампа: самые дорогие узлы, full scans по крупным таблицам, ошибки оценки (planner vs. реальность — нужен `analyze=true` на PG), рискованные Nested Loop с большим внешним входом, спиллы сортировки на диск. PG: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (`analyze` игнорируется — Oracle даёт только статический план) |
 | `validateQuery` | Проверка синтаксиса без выполнения: guard + `prepareStatement` в драйвере. Полезно для самокоррекции LLM |
 
 ### Метаданные
@@ -254,11 +255,18 @@ JDBC_PASSWORD=secret \
 │   ├── metadata/
 │   │   ├── MetadataService.java        — DatabaseMetaData + dialect-specific
 │   │   └── StatsService.java           — table/index stats, FK coverage, redundant/unused indexes
+│   ├── plan/
+│   │   ├── ParsedPlan.java / PlanNode.java — единая модель плана (engine-agnostic)
+│   │   ├── PlanParser.java             — интерфейс парсера
+│   │   ├── PostgresPlanParser.java     — JSON EXPLAIN → дерево
+│   │   ├── OraclePlanParser.java       — PLAN_TABLE → дерево
+│   │   ├── PlanAnalyzer.java           — сводка: expensive / full scan / est error / nested loop / spill
+│   │   └── JsonReader.java             — тонкий парсер JSON без зависимостей
 │   ├── format/
 │   │   ├── OutputFormat.java
 │   │   └── ResultFormatter.java        — JSON / Markdown / CSV
 │   └── tools/
-│       ├── QueryTools.java             — executeQuery, explainQuery, validateQuery
+│       ├── QueryTools.java             — executeQuery, explainQuery, analyzePlan, validateQuery
 │       ├── MetadataTools.java          — schemas / tables / describe / view / routines / sequences / search
 │       ├── SampleTools.java            — sampleRows, columnStats
 │       └── StatsTools.java             — tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
