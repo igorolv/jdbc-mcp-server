@@ -66,6 +66,20 @@
 | `sampleRows` | Несколько строк из таблицы/вью (`SELECT * FROM t LIMIT N`). Параметры: `schema`, `table`, `limit` (по умолчанию 10, макс 100) |
 | `columnStats` | Базовая статистика колонки: `total_rows`, `non_null_rows`, `distinct_values`, `min`, `max` |
 
+### Селективность и распределение (для оптимизации предикатов)
+
+`columnStats` показывает только границы. Эти инструменты отвечают на вопросы «насколько
+предикат избирателен?» и «насколько значения в колонке перекошены?» — то, без чего LLM не
+может осмысленно выбрать индекс или переписать JOIN.
+
+| Tool | Описание |
+|---|---|
+| `columnDistribution` | Топ-N самых частых значений колонки + их доля. Показывает перекос (`70% строк со status='OK'` — индекс по `status` без других колонок бесполезен). Параметры: `schema`, `table`, `column`, `topN` (по умолчанию 20, макс 1000) |
+| `columnHistogram` | Перцентили P25 / P50 / P75 / P90 / P95 / P99 + `min`, `max`, null-счётчик. Использует SQL:2003 `WITHIN GROUP`: `percentile_cont` для числовых типов, `percentile_disc` для всех остальных — работает и для дат/таймстемпов/текста |
+| `nullRatio` | За один скан — null / non-null по всем колонкам таблицы. Колонки отсортированы по убыванию `null_ratio`. Флаг `sparse=true` для колонок с долей null > 50% (кандидат на partial index) |
+| `estimateSelectivity` | Оценка числа строк, которые вернёт предикат, **без выполнения запроса** — через `EXPLAIN` на `SELECT 1 FROM t WHERE <предикат>`. Возвращает оценочные строки, базовое (без фильтра) число строк, selectivity. Полезно, чтобы поставить самый избирательный предикат первым в составном индексе |
+| `joinCardinality` | Оценка числа строк на выходе `JOIN` — без выполнения. Даёт planner-оценку, строки каждой стороны, `selectivity_vs_cartesian`. Поддержка `INNER` / `LEFT` / `RIGHT` / `FULL` |
+
 ### Статистика объектов (оптимизация запросов)
 
 Эти инструменты дают LLM масштаб и признаки здоровья объектов, без чего советы по оптимизации
@@ -254,7 +268,8 @@ JDBC_PASSWORD=secret \
 │   │   └── SqlExecutor.java            — исполнение запросов с лимитами
 │   ├── metadata/
 │   │   ├── MetadataService.java        — DatabaseMetaData + dialect-specific
-│   │   └── StatsService.java           — table/index stats, FK coverage, redundant/unused indexes
+│   │   ├── StatsService.java           — table/index stats, FK coverage, redundant/unused indexes
+│   │   └── DistributionService.java    — column distribution / histogram / null ratio / selectivity / join cardinality
 │   ├── plan/
 │   │   ├── ParsedPlan.java / PlanNode.java — единая модель плана (engine-agnostic)
 │   │   ├── PlanParser.java             — интерфейс парсера
@@ -269,6 +284,7 @@ JDBC_PASSWORD=secret \
 │       ├── QueryTools.java             — executeQuery, explainQuery, analyzePlan, validateQuery
 │       ├── MetadataTools.java          — schemas / tables / describe / view / routines / sequences / search
 │       ├── SampleTools.java            — sampleRows, columnStats
+│       ├── DistributionTools.java      — columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality
 │       └── StatsTools.java             — tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 └── src/main/resources/
     ├── application.yml                 — MCP stdio + JDBC properties
