@@ -17,6 +17,7 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
+import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -50,6 +51,7 @@ class PostgresIntegrationTest {
     private MetadataService metadata;
     private StatsService stats;
     private DistributionService distribution;
+    private BenchmarkService benchmarks;
     private SqlDialect dialect;
 
     @BeforeAll
@@ -77,6 +79,7 @@ class PostgresIntegrationTest {
         metadata = new MetadataService(executor, dialect, props);
         stats    = new StatsService(executor, dialect, props);
         distribution = new DistributionService(executor, dialect, props, new PostgresPlanParser());
+        benchmarks = new BenchmarkService(executor, dialect);
 
         // Seed extra objects used by stats tests: a table with a redundant-prefix index,
         // a FK without an index, and an ANALYZE pass so pg_stat_user_tables has rows.
@@ -375,6 +378,70 @@ class PostgresIntegrationTest {
                 "public", "events", "status = 'OK'; DROP TABLE events"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("single boolean expression");
+    }
+
+    @Test
+    void benchmarkQueryReturnsColdAndWarmStats() throws Exception {
+        Map<String, Object> r = benchmarks.benchmark(
+                "SELECT * FROM events ORDER BY id", null,
+                50, 5, 1, 3);
+        assertThat(((Number) r.get("runs")).intValue()).isEqualTo(4);
+        assertThat(((Number) r.get("cold_runs")).intValue()).isEqualTo(1);
+        assertThat(((Number) r.get("warm_runs")).intValue()).isEqualTo(3);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> warm = (Map<String, Object>) r.get("warm_ms");
+        assertThat(((Number) warm.get("runs")).intValue()).isEqualTo(3);
+        double min = ((Number) warm.get("min")).doubleValue();
+        double med = ((Number) warm.get("median")).doubleValue();
+        double max = ((Number) warm.get("max")).doubleValue();
+        assertThat(min).isGreaterThanOrEqualTo(0.0);
+        assertThat(med).isGreaterThanOrEqualTo(min);
+        assertThat(max).isGreaterThanOrEqualTo(med);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> size = (Map<String, Object>) r.get("result_size");
+        // limit=50 and events has 100 rows → truncated with row_count == 50.
+        assertThat(((Number) size.get("row_count")).intValue()).isEqualTo(50);
+        assertThat(size.get("truncated")).isEqualTo(Boolean.TRUE);
+
+        @SuppressWarnings("unchecked")
+        List<Object> allMs = (List<Object>) r.get("all_ms");
+        assertThat(allMs).hasSize(4);
+    }
+
+    @Test
+    void benchmarkQueryRequiresLimitAndTimeout() {
+        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", null, 0, 5, 1, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("limit");
+        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", null, 10, 0, 1, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("timeoutSeconds");
+        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", null, 10, 5, 0, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void benchmarkQueryRejectsWrites() {
+        assertThatThrownBy(() -> benchmarks.benchmark("DELETE FROM events", null, 10, 5, 1, 1))
+                .hasMessageContaining("Only SELECT");
+    }
+
+    @Test
+    void timedQueryReturnsElapsedAndRows() throws Exception {
+        Map<String, Object> r = benchmarks.timed(
+                "SELECT * FROM events WHERE status = ?", List.of("OK"), 200, 5);
+        assertThat(((Number) r.get("elapsed_ms")).doubleValue()).isGreaterThanOrEqualTo(0.0);
+        assertThat(((Number) r.get("row_count")).intValue()).isEqualTo(90);
+        assertThat(r.get("truncated")).isEqualTo(Boolean.FALSE);
+        @SuppressWarnings("unchecked")
+        List<String> columns = (List<String>) r.get("columns");
+        assertThat(columns).contains("id", "status", "category", "amount");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> pss = (Map<String, Object>) r.get("pg_stat_statements");
+        // Default postgres:16-alpine image does NOT preload pg_stat_statements → expect available=false.
+        assertThat(pss.get("available")).isEqualTo(Boolean.FALSE);
     }
 
     @Test

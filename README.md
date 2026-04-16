@@ -46,6 +46,16 @@
 | `analyzePlan` | Компактная LLM-ориентированная сводка плана вместо многостраничного дампа: самые дорогие узлы, full scans по крупным таблицам, ошибки оценки (planner vs. реальность — нужен `analyze=true` на PG), рискованные Nested Loop с большим внешним входом, спиллы сортировки на диск. PG: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (`analyze` игнорируется — Oracle даёт только статический план) |
 | `validateQuery` | Проверка синтаксиса без выполнения: guard + `prepareStatement` в драйвере. Полезно для самокоррекции LLM |
 
+### Замеры
+
+Инструменты для измерения реальной стоимости запроса — чтобы LLM не гадал по плану, а видел
+настоящие миллисекунды и счётчики буферов.
+
+| Tool | Описание |
+|---|---|
+| `benchmarkQuery` | Прогнать запрос `coldRuns + warmRuns` раз (по умолчанию 1 cold + 3 warm) и вернуть wall-clock `min` / `median` / `max` для warm-прогонов (cold — отдельно). Параметры `limit` и `timeoutSeconds` **обязательны** — безлимитные запросы отклоняются. Возвращает размер последнего результата (row_count, columns, truncated), но не сами строки |
+| `timedQuery` | Обычный `executeQuery` + `elapsed_ms` по wall-clock. На PostgreSQL дополнительно снимается snapshot `pg_stat_statements` до и после запроса; diff показывает, какие queryid прибавили `calls` / `total_exec_time_ms` / `rows` / `shared_blks_hit` / `shared_blks_read` — видно, на что сервер реально потратил время. Требует установленного `pg_stat_statements` (`CREATE EXTENSION pg_stat_statements;` + `shared_preload_libraries`); если расширения нет — поле `pg_stat_statements.available: false` |
+
 ### Метаданные
 
 | Tool | Описание |
@@ -265,7 +275,8 @@ JDBC_PASSWORD=secret \
 │   │   ├── ReadOnlyGuard.java          — простой проверщик первого токена
 │   │   ├── SqlNotAllowedException.java
 │   │   ├── QueryResult.java            — структура результата
-│   │   └── SqlExecutor.java            — исполнение запросов с лимитами
+│   │   ├── SqlExecutor.java            — исполнение запросов с лимитами
+│   │   └── BenchmarkService.java       — benchmark (cold+warm) и timed (+ pg_stat_statements diff)
 │   ├── metadata/
 │   │   ├── MetadataService.java        — DatabaseMetaData + dialect-specific
 │   │   ├── StatsService.java           — table/index stats, FK coverage, redundant/unused indexes
@@ -285,7 +296,8 @@ JDBC_PASSWORD=secret \
 │       ├── MetadataTools.java          — schemas / tables / describe / view / routines / sequences / search
 │       ├── SampleTools.java            — sampleRows, columnStats
 │       ├── DistributionTools.java      — columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality
-│       └── StatsTools.java             — tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
+│       ├── StatsTools.java             — tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
+│       └── BenchmarkTools.java         — benchmarkQuery, timedQuery
 └── src/main/resources/
     ├── application.yml                 — MCP stdio + JDBC properties
     └── logback-spring.xml              — логи в stderr (stdout занят MCP)

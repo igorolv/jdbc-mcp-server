@@ -107,6 +107,29 @@ public interface SqlDialect {
         return null;
     }
 
+    /**
+     * SQL that returns a non-empty result iff the {@code pg_stat_statements}-style extension is
+     * installed. Returns {@code null} on engines that do not expose per-query timing/buffers
+     * counters in this form.
+     *
+     * <p>Used by benchmarking tools to decide whether a before/after diff is possible.
+     */
+    default String pgStatStatementsAvailabilityQuery() {
+        return null;
+    }
+
+    /**
+     * SQL that snapshots {@code pg_stat_statements}-style counters for the current database.
+     * Expected columns: {@code queryid} (text), {@code query} (text), {@code calls} (long),
+     * {@code total_exec_time_ms} (double), {@code rows} (long), {@code shared_blks_hit} (long),
+     * {@code shared_blks_read} (long). Returns {@code null} on engines that do not publish this.
+     *
+     * <p>The query itself must be static and safe to call from metadata flows.
+     */
+    default String pgStatStatementsSnapshotQuery() {
+        return null;
+    }
+
     /** System schemas that should be hidden from {@code listSchemas} / {@code listTables} by default. */
     List<String> systemSchemas();
 
