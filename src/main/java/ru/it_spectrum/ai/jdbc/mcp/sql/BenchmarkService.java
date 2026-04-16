@@ -1,0 +1,341 @@
+package ru.it_spectrum.ai.jdbc.mcp.sql;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Measurement utilities on top of {@link SqlExecutor}:
+ *
+ * <ul>
+ *     <li>{@link #benchmark(String, List, int, int, int, int) benchmark} — run the same read-only
+ *         statement N times (default 1 cold + 3 warm) and report min / median / max wall-clock;</li>
+ *     <li>{@link #timed(String, List, Integer, Integer) timed} — single run with wall-clock time
+ *         plus, on PostgreSQL, a before/after diff from {@code pg_stat_statements}.</li>
+ * </ul>
+ *
+ * <p>All runs go through {@link SqlExecutor#query} so the read-only guard, row limit and
+ * per-query timeout are enforced on every invocation — benchmarking unbounded queries is not
+ * allowed by design.
+ */
+@Service
+public class BenchmarkService {
+
+    private static final Logger log = LoggerFactory.getLogger(BenchmarkService.class);
+
+    /** Hard bound on the total number of runs to keep a single call well-behaved. */
+    static final int MAX_RUNS = 20;
+
+    private final SqlExecutor executor;
+    private final SqlDialect dialect;
+
+    public BenchmarkService(SqlExecutor executor, SqlDialect dialect) {
+        this.executor = executor;
+        this.dialect = dialect;
+    }
+
+    // ---------------- benchmark ----------------
+
+    /**
+     * Execute the same query {@code coldRuns + warmRuns} times and report wall-clock timings.
+     *
+     * <p>The first {@code coldRuns} iterations are reported separately ("cold" — no caches primed),
+     * then {@code warmRuns} iterations are aggregated into min / median / max ("warm" — caches
+     * populated by the cold run). Both {@code limit} and {@code timeoutSeconds} are required:
+     * we do not let an LLM benchmark an unbounded query.
+     *
+     * @param sql             SELECT / WITH / EXPLAIN statement
+     * @param params          positional parameters or {@code null}
+     * @param limit           max rows per run (required, must be &gt; 0)
+     * @param timeoutSeconds  per-run timeout (required, must be &gt; 0)
+     * @param coldRuns        number of cold runs (default {@code 1})
+     * @param warmRuns        number of warm runs (default {@code 3})
+     */
+    public Map<String, Object> benchmark(String sql, List<Object> params,
+                                         int limit, int timeoutSeconds,
+                                         int coldRuns, int warmRuns) throws SQLException {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit is required and must be > 0");
+        }
+        if (timeoutSeconds <= 0) {
+            throw new IllegalArgumentException("timeoutSeconds is required and must be > 0");
+        }
+        if (coldRuns < 0 || warmRuns < 0) {
+            throw new IllegalArgumentException("coldRuns and warmRuns must be >= 0");
+        }
+        int totalRuns = coldRuns + warmRuns;
+        if (totalRuns <= 0) {
+            throw new IllegalArgumentException("coldRuns + warmRuns must be > 0");
+        }
+        if (totalRuns > MAX_RUNS) {
+            throw new IllegalArgumentException("coldRuns + warmRuns must not exceed " + MAX_RUNS);
+        }
+
+        List<Double> cold = new ArrayList<>(coldRuns);
+        List<Double> warm = new ArrayList<>(warmRuns);
+        List<Double> all  = new ArrayList<>(totalRuns);
+        QueryResult last = null;
+
+        for (int i = 0; i < coldRuns; i++) {
+            long t0 = System.nanoTime();
+            last = executor.query(sql, params, limit, timeoutSeconds);
+            double ms = (System.nanoTime() - t0) / 1_000_000.0;
+            cold.add(ms);
+            all.add(ms);
+        }
+        for (int i = 0; i < warmRuns; i++) {
+            long t0 = System.nanoTime();
+            last = executor.query(sql, params, limit, timeoutSeconds);
+            double ms = (System.nanoTime() - t0) / 1_000_000.0;
+            warm.add(ms);
+            all.add(ms);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("engine", dialect.kind().name().toLowerCase(Locale.ROOT));
+        out.put("runs", totalRuns);
+        out.put("cold_runs", coldRuns);
+        out.put("warm_runs", warmRuns);
+        out.put("limit", limit);
+        out.put("timeout_seconds", timeoutSeconds);
+        out.put("cold_ms", toStats(cold));
+        out.put("warm_ms", toStats(warm));
+        out.put("all_ms", round(all));
+        if (last != null) {
+            Map<String, Object> size = new LinkedHashMap<>();
+            size.put("row_count", last.rowCount());
+            size.put("truncated", last.truncated());
+            size.put("columns", last.columns());
+            size.put("column_types", last.columnTypes());
+            out.put("result_size", size);
+        }
+        out.put("note",
+                "Wall-clock timings include JDBC round-trip and row materialization. " +
+                "The first (cold) run exercises uncached plans and pages; warm runs reflect " +
+                "steady-state latency with buffers populated.");
+        return out;
+    }
+
+    // ---------------- timed ----------------
+
+    /**
+     * Run the query once, measure wall-clock, and — on PostgreSQL with {@code pg_stat_statements}
+     * installed — attach a per-{@code queryid} diff of counters that changed between the
+     * before/after snapshots.
+     *
+     * <p>Uses {@link SqlExecutor#query} so the read-only guard, row limit and timeout apply.
+     */
+    public Map<String, Object> timed(String sql, List<Object> params,
+                                     Integer limit, Integer timeoutSeconds) throws SQLException {
+        Map<String, Counters> before = snapshotPss();
+        long t0 = System.nanoTime();
+        QueryResult result = executor.query(sql, params, limit, timeoutSeconds);
+        double elapsedMs = (System.nanoTime() - t0) / 1_000_000.0;
+        Map<String, Counters> after = snapshotPss();
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("engine", dialect.kind().name().toLowerCase(Locale.ROOT));
+        out.put("elapsed_ms", round1(elapsedMs));
+        out.put("row_count", result.rowCount());
+        out.put("truncated", result.truncated());
+        out.put("columns", result.columns());
+        out.put("column_types", result.columnTypes());
+        out.put("rows", result.rows());
+
+        Map<String, Object> pss = new LinkedHashMap<>();
+        if (before == null) {
+            pss.put("available", false);
+            pss.put("note", "pg_stat_statements is not installed or not supported on this engine. " +
+                    "On PostgreSQL: CREATE EXTENSION pg_stat_statements; and add it to " +
+                    "shared_preload_libraries.");
+        } else {
+            List<Map<String, Object>> diffs = diff(before, after);
+            pss.put("available", true);
+            pss.put("changed_entries", diffs.size());
+            pss.put("entries", diffs);
+            pss.put("note", "Diff reports pg_stat_statements rows whose counters changed during the run. " +
+                    "Background activity in other sessions may also appear.");
+        }
+        out.put("pg_stat_statements", pss);
+        return out;
+    }
+
+    // ---------------- pg_stat_statements helpers ----------------
+
+    /**
+     * Returns {@code null} if pg_stat_statements is not available (non-PG engine, extension
+     * missing, or the snapshot query fails). Otherwise a map from {@code queryid} to counters.
+     */
+    private Map<String, Counters> snapshotPss() {
+        String availSql = dialect.pgStatStatementsAvailabilityQuery();
+        String snapSql  = dialect.pgStatStatementsSnapshotQuery();
+        if (availSql == null || snapSql == null) {
+            return null;
+        }
+        try {
+            QueryResult avail = executor.queryInternal(availSql, Collections.emptyList(), 1);
+            if (avail.rows().isEmpty()) {
+                return null;
+            }
+            QueryResult snap = executor.queryInternal(snapSql, Collections.emptyList(), 100_000);
+            Map<String, Counters> out = new LinkedHashMap<>(snap.rows().size() * 2);
+            for (Map<String, Object> row : snap.rows()) {
+                String queryid = asString(getCI(row, "queryid"));
+                if (queryid == null) continue;
+                Counters c = new Counters(
+                        asString(getCI(row, "query")),
+                        toLong(getCI(row, "calls")),
+                        toDouble(getCI(row, "total_exec_time_ms")),
+                        toLong(getCI(row, "rows")),
+                        toLong(getCI(row, "shared_blks_hit")),
+                        toLong(getCI(row, "shared_blks_read"))
+                );
+                out.put(queryid, c);
+            }
+            return out;
+        } catch (SQLException e) {
+            log.debug("pg_stat_statements snapshot failed (likely permission or missing extension): {}",
+                    e.getMessage());
+            return null;
+        }
+    }
+
+    private List<Map<String, Object>> diff(Map<String, Counters> before, Map<String, Counters> after) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        String availSig = signature(dialect.pgStatStatementsAvailabilityQuery());
+        String snapSig  = signature(dialect.pgStatStatementsSnapshotQuery());
+        for (Map.Entry<String, Counters> e : after.entrySet()) {
+            Counters a = e.getValue();
+            Counters b = before.get(e.getKey());
+            long dCalls = a.calls - (b == null ? 0 : b.calls);
+            if (dCalls <= 0) continue;
+            // Hide our own snapshot / availability probes — they run through this service and
+            // otherwise dominate the diff.
+            String qSig = signature(a.query);
+            if (qSig.equals(availSig) || qSig.equals(snapSig)) continue;
+
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("queryid", e.getKey());
+            entry.put("query", trimQuery(a.query));
+            entry.put("delta_calls", dCalls);
+            entry.put("delta_total_exec_time_ms",
+                    round1(a.totalExecTimeMs - (b == null ? 0.0 : b.totalExecTimeMs)));
+            entry.put("delta_rows", a.rows - (b == null ? 0 : b.rows));
+            entry.put("delta_shared_blks_hit", a.sharedBlksHit - (b == null ? 0 : b.sharedBlksHit));
+            entry.put("delta_shared_blks_read", a.sharedBlksRead - (b == null ? 0 : b.sharedBlksRead));
+            out.add(entry);
+        }
+        out.sort((x, y) -> Double.compare(
+                toDouble(y.get("delta_total_exec_time_ms")),
+                toDouble(x.get("delta_total_exec_time_ms"))));
+        return out;
+    }
+
+    /** Short, whitespace-normalized fingerprint so we can recognise our own probes. */
+    private static String signature(String sql) {
+        if (sql == null) return "";
+        String norm = sql.replaceAll("\\s+", " ").trim();
+        return norm.length() > 64 ? norm.substring(0, 64) : norm;
+    }
+
+    private static String trimQuery(String q) {
+        if (q == null) return null;
+        String norm = q.replaceAll("\\s+", " ").trim();
+        return norm.length() > 200 ? norm.substring(0, 200) + "..." : norm;
+    }
+
+    // ---------------- stats helpers ----------------
+
+    static Map<String, Object> toStats(List<Double> samples) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("runs", samples.size());
+        if (samples.isEmpty()) {
+            out.put("min", null);
+            out.put("median", null);
+            out.put("max", null);
+            return out;
+        }
+        List<Double> sorted = new ArrayList<>(samples);
+        Collections.sort(sorted);
+        double min = sorted.get(0);
+        double max = sorted.get(sorted.size() - 1);
+        double median;
+        int n = sorted.size();
+        if (n % 2 == 1) {
+            median = sorted.get(n / 2);
+        } else {
+            median = (sorted.get(n / 2 - 1) + sorted.get(n / 2)) / 2.0;
+        }
+        out.put("min", round1(min));
+        out.put("median", round1(median));
+        out.put("max", round1(max));
+        return out;
+    }
+
+    private static List<Double> round(List<Double> samples) {
+        List<Double> out = new ArrayList<>(samples.size());
+        for (Double d : samples) out.add(round1(d));
+        return out;
+    }
+
+    private static double round1(double v) {
+        // One decimal place is enough for millisecond reporting and keeps JSON stable.
+        return Math.round(v * 10.0) / 10.0;
+    }
+
+    private static Object getCI(Map<String, Object> row, String key) {
+        Object v = row.get(key);
+        if (v != null) return v;
+        v = row.get(key.toUpperCase(Locale.ROOT));
+        if (v != null) return v;
+        for (Map.Entry<String, Object> e : row.entrySet()) {
+            if (e.getKey() != null && e.getKey().equalsIgnoreCase(key)) return e.getValue();
+        }
+        return null;
+    }
+
+    private static String asString(Object v) {
+        return v == null ? null : v.toString();
+    }
+
+    private static long toLong(Object v) {
+        if (v == null) return 0L;
+        if (v instanceof Number n) return n.longValue();
+        try {
+            return Long.parseLong(v.toString().trim());
+        } catch (NumberFormatException e) {
+            try {
+                return Math.round(Double.parseDouble(v.toString().trim()));
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+    }
+
+    private static double toDouble(Object v) {
+        if (v == null) return 0.0;
+        if (v instanceof Number n) return n.doubleValue();
+        try {
+            return Double.parseDouble(v.toString().trim());
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
+    /** Snapshot counter tuple for a single pg_stat_statements row. */
+    private record Counters(String query,
+                            long calls,
+                            double totalExecTimeMs,
+                            long rows,
+                            long sharedBlksHit,
+                            long sharedBlksRead) {}
+}

@@ -254,4 +254,27 @@ public class PostgresDialect implements SqlDialect {
     public List<String> systemSchemas() {
         return List.of("pg_catalog", "information_schema", "pg_toast");
     }
+
+    @Override
+    public String pgStatStatementsAvailabilityQuery() {
+        // One-row answer iff the extension is installed in any schema of the current database.
+        return "SELECT 1 AS available FROM pg_extension WHERE extname = 'pg_stat_statements'";
+    }
+
+    @Override
+    public String pgStatStatementsSnapshotQuery() {
+        // Snapshot keyed by queryid. Limit to the current database to cut cross-db noise.
+        // total_exec_time is PG 13+ (renamed from total_time in PG 12); targets modern PG.
+        return """
+                SELECT queryid::text       AS queryid,
+                       query               AS query,
+                       calls               AS calls,
+                       total_exec_time     AS total_exec_time_ms,
+                       rows                AS rows,
+                       shared_blks_hit     AS shared_blks_hit,
+                       shared_blks_read    AS shared_blks_read
+                FROM pg_stat_statements
+                WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                """;
+    }
 }
