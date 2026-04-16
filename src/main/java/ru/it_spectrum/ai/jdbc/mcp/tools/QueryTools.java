@@ -7,6 +7,9 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.format.OutputFormat;
 import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
+import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
+import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
+import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -30,13 +33,16 @@ public class QueryTools {
     private final SqlDialect dialect;
     private final JdbcProperties properties;
     private final ReadOnlyGuard guard;
+    private final PlanParser planParser;
 
     public QueryTools(SqlExecutor executor, SqlDialect dialect,
-                      JdbcProperties properties, ReadOnlyGuard guard) {
+                      JdbcProperties properties, ReadOnlyGuard guard,
+                      PlanParser planParser) {
         this.executor = executor;
         this.dialect = dialect;
         this.properties = properties;
         this.guard = guard;
+        this.planParser = planParser;
     }
 
     @McpTool(description = "Execute a read-only SQL SELECT / WITH / EXPLAIN statement and return the result. " +
@@ -96,6 +102,47 @@ public class QueryTools {
             return "Rejected: " + e.getMessage();
         } catch (SQLException e) {
             return "SQL error: " + e.getMessage();
+        }
+    }
+
+    @McpTool(description = "Run a structured EXPLAIN and return a compact, LLM-friendly summary of the " +
+            "execution plan instead of the full dump: top expensive nodes, full table scans on large " +
+            "relations, estimation errors (planner vs. reality — requires analyze=true on PG), risky " +
+            "nested loops with large outer inputs, and disk-sort spills. " +
+            "PostgreSQL: uses EXPLAIN (FORMAT JSON); analyze=true switches to EXPLAIN ANALYZE (the query is executed!). " +
+            "Oracle: uses EXPLAIN PLAN + PLAN_TABLE; analyze flag is ignored (static plan only, no actual rows / times). " +
+            "Use this to decide whether to add an index, refresh statistics, or rewrite a JOIN.")
+    public String analyzePlan(
+            @McpToolParam(description = "SQL statement to analyze") String sql,
+            @McpToolParam(description = "Positional parameters for '?' placeholders (optional)", required = false) List<Object> params,
+            @McpToolParam(description = "PostgreSQL only: collect actual row counts / timings via EXPLAIN ANALYZE. " +
+                    "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
+    ) {
+        try {
+            guard.check(sql);
+            boolean doAnalyze = analyze != null && analyze;
+            String explainSql = dialect.buildStructuredExplain(sql, doAnalyze);
+            String displaySql = dialect.structuredPlanQuery();
+
+            ParsedPlan parsed = executor.withConnection(conn -> {
+                QueryResult planRows;
+                if (displaySql != null) {
+                    // Oracle: populate PLAN_TABLE, then read the typed columns back.
+                    runUpdate(conn, explainSql, params);
+                    planRows = queryNoParams(conn, displaySql);
+                } else {
+                    // PostgreSQL: FORMAT JSON EXPLAIN returns one row with the plan document.
+                    planRows = queryWithParams(conn, explainSql, params);
+                }
+                return planParser.parse(planRows, doAnalyze);
+            });
+            return MetadataTools.JsonWriter.write(PlanAnalyzer.summarize(parsed));
+        } catch (SqlNotAllowedException e) {
+            return "Rejected: " + e.getMessage();
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Plan parse error: " + e.getMessage();
         }
     }
 

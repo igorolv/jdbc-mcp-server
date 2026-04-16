@@ -55,6 +55,20 @@ public class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String buildStructuredExplain(String sql, boolean analyze) {
+        String trimmed = sql.trim();
+        while (trimmed.endsWith(";")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+        }
+        // BUFFERS requires ANALYZE; enable SETTINGS for richer diagnostics; keep the plan
+        // machine-readable (FORMAT JSON).
+        String options = analyze
+                ? "(ANALYZE true, VERBOSE true, COSTS true, BUFFERS true, SETTINGS true, FORMAT JSON)"
+                : "(VERBOSE true, COSTS true, SETTINGS true, FORMAT JSON)";
+        return "EXPLAIN " + options + " " + trimmed;
+    }
+
+    @Override
     public String viewDefinitionQuery() {
         // One-row result: (definition)
         return """

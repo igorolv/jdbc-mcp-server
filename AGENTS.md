@@ -108,6 +108,7 @@ The server exposes **18 read-only MCP tools**.
 |---|---|
 | `executeQuery` | Run a SELECT / WITH / EXPLAIN statement. Params: `sql`, `params` (array of values for `?` placeholders), `limit`, `timeoutSeconds`, `format` (`json` default, `markdown`, `csv`). Result includes `truncated` flag if the row limit was hit |
 | `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. `analyze=true` enables `EXPLAIN ANALYZE` on PostgreSQL (actually runs the query). Params: `sql`, `params`, `analyze` |
+| `analyzePlan` | Compact, LLM-friendly summary of the execution plan: top-cost nodes, full scans on large relations, estimation errors (planner vs. reality — requires `analyze=true` on PG), risky nested loops with large outer input, disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (static only, `analyze` ignored). Params: `sql`, `params`, `analyze` |
 | `validateQuery` | Validate a statement without running it — read-only guard + driver-side `prepareStatement`. Params: `sql` |
 
 ### Metadata tools
@@ -169,8 +170,10 @@ Recommended flow when the user asks to optimise / audit queries or schema:
 4. Call `redundantIndexes` — safe drops that shrink storage and write overhead.
 5. Call `unusedIndexes` (PostgreSQL) — indexes that have had zero scans since the
    last stats reset; treat as a strong hint only if the workload has run long enough.
-6. For a specific slow query, combine `explainQuery` + `indexStats` on the relevant
-   tables and propose concrete `CREATE INDEX` / rewrite actions.
+6. For a specific slow query, combine `analyzePlan` (compact summary of expensive nodes,
+   full scans, estimation errors, nested-loop risks, sort spills) + `indexStats` on the
+   relevant tables and propose concrete `CREATE INDEX` / rewrite actions. Fall back to
+   `explainQuery` only when you need the full textual plan.
 
 ## Troubleshooting
 

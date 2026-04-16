@@ -13,6 +13,9 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.PostgresDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
+import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
+import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
+import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -44,6 +47,7 @@ class PostgresIntegrationTest {
     private SqlExecutor executor;
     private MetadataService metadata;
     private StatsService stats;
+    private SqlDialect dialect;
 
     @BeforeAll
     void setup() throws Exception {
@@ -64,7 +68,7 @@ class PostgresIntegrationTest {
                 PG.getJdbcUrl(), PG.getUsername(), PG.getPassword(),
                 "public", 10, 1000, 100, "strict");
         DataSource ds = buildPool(props);
-        SqlDialect dialect = new PostgresDialect();
+        dialect = new PostgresDialect();
         ReadOnlyGuard guard = new ReadOnlyGuard(props);
         executor = new SqlExecutor(ds, dialect, props, guard);
         metadata = new MetadataService(executor, dialect, props);
@@ -238,6 +242,27 @@ class PostgresIntegrationTest {
         assertThat(findings).anyMatch(f ->
                 "idx_li_order".equals(f.get("shadowed_index"))
                         && "idx_li_order_sku".equals(f.get("covered_by_index")));
+    }
+
+    @Test
+    void structuredExplainParsesAndSummarises() throws Exception {
+        // Run the JSON EXPLAIN through the dialect + parser + analyser and check that the
+        // summary mentions the target relation as a full scan (customers is tiny, so we pass
+        // its current seq-scan plan through without asserting thresholds — the shape is what
+        // matters).
+        String explainSql = dialect.buildStructuredExplain(
+                "SELECT * FROM customers WHERE name LIKE 'A%'", false);
+        QueryResult r = executor.query(explainSql, null, null, null);
+        ParsedPlan plan = new PostgresPlanParser().parse(r, false);
+
+        assertThat(plan.engine()).isEqualTo("postgresql");
+        assertThat(plan.root()).isNotNull();
+        assertThat(plan.root().nodeType()).isNotBlank();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summary = (Map<String, Object>) (Map<?, ?>) PlanAnalyzer.summarize(plan);
+        assertThat(summary).containsKeys("engine", "analyzed", "node_count", "top_expensive_nodes");
+        assertThat(summary.get("engine")).isEqualTo("postgresql");
     }
 
     @Test

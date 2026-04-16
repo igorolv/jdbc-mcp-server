@@ -49,6 +49,25 @@ public interface SqlDialect {
      */
     String explainDisplayQuery();
 
+    /**
+     * Build an EXPLAIN that yields a <b>machine-readable</b> plan — JSON on PostgreSQL,
+     * a prepared {@code PLAN_TABLE} population on Oracle. The output is meant to be parsed by
+     * {@link ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser}, not displayed as-is.
+     *
+     * @param analyze PG only — run {@code EXPLAIN ANALYZE} for actual row/timing stats
+     *                (the query is executed). Oracle always produces a static plan.
+     */
+    String buildStructuredExplain(String sql, boolean analyze);
+
+    /**
+     * Two-step structured EXPLAIN (Oracle): the {@code buildStructuredExplain()} statement
+     * populates {@code PLAN_TABLE}; this SELECT returns the typed columns the parser needs.
+     * On PostgreSQL returns {@code null} — the FORMAT JSON EXPLAIN itself yields the row.
+     */
+    default String structuredPlanQuery() {
+        return null;
+    }
+
     /** SQL that returns the definition of a view ({@code schema}, {@code name}). */
     String viewDefinitionQuery();
 
