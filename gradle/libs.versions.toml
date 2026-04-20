@@ -16,6 +16,7 @@ spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-star
 spring-ai-mcp-server = { module = "org.springframework.ai:spring-ai-starter-mcp-server", version.ref = "spring-ai" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 ojdbc11 = { module = "com.oracle.database.jdbc:ojdbc11", version.ref = "ojdbc" }
+orai18n = { module = "com.oracle.database.nls:orai18n", version.ref = "ojdbc" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 testcontainers-oracle-free = { module = "org.testcontainers:oracle-free", version.ref = "testcontainers" }

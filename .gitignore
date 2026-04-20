@@ -27,3 +27,6 @@ Thumbs.db
 
 # Config with secrets
 application-local.yml
+.env
+.env.*
+!.env.example

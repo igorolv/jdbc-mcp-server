@@ -25,6 +25,7 @@ dependencies {
     // JDBC drivers bundled into the fat jar
     runtimeOnly(libs.postgresql)
     runtimeOnly(libs.ojdbc11)
+    runtimeOnly(libs.orai18n)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.testcontainers.junit)
@@ -48,7 +49,7 @@ tasks.withType<JavaCompile> {
 
 tasks.test {
     useJUnitPlatform {
-        excludeTags("integration")
+        excludeTags("integration", "live-oracle")
     }
 }
 
@@ -60,5 +61,24 @@ tasks.register<Test>("integrationTest") {
     }
     group = "verification"
     description = "Runs integration tests that require a live database (via Testcontainers)"
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("liveOracleTest") {
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform {
+        includeTags("live-oracle")
+    }
+    group = "verification"
+    description = "Runs read-only smoke tests against a real Oracle DB. Requires " +
+            "LIVE_ORACLE_URL / LIVE_ORACLE_USERNAME / LIVE_ORACLE_PASSWORD env vars; " +
+            "tests are skipped when unset."
+    // Propagate LIVE_ORACLE_* from the invoking shell into the test JVM.
+    listOf("LIVE_ORACLE_URL", "LIVE_ORACLE_USERNAME", "LIVE_ORACLE_PASSWORD",
+            "LIVE_ORACLE_SCHEMA").forEach { key ->
+        System.getenv(key)?.let { environment(key, it) }
+    }
+    outputs.upToDateWhen { false }  // always re-run — depends on external DB state
     shouldRunAfter(tasks.test)
 }

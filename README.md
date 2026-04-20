@@ -188,6 +188,38 @@ export JAVA_HOME="$HOME/.jdks/jdk-25.0.2"
 
 > Первый запуск Oracle Free качает ~1.5 GB образ и стартует несколько минут.
 
+### Smoke-тесты против реальной Oracle
+
+Если есть доступ к уже поднятой Oracle — можно прогнать read-only smoke-тесты
+(`LiveOracleIntegrationTest`) прямо против неё. Тесты выполняют только `SELECT`
+по словарю (`DUAL`, `ALL_TABLES`) и по схеме пользователя — никаких CREATE/INSERT/UPDATE.
+
+Логин и пароль **не хранятся** в репозитории — передаются через переменные окружения.
+Если они не заданы — тесты тихо скипаются, ничего не ломают в обычной сборке.
+
+```bash
+export LIVE_ORACLE_URL='jdbc:oracle:thin:@db.example.com:1521:ORCL'
+export LIVE_ORACLE_USERNAME='ai_readonly'
+export LIVE_ORACLE_PASSWORD='secret'
+# опционально, по умолчанию = LIVE_ORACLE_USERNAME в верхнем регистре:
+# export LIVE_ORACLE_SCHEMA='APP_SCHEMA'
+
+./gradlew liveOracleTest
+```
+
+Windows (PowerShell):
+
+```powershell
+$env:LIVE_ORACLE_URL      = 'jdbc:oracle:thin:@db.example.com:1521:ORCL'
+$env:LIVE_ORACLE_USERNAME = 'ai_readonly'
+$env:LIVE_ORACLE_PASSWORD = 'secret'
+./gradlew liveOracleTest
+```
+
+Файл `.env` добавлен в `.gitignore` — при желании храните переменные там и подгружайте
+их перед запуском (например, через `direnv`, `dotenv-cli` или `set -a; . ./.env; set +a`
+в bash). Сам Gradle `.env` не парсит — переменные должны быть в окружении на момент запуска.
+
 ## Настройка
 
 | Переменная | Обязательна | Описание |
