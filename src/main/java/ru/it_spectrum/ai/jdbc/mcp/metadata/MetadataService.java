@@ -8,6 +8,7 @@ import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -98,8 +99,9 @@ public class MetadataService {
             result.put("remarks", fetchTableRemarks(md, effectiveSchema, table));
             List<Map<String, Object>> cols = fetchColumns(md, effectiveSchema, table);
             // Supplement COLUMN_DEF and REMARKS via dialect-specific queries (bypasses LONG restriction
-            // on Oracle's DatabaseMetaData.getColumns / getString).
-            fetchColumnMetadataSupplement(cols, effectiveSchema, table);
+            // on Oracle's DatabaseMetaData.getColumns / getString). Uses the same connection to avoid
+            // consuming extra pooled connections.
+            fetchColumnMetadataSupplement(conn, cols, effectiveSchema, table);
             result.put("columns", cols);
             result.put("primaryKey", fetchPrimaryKey(md, effectiveSchema, table));
             result.put("uniqueConstraints", fetchUniqueConstraints(md, effectiveSchema, table));
@@ -158,7 +160,7 @@ public class MetadataService {
         return cols;
     }
 
-    private void fetchColumnMetadataSupplement(List<Map<String, Object>> cols, String schema, String table)
+    private void fetchColumnMetadataSupplement(Connection conn, List<Map<String, Object>> cols, String schema, String table)
             throws SQLException {
         String commentsSql = dialect.columnCommentsQuery();
         String defaultsSql = dialect.columnDefaultsQuery();
@@ -167,17 +169,23 @@ public class MetadataService {
         Map<String, String> defaults = new LinkedHashMap<>();
 
         if (commentsSql != null) {
-            try {
-                QueryResult r = executor.queryInternal(commentsSql, List.of(schema, table), 1000);
-                List<String> colsList = r.columns();
-                if (colsList.size() >= 2) {
-                    String nameCol = colsList.get(0);
-                    String valCol = colsList.get(1);
-                    for (Map<String, Object> row : r.rows()) {
-                        Object nameVal = row.get(nameCol);
-                        Object commentVal = row.get(valCol);
-                        if (nameVal != null && commentVal != null && !String.valueOf(commentVal).isBlank()) {
-                            comments.put(String.valueOf(nameVal).toUpperCase(), String.valueOf(commentVal));
+            try (PreparedStatement ps = conn.prepareStatement(commentsSql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+                ps.setString(1, schema);
+                ps.setString(2, table);
+                try (ResultSet rs = ps.executeQuery()) {
+                    List<String> colsList = readColumns(rs);
+                    if (colsList.size() >= 2) {
+                        String nameCol = colsList.get(0);
+                        String valCol = colsList.get(1);
+                        while (rs.next()) {
+                            Object nameVal = rs.getObject(nameCol);
+                            Object commentVal = rs.getObject(valCol);
+                            if (nameVal != null && commentVal != null && !String.valueOf(commentVal).isBlank()) {
+                                comments.put(String.valueOf(nameVal).toUpperCase(), String.valueOf(commentVal));
+                            }
                         }
                     }
                 }
@@ -187,17 +195,23 @@ public class MetadataService {
         }
 
         if (defaultsSql != null) {
-            try {
-                QueryResult r = executor.queryInternal(defaultsSql, List.of(schema, table), 1000);
-                List<String> colsList = r.columns();
-                if (colsList.size() >= 2) {
-                    String nameCol = colsList.get(0);
-                    String valCol = colsList.get(1);
-                    for (Map<String, Object> row : r.rows()) {
-                        Object nameVal = row.get(nameCol);
-                        Object defVal = row.get(valCol);
-                        if (nameVal != null && defVal != null && !String.valueOf(defVal).isBlank()) {
-                            defaults.put(String.valueOf(nameVal).toUpperCase(), String.valueOf(defVal));
+            try (PreparedStatement ps = conn.prepareStatement(defaultsSql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+                ps.setString(1, schema);
+                ps.setString(2, table);
+                try (ResultSet rs = ps.executeQuery()) {
+                    List<String> colsList = readColumns(rs);
+                    if (colsList.size() >= 2) {
+                        String nameCol = colsList.get(0);
+                        String valCol = colsList.get(1);
+                        while (rs.next()) {
+                            Object nameVal = rs.getObject(nameCol);
+                            Object defVal = rs.getObject(valCol);
+                            if (nameVal != null && defVal != null && !String.valueOf(defVal).isBlank()) {
+                                defaults.put(String.valueOf(nameVal).toUpperCase(), String.valueOf(defVal));
+                            }
                         }
                     }
                 }
@@ -213,6 +227,16 @@ public class MetadataService {
             String def = defaults.get(cn);
             if (def != null && !def.isBlank()) col.put("default", def);
         }
+    }
+
+    private static List<String> readColumns(ResultSet rs) throws SQLException {
+        java.sql.ResultSetMetaData md = rs.getMetaData();
+        List<String> cols = new ArrayList<>();
+        for (int i = 1; i <= md.getColumnCount(); i++) {
+            String label = md.getColumnLabel(i);
+            cols.add(label != null && !label.isBlank() ? label : md.getColumnName(i));
+        }
+        return cols;
     }
 
     private Map<String, Object> fetchPrimaryKey(DatabaseMetaData md, String schema, String table)

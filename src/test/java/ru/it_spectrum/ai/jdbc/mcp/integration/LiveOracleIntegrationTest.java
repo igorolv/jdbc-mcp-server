@@ -18,6 +18,12 @@ import javax.sql.DataSource;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -158,5 +164,52 @@ class LiveOracleIntegrationTest {
         // 'found' may be false if the user can't see DBA_*/ALL_TAB_STATISTICS for this table —
         // that's still a valid result (MCP tool would report it as-is).
         assertThat(s).containsKey("found");
+    }
+
+    @Test
+    void describeLiqBankExecutiveTableRepeatedly() throws Exception {
+        // Call describeTable multiple times sequentially to check for resource leaks
+        for (int i = 0; i < 5; i++) {
+            Map<String, Object> info = metadata.describeTable(schema, "LIQ_BANK_EXECUTIVE");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> cols = (List<Map<String, Object>>) info.get("columns");
+            assertThat(cols).isNotEmpty();
+        }
+    }
+
+    @Test
+    void describeLiqBankExecutiveTableConcurrently() throws Exception {
+        // Simulate multiple concurrent requests to MCP server
+        int threadCount = 4;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch latch = new CountDownLatch(threadCount);
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicReference<Exception> error = new AtomicReference<>();
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                try {
+                    Map<String, Object> info = metadata.describeTable(schema, "LIQ_BANK_EXECUTIVE");
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> cols = (List<Map<String, Object>>) info.get("columns");
+                    if (!cols.isEmpty()) {
+                        successCount.incrementAndGet();
+                    }
+                } catch (Exception e) {
+                    error.set(e);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        boolean completed = latch.await(60, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        assertThat(completed).as("all threads completed within timeout").isTrue();
+        if (error.get() != null) {
+            throw error.get();
+        }
+        assertThat(successCount.get()).isEqualTo(threadCount);
     }
 }

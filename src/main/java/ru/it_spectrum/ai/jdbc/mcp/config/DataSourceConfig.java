@@ -46,7 +46,7 @@ public class DataSourceConfig {
         hikari.setPassword(properties.password());
         hikari.setReadOnly(true);
         hikari.setAutoCommit(true);
-        hikari.setMaximumPoolSize(4);
+        hikari.setMaximumPoolSize(40);
         hikari.setMinimumIdle(1);
         hikari.setConnectionTimeout(10_000);
         hikari.setValidationTimeout(5_000);
