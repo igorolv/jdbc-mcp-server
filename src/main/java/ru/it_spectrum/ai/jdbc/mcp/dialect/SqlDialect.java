@@ -13,7 +13,7 @@ import java.util.Map;
  *     <li>build an {@code EXPLAIN} statement that is read-only (no side effects);</li>
  *     <li>fetch view / routine / sequence definitions via engine-specific catalogs;</li>
  *     <li>apply pagination to a user query (for {@code sampleRows} and output truncation);</li>
- *     <li>prepare a connection for read-only usage (e.g. {@code SET TRANSACTION READ ONLY} on Oracle).</li>
+ *     <li>prepare a connection for read-only usage (typically {@code setReadOnly(true)}).</li>
  * </ul>
  */
 public interface SqlDialect {

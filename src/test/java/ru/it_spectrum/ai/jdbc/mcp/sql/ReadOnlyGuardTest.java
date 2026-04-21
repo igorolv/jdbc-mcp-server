@@ -25,6 +25,8 @@ class ReadOnlyGuardTest {
             "SELECT 1;",
             "SELECT 'a; b; c' AS s",          // semicolon inside string literal is fine
             "SELECT \"a; b; c\" AS s",         // semicolon inside double-quoted ident too
+            "SELECT 'it''s still read only' AS s",
+            "SELECT \"a\"\"b\" FROM t",
     })
     void acceptsReadOnlyStatements(String sql) {
         guard.check(sql);
@@ -46,6 +48,9 @@ class ReadOnlyGuardTest {
             "BEGIN; SELECT 1; COMMIT;",
             "SELECT 1; DELETE FROM t",       // multi-statement
             "DELETE FROM t; SELECT 1",
+            "WITH moved AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM moved",
+            "SELECT * INTO temp_table FROM src",
+            "SELECT * FROM users FOR UPDATE",
             "",
             "   ",
             "-- just comments",
@@ -87,5 +92,24 @@ class ReadOnlyGuardTest {
     void detectsStatementSeparator() {
         assertThat(ReadOnlyGuard.containsStatementSeparator("SELECT 1; DELETE")).isTrue();
         assertThat(ReadOnlyGuard.containsStatementSeparator("SELECT ';' FROM t")).isFalse();
+        assertThat(ReadOnlyGuard.containsStatementSeparator("SELECT 'it''s; fine' FROM t")).isFalse();
+    }
+
+    @Test
+    void ignoresForbiddenKeywordsInsideStringsCommentsAndQuotedIdentifiers() {
+        assertThat(ReadOnlyGuard.findForbiddenKeyword("""
+                SELECT 'INSERT INTO t VALUES (1)' AS sql_text,
+                       "UPDATE",
+                       col
+                FROM t
+                /* DELETE FROM t */
+                """)).isNull();
+    }
+
+    @Test
+    void findsForbiddenKeywordInCteBody() {
+        assertThat(ReadOnlyGuard.findForbiddenKeyword(
+                "WITH moved AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM moved"))
+                .isEqualTo("INSERT");
     }
 }

@@ -3,7 +3,6 @@ package ru.it_spectrum.ai.jdbc.mcp.sql;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 
@@ -87,17 +86,10 @@ public class SqlExecutor {
 
     public <T> T withConnection(ConnectionHandler<T> handler, boolean prepareReadOnly) throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            boolean restoreAutoCommit = prepareReadOnly && beginReadOnlyScope(conn);
-            try {
-                if (prepareReadOnly) {
-                    dialect.prepareReadOnly(conn);
-                }
-                return handler.handle(conn);
-            } finally {
-                if (prepareReadOnly) {
-                    endReadOnlyScope(conn, restoreAutoCommit);
-                }
+            if (prepareReadOnly) {
+                dialect.prepareReadOnly(conn);
             }
+            return handler.handle(conn);
         }
     }
 
@@ -106,19 +98,14 @@ public class SqlExecutor {
      */
     public QueryResult queryInternal(String sql, List<Object> params, int limit) throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            boolean restoreAutoCommit = beginReadOnlyScope(conn);
-            try {
-                dialect.prepareReadOnly(conn);
-                try (PreparedStatement ps = conn.prepareStatement(sql,
-                        ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                    applyLimits(ps, properties.queryTimeoutSeconds(), limit);
-                    bindParameters(ps, params);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        return readResult(rs, limit);
-                    }
+            dialect.prepareReadOnly(conn);
+            try (PreparedStatement ps = conn.prepareStatement(sql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                applyLimits(ps, properties.queryTimeoutSeconds(), limit);
+                bindParameters(ps, params);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return readResult(rs, limit);
                 }
-            } finally {
-                endReadOnlyScope(conn, restoreAutoCommit);
             }
         }
     }
@@ -135,21 +122,16 @@ public class SqlExecutor {
                 ? timeoutSeconds : properties.queryTimeoutSeconds();
 
         try (Connection conn = dataSource.getConnection()) {
-            boolean restoreAutoCommit = beginReadOnlyScope(conn);
-            try {
-                dialect.prepareReadOnly(conn);
-                // We do not rewrite the query with LIMIT here: the caller may legitimately want all rows
-                // up to maxRows. Truncation is enforced via ResultSet iteration + maxRows+1 probe.
-                try (PreparedStatement ps = conn.prepareStatement(sql,
-                        ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                    applyLimits(ps, effectiveTimeout, effectiveLimit);
-                    bindParameters(ps, params);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        return readResult(rs, effectiveLimit);
-                    }
+            dialect.prepareReadOnly(conn);
+            // We do not rewrite the query with LIMIT here: the caller may legitimately want all rows
+            // up to maxRows. Truncation is enforced via ResultSet iteration + maxRows+1 probe.
+            try (PreparedStatement ps = conn.prepareStatement(sql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                applyLimits(ps, effectiveTimeout, effectiveLimit);
+                bindParameters(ps, params);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return readResult(rs, effectiveLimit);
                 }
-            } finally {
-                endReadOnlyScope(conn, restoreAutoCommit);
             }
         }
     }
@@ -157,25 +139,6 @@ public class SqlExecutor {
     private NamedParameterRewriter.PreparedSql rewriteNamed(String sql, Map<String, ?> namedParams) {
         Objects.requireNonNull(namedParams, "namedParams must not be null");
         return NamedParameterRewriter.rewrite(sql, namedParams);
-    }
-
-    private boolean beginReadOnlyScope(Connection conn) throws SQLException {
-        if (dialect.kind() != DatabaseKind.ORACLE || !conn.getAutoCommit()) {
-            return false;
-        }
-        conn.setAutoCommit(false);
-        return true;
-    }
-
-    private void endReadOnlyScope(Connection conn, boolean restoreAutoCommit) throws SQLException {
-        if (!restoreAutoCommit) {
-            return;
-        }
-        try {
-            conn.rollback();
-        } finally {
-            conn.setAutoCommit(true);
-        }
     }
 
     private void applyLimits(Statement st, int timeoutSec, int maxRows) throws SQLException {
