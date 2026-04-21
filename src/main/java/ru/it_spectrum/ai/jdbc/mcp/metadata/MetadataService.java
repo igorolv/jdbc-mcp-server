@@ -96,7 +96,11 @@ public class MetadataService {
             result.put("name", table);
             result.put("type", fetchTableType(md, effectiveSchema, table));
             result.put("remarks", fetchTableRemarks(md, effectiveSchema, table));
-            result.put("columns", fetchColumns(md, effectiveSchema, table));
+            List<Map<String, Object>> cols = fetchColumns(md, effectiveSchema, table);
+            // Supplement COLUMN_DEF and REMARKS via dialect-specific queries (bypasses LONG restriction
+            // on Oracle's DatabaseMetaData.getColumns / getString).
+            fetchColumnMetadataSupplement(cols, effectiveSchema, table);
+            result.put("columns", cols);
             result.put("primaryKey", fetchPrimaryKey(md, effectiveSchema, table));
             result.put("uniqueConstraints", fetchUniqueConstraints(md, effectiveSchema, table));
             result.put("indexes", fetchIndexes(md, effectiveSchema, table));
@@ -133,10 +137,11 @@ public class MetadataService {
                 int decimals = rs.getInt("DECIMAL_DIGITS");
                 if (!rs.wasNull()) col.put("decimalDigits", decimals);
                 col.put("nullable", "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE")));
-                String def = rs.getString("COLUMN_DEF");
-                if (def != null) col.put("default", def.trim());
-                String remarks = rs.getString("REMARKS");
-                if (remarks != null && !remarks.isBlank()) col.put("remarks", remarks);
+                // NOTE: COLUMN_DEF and REMARKS are LONG in Oracle — fetched separately via
+                // dialect-specific queries (columnDefaultsQuery / columnCommentsQuery) to avoid
+                // ORA-17027. These fields will be added by fetchColumnMetadataSupplement.
+                col.put("default", null);
+                col.put("remarks", null);
                 String autoInc = null;
                 try {
                     autoInc = rs.getString("IS_AUTOINCREMENT");
@@ -151,6 +156,63 @@ public class MetadataService {
                 (Integer) a.getOrDefault("ordinalPosition", 0),
                 (Integer) b.getOrDefault("ordinalPosition", 0)));
         return cols;
+    }
+
+    private void fetchColumnMetadataSupplement(List<Map<String, Object>> cols, String schema, String table)
+            throws SQLException {
+        String commentsSql = dialect.columnCommentsQuery();
+        String defaultsSql = dialect.columnDefaultsQuery();
+
+        Map<String, String> comments = new LinkedHashMap<>();
+        Map<String, String> defaults = new LinkedHashMap<>();
+
+        if (commentsSql != null) {
+            try {
+                QueryResult r = executor.queryInternal(commentsSql, List.of(schema, table), 1000);
+                List<String> colsList = r.columns();
+                if (colsList.size() >= 2) {
+                    String nameCol = colsList.get(0);
+                    String valCol = colsList.get(1);
+                    for (Map<String, Object> row : r.rows()) {
+                        Object nameVal = row.get(nameCol);
+                        Object commentVal = row.get(valCol);
+                        if (nameVal != null && commentVal != null && !String.valueOf(commentVal).isBlank()) {
+                            comments.put(String.valueOf(nameVal).toUpperCase(), String.valueOf(commentVal));
+                        }
+                    }
+                }
+            } catch (SQLException e) {
+                // silently skip — remarks will remain null for this column
+            }
+        }
+
+        if (defaultsSql != null) {
+            try {
+                QueryResult r = executor.queryInternal(defaultsSql, List.of(schema, table), 1000);
+                List<String> colsList = r.columns();
+                if (colsList.size() >= 2) {
+                    String nameCol = colsList.get(0);
+                    String valCol = colsList.get(1);
+                    for (Map<String, Object> row : r.rows()) {
+                        Object nameVal = row.get(nameCol);
+                        Object defVal = row.get(valCol);
+                        if (nameVal != null && defVal != null && !String.valueOf(defVal).isBlank()) {
+                            defaults.put(String.valueOf(nameVal).toUpperCase(), String.valueOf(defVal));
+                        }
+                    }
+                }
+            } catch (SQLException e) {
+                // silently skip — defaults will remain null for this column
+            }
+        }
+
+        for (Map<String, Object> col : cols) {
+            String cn = String.valueOf(col.get("name")).toUpperCase();
+            String comment = comments.get(cn);
+            if (comment != null && !comment.isBlank()) col.put("remarks", comment);
+            String def = defaults.get(cn);
+            if (def != null && !def.isBlank()) col.put("default", def);
+        }
     }
 
     private Map<String, Object> fetchPrimaryKey(DatabaseMetaData md, String schema, String table)

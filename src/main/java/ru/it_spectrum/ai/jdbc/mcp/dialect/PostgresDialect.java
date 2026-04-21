@@ -256,6 +256,35 @@ public class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String columnCommentsQuery() {
+        // PostgreSQL stores comments in pg_description; col_description() is the clean accessor.
+        return """
+                SELECT attname::text AS column_name,
+                       COALESCE(col_description(c.oid, attnum), '') AS comment
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                WHERE n.nspname = ?
+                  AND c.relname = ?
+                  AND a.attnum IS NOT NULL
+                ORDER BY a.attnum
+                """;
+    }
+
+    @Override
+    public String columnDefaultsQuery() {
+        // information_schema.columns.column_default is VARCHAR, no casting needed.
+        return """
+                SELECT column_name  AS column_name,
+                       column_default AS default_value
+                FROM information_schema.columns
+                WHERE table_schema = ?
+                  AND table_name   = ?
+                ORDER BY ordinal_position
+                """;
+    }
+
+    @Override
     public String pgStatStatementsAvailabilityQuery() {
         // One-row answer iff the extension is installed in any schema of the current database.
         return "SELECT 1 AS available FROM pg_extension WHERE extname = 'pg_stat_statements'";

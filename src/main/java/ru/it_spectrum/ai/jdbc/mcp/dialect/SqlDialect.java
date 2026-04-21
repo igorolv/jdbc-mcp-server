@@ -130,6 +130,34 @@ public interface SqlDialect {
         return null;
     }
 
+    /**
+     * SQL that returns comments for every column of a given table.
+     * Expected columns: {@code column_name} (text), {@code comment} (text).
+     * Params: {@code (schema, table)}.
+     *
+     * <p>Oracle returns this via {@code ALL_COL_COMMENTS}; PostgreSQL uses
+     * {@code information_schema.columns} where {@code column_default} is already VARCHAR.
+     * Return {@code null} if the dialect has no such query (in which case
+     * {@code describeTable} will not populate the {@code remarks} field).
+     */
+    default String columnCommentsQuery() {
+        return null;
+    }
+
+    /**
+     * SQL that returns default values for every column of a given table.
+     * Expected columns: {@code column_name} (text), {@code default_value} (text).
+     * Params: {@code (schema, table)}.
+     *
+     * <p>Oracle uses {@code ALL_TAB_COLUMNS.DATA_DEFAULT} (CLOB → VARCHAR safe via RTRIM).
+     * PostgreSQL uses {@code information_schema.columns.column_default} directly.
+     * Return {@code null} if the dialect has no such query (in which case
+     * {@code describeTable} will not populate the {@code default} field).
+     */
+    default String columnDefaultsQuery() {
+        return null;
+    }
+
     /** System schemas that should be hidden from {@code listSchemas} / {@code listTables} by default. */
     List<String> systemSchemas();
 

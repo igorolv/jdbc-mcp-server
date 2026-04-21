@@ -242,6 +242,36 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
+    public String columnCommentsQuery() {
+        // ALL_COL_COMMENTS has VARCHAR2 remarks — no LONG issue here.
+        // Using single-line format to avoid any JDBC driver parsing quirks.
+        return "SELECT column_name, comments FROM all_col_comments WHERE owner = UPPER(?) AND table_name = UPPER(?)";
+    }
+
+    @Override
+    public String columnDefaultsQuery() {
+        // DATA_DEFAULT is LONG — DBMS_XMLGEN.GETXMLTYPE converts it to XML CLOB, then EXTRACTVALUE
+        // reads it as a VARCHAR string. Safe for all Oracle versions.
+        return """
+                SELECT c.column_name,
+                       CASE
+                           WHEN c.default_length IS NULL THEN NULL
+                           ELSE EXTRACTVALUE(
+                                   DBMS_XMLGEN.GETXMLTYPE(
+                                       'select data_default from user_tab_columns where table_name = '''
+                                       || c.table_name
+                                       || ''' and column_name = '''
+                                       || c.column_name
+                                       || '''' ),
+                                   '//text()' )
+                       END AS default_value
+                FROM all_tab_columns c
+                WHERE c.owner = UPPER(?)
+                  AND c.table_name = UPPER(?)
+                """;
+    }
+
+    @Override
     public List<String> systemSchemas() {
         return List.of("SYS", "SYSTEM", "CTXSYS", "MDSYS", "XDB", "GSMADMIN_INTERNAL",
                 "DBSNMP", "OUTLN", "APPQOSSYS", "AUDSYS", "ORDSYS", "OJVMSYS", "DVSYS",
