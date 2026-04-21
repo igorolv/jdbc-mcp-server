@@ -188,9 +188,12 @@ public class QueryTools {
 
     @McpTool(description = "Validate a SQL statement without executing it: checks the read-only guard " +
             "and prepares it with the driver (which verifies syntax and referenced objects). " +
+            "Parameters may be positional in 'params' or named in 'namedParams'. " +
             "Useful to let an LLM self-correct before running a real query.")
     public String validateQuery(
-            @McpToolParam(description = "SQL statement to validate") String sql
+            @McpToolParam(description = "SQL statement to validate") String sql,
+            @McpToolParam(description = "Positional parameters for '?' placeholders (optional)", required = false) List<Object> params,
+            @McpToolParam(description = "Named parameters for ':name' placeholders (optional)", required = false) Map<String, Object> namedParams
     ) {
         String normalizedSql = normalizeSql(sql);
         try {
@@ -199,8 +202,12 @@ public class QueryTools {
             return "INVALID (guard): " + e.getMessage();
         }
         try {
+            QueryBinding binding = resolveBinding(normalizedSql, params, namedParams);
+            String preparedSql = binding.namedParams() != null
+                    ? NamedParameterRewriter.rewrite(normalizedSql, binding.namedParams()).sql()
+                    : normalizedSql;
             return executor.withConnection(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(normalizedSql)) {
+                try (PreparedStatement ps = conn.prepareStatement(preparedSql)) {
                     int paramCount = ps.getParameterMetaData().getParameterCount();
                     int colCount = 0;
                     try {
@@ -211,6 +218,10 @@ public class QueryTools {
                     return "VALID. Parameters: " + paramCount + ", columns: " + colCount;
                 }
             });
+        } catch (IllegalArgumentException e) {
+            return "INVALID (params): " + e.getMessage();
+        } catch (RuntimeException e) {
+            return "INVALID (params): " + e.getMessage();
         } catch (SQLException e) {
             return "INVALID (driver): " + e.getMessage();
         }

@@ -17,7 +17,7 @@
 
 С сервером LLM:
 1. вызывает `listSchemas` / `listTables` / `describeTable` — видит реальную структуру;
-2. пишет запрос и вызывает `validateQuery` — проверяет синтаксис без выполнения;
+2. пишет запрос и вызывает `validateQuery` с теми же `params` / `namedParams`, которые потом пойдут в execution-tool — проверяет синтаксис без выполнения;
 3. при необходимости вызывает `explainQuery` — смотрит план;
 4. вызывает `executeQuery` — получает данные.
 
@@ -44,7 +44,7 @@
 | `executeQuery` | Выполнить `SELECT` / `WITH` / `EXPLAIN`. Параметры: `sql`, `params` (массив для `?`) или `namedParams` (объект для `:name`), `limit`, `timeoutSeconds`, `format` (`json` по умолчанию, `markdown`, `csv`). Результат помечается `truncated: true`, если превысил лимит |
 | `explainQuery` | План выполнения запроса. PG: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`). Флаг `analyze=true` (PG) включает `EXPLAIN ANALYZE` — осторожно, запрос реально выполнится |
 | `analyzePlan` | Компактная LLM-ориентированная сводка плана вместо многостраничного дампа: самые дорогие узлы, full scans по крупным таблицам, ошибки оценки (planner vs. реальность — нужен `analyze=true` на PG), рискованные Nested Loop с большим внешним входом, спиллы сортировки на диск. PG: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (`analyze` игнорируется — Oracle даёт только статический план). Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`) |
-| `validateQuery` | Проверка синтаксиса без выполнения: guard + `prepareStatement` в драйвере. Полезно для самокоррекции LLM |
+| `validateQuery` | Проверка синтаксиса без выполнения: guard + `prepareStatement` в драйвере. Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`). Полезно для самокоррекции LLM |
 
 ### Замеры
 

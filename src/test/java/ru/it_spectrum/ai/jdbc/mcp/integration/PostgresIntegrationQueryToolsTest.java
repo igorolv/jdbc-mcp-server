@@ -38,9 +38,14 @@ class PostgresIntegrationQueryToolsTest extends AbstractPostgresToolsIntegration
         assertThat(field(summary, "engine").asText()).isEqualTo("postgresql");
         assertThat(field(summary, "node_count").asInt()).isGreaterThan(0);
 
-        String valid = queryTools().validateQuery("SELECT * FROM customers");
+        String valid = queryTools().validateQuery("SELECT * FROM customers", null, null);
         assertThat(valid).startsWith("VALID.");
-        assertThat(queryTools().validateQuery("DELETE FROM customers"))
+        String validNamed = queryTools().validateQuery(
+                "SELECT COUNT(*) FROM orders WHERE status = :status",
+                null, Map.of("status", "PAID"));
+        assertThat(validNamed).startsWith("VALID.");
+
+        assertThat(queryTools().validateQuery("DELETE FROM customers", null, null))
                 .startsWith("INVALID (guard):");
     }
 
