@@ -104,14 +104,17 @@ public class OracleDialect implements SqlDialect {
 
     @Override
     public String searchObjectsQuery() {
-        // Uppercase match — Oracle stores unquoted identifiers in upper case.
+        // Keep the bind shape aligned with PostgreSQL's searchObjectsQuery(): the shared caller
+        // passes the same pattern twice (relations + routines there). Oracle can search all
+        // supported object types from ALL_OBJECTS in one query, so both placeholders intentionally
+        // use the same object_name predicate.
         return """
                 SELECT owner        AS schema,
                        object_name  AS name,
                        object_type  AS type,
                        owner        AS owner
                 FROM all_objects
-                WHERE object_name LIKE UPPER(?)
+                WHERE (object_name LIKE UPPER(?) OR object_name LIKE UPPER(?))
                   AND object_type IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW', 'SEQUENCE',
                                       'FUNCTION', 'PROCEDURE', 'PACKAGE', 'TYPE', 'SYNONYM')
                   AND owner NOT IN ('SYS', 'SYSTEM', 'CTXSYS', 'MDSYS', 'XDB', 'GSMADMIN_INTERNAL',

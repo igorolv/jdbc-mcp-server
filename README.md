@@ -41,9 +41,9 @@
 
 | Tool | Описание |
 |---|---|
-| `executeQuery` | Выполнить `SELECT` / `WITH` / `EXPLAIN`. Параметры: `sql`, `params` (массив для `?`), `limit`, `timeoutSeconds`, `format` (`json` по умолчанию, `markdown`, `csv`). Результат помечается `truncated: true`, если превысил лимит |
-| `explainQuery` | План выполнения запроса. PG: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. Флаг `analyze=true` (PG) включает `EXPLAIN ANALYZE` — осторожно, запрос реально выполнится |
-| `analyzePlan` | Компактная LLM-ориентированная сводка плана вместо многостраничного дампа: самые дорогие узлы, full scans по крупным таблицам, ошибки оценки (planner vs. реальность — нужен `analyze=true` на PG), рискованные Nested Loop с большим внешним входом, спиллы сортировки на диск. PG: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (`analyze` игнорируется — Oracle даёт только статический план) |
+| `executeQuery` | Выполнить `SELECT` / `WITH` / `EXPLAIN`. Параметры: `sql`, `params` (массив для `?`) или `namedParams` (объект для `:name`), `limit`, `timeoutSeconds`, `format` (`json` по умолчанию, `markdown`, `csv`). Результат помечается `truncated: true`, если превысил лимит |
+| `explainQuery` | План выполнения запроса. PG: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`). Флаг `analyze=true` (PG) включает `EXPLAIN ANALYZE` — осторожно, запрос реально выполнится |
+| `analyzePlan` | Компактная LLM-ориентированная сводка плана вместо многостраничного дампа: самые дорогие узлы, full scans по крупным таблицам, ошибки оценки (planner vs. реальность — нужен `analyze=true` на PG), рискованные Nested Loop с большим внешним входом, спиллы сортировки на диск. PG: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (`analyze` игнорируется — Oracle даёт только статический план). Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`) |
 | `validateQuery` | Проверка синтаксиса без выполнения: guard + `prepareStatement` в драйвере. Полезно для самокоррекции LLM |
 
 ### Замеры
@@ -53,8 +53,8 @@
 
 | Tool | Описание |
 |---|---|
-| `benchmarkQuery` | Прогнать запрос `coldRuns + warmRuns` раз (по умолчанию 1 cold + 3 warm) и вернуть wall-clock `min` / `median` / `max` для warm-прогонов (cold — отдельно). Параметры `limit` и `timeoutSeconds` **обязательны** — безлимитные запросы отклоняются. Возвращает размер последнего результата (row_count, columns, truncated), но не сами строки |
-| `timedQuery` | Обычный `executeQuery` + `elapsed_ms` по wall-clock. На PostgreSQL дополнительно снимается snapshot `pg_stat_statements` до и после запроса; diff показывает, какие queryid прибавили `calls` / `total_exec_time_ms` / `rows` / `shared_blks_hit` / `shared_blks_read` — видно, на что сервер реально потратил время. Требует установленного `pg_stat_statements` (`CREATE EXTENSION pg_stat_statements;` + `shared_preload_libraries`); если расширения нет — поле `pg_stat_statements.available: false` |
+| `benchmarkQuery` | Прогнать запрос `coldRuns + warmRuns` раз (по умолчанию 1 cold + 3 warm) и вернуть wall-clock `min` / `median` / `max` для warm-прогонов (cold — отдельно). Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`). `limit` и `timeoutSeconds` **обязательны** — безлимитные запросы отклоняются. Возвращает размер последнего результата (row_count, columns, truncated), но не сами строки |
+| `timedQuery` | Обычный `executeQuery` + `elapsed_ms` по wall-clock. Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`). На PostgreSQL дополнительно снимается snapshot `pg_stat_statements` до и после запроса; diff показывает, какие queryid прибавили `calls` / `total_exec_time_ms` / `rows` / `shared_blks_hit` / `shared_blks_read` — видно, на что сервер реально потратил время. Требует установленного `pg_stat_statements` (`CREATE EXTENSION pg_stat_statements;` + `shared_preload_libraries`); если расширения нет — поле `pg_stat_statements.available: false` |
 
 ### Метаданные
 

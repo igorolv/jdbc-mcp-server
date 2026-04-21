@@ -149,6 +149,15 @@ class PostgresIntegrationTest {
     }
 
     @Test
+    void executeNamedParameterSelect() throws Exception {
+        QueryResult r = executor.queryNamed(
+                "SELECT COUNT(*) AS c FROM orders WHERE customer_id = :customerId",
+                Map.of("customerId", 1), null, null);
+        assertThat(r.rows()).hasSize(1);
+        assertThat(((Number) r.rows().get(0).get("c")).intValue()).isEqualTo(2);
+    }
+
+    @Test
     void enforcesRowLimit() throws Exception {
         // Request limit of 1 — we have 2 customers, expect truncation
         QueryResult r = executor.query("SELECT * FROM customers ORDER BY id", null, 1, null);
@@ -383,7 +392,7 @@ class PostgresIntegrationTest {
     @Test
     void benchmarkQueryReturnsColdAndWarmStats() throws Exception {
         Map<String, Object> r = benchmarks.benchmark(
-                "SELECT * FROM events ORDER BY id", null,
+                "SELECT * FROM events ORDER BY id", (List<Object>) null,
                 50, 5, 1, 3);
         assertThat(((Number) r.get("runs")).intValue()).isEqualTo(4);
         assertThat(((Number) r.get("cold_runs")).intValue()).isEqualTo(1);
@@ -412,19 +421,32 @@ class PostgresIntegrationTest {
 
     @Test
     void benchmarkQueryRequiresLimitAndTimeout() {
-        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", null, 0, 5, 1, 1))
+        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", (List<Object>) null, 0, 5, 1, 1))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("limit");
-        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", null, 10, 0, 1, 1))
+        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", (List<Object>) null, 10, 0, 1, 1))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("timeoutSeconds");
-        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", null, 10, 5, 0, 0))
+        assertThatThrownBy(() -> benchmarks.benchmark("SELECT 1", (List<Object>) null, 10, 5, 0, 0))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
+    void benchmarkQuerySupportsNamedParams() throws Exception {
+        Map<String, Object> r = benchmarks.benchmark(
+                "SELECT * FROM events WHERE status = :status ORDER BY id",
+                Map.of("status", "OK"),
+                50, 5, 1, 2);
+        assertThat(((Number) r.get("runs")).intValue()).isEqualTo(3);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> size = (Map<String, Object>) r.get("result_size");
+        assertThat(((Number) size.get("row_count")).intValue()).isEqualTo(50);
+        assertThat(size.get("truncated")).isEqualTo(Boolean.TRUE);
+    }
+
+    @Test
     void benchmarkQueryRejectsWrites() {
-        assertThatThrownBy(() -> benchmarks.benchmark("DELETE FROM events", null, 10, 5, 1, 1))
+        assertThatThrownBy(() -> benchmarks.benchmark("DELETE FROM events", (List<Object>) null, 10, 5, 1, 1))
                 .hasMessageContaining("Only SELECT");
     }
 
@@ -442,6 +464,15 @@ class PostgresIntegrationTest {
         Map<String, Object> pss = (Map<String, Object>) r.get("pg_stat_statements");
         // Default postgres:16-alpine image does NOT preload pg_stat_statements → expect available=false.
         assertThat(pss.get("available")).isEqualTo(Boolean.FALSE);
+    }
+
+    @Test
+    void timedQuerySupportsNamedParams() throws Exception {
+        Map<String, Object> r = benchmarks.timed(
+                "SELECT * FROM events WHERE status = :status", Map.of("status", "OK"), 200, 5);
+        assertThat(((Number) r.get("elapsed_ms")).doubleValue()).isGreaterThanOrEqualTo(0.0);
+        assertThat(((Number) r.get("row_count")).intValue()).isEqualTo(90);
+        assertThat(r.get("truncated")).isEqualTo(Boolean.FALSE);
     }
 
     @Test

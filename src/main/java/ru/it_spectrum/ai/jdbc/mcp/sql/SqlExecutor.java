@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Executes read-only SELECT/WITH/EXPLAIN statements against the configured DataSource.
@@ -60,23 +61,18 @@ public class SqlExecutor {
     public QueryResult query(String sql, List<Object> params, Integer limit, Integer timeoutSeconds)
             throws SQLException {
         guard.check(sql);
-        int effectiveLimit = limit != null && limit > 0 ? limit : properties.maxRows();
-        int effectiveTimeout = timeoutSeconds != null && timeoutSeconds >= 0
-                ? timeoutSeconds : properties.queryTimeoutSeconds();
+        return queryGuarded(sql, params, limit, timeoutSeconds);
+    }
 
-        try (Connection conn = dataSource.getConnection()) {
-            dialect.prepareReadOnly(conn);
-            // We do not rewrite the query with LIMIT here: the caller may legitimately want all rows
-            // up to maxRows. Truncation is enforced via ResultSet iteration + maxRows+1 probe.
-            try (PreparedStatement ps = conn.prepareStatement(sql,
-                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                applyLimits(ps, effectiveTimeout, effectiveLimit);
-                bindParameters(ps, params);
-                try (ResultSet rs = ps.executeQuery()) {
-                    return readResult(rs, effectiveLimit);
-                }
-            }
-        }
+    /**
+     * Runs a user query with named parameters. The SQL is rewritten to positional placeholders
+     * using Spring's named-parameter parser before preparing the statement.
+     */
+    public QueryResult queryNamed(String sql, Map<String, ?> namedParams, Integer limit, Integer timeoutSeconds)
+            throws SQLException {
+        guard.check(sql);
+        NamedParameterRewriter.PreparedSql prepared = rewriteNamed(sql, namedParams);
+        return queryGuarded(prepared.sql(), prepared.params(), limit, timeoutSeconds);
     }
 
     /**
@@ -106,6 +102,37 @@ public class SqlExecutor {
                 }
             }
         }
+    }
+
+    public QueryResult queryInternalNamed(String sql, Map<String, ?> namedParams, int limit) throws SQLException {
+        NamedParameterRewriter.PreparedSql prepared = rewriteNamed(sql, namedParams);
+        return queryInternal(prepared.sql(), prepared.params(), limit);
+    }
+
+    private QueryResult queryGuarded(String sql, List<Object> params, Integer limit, Integer timeoutSeconds)
+            throws SQLException {
+        int effectiveLimit = limit != null && limit > 0 ? limit : properties.maxRows();
+        int effectiveTimeout = timeoutSeconds != null && timeoutSeconds >= 0
+                ? timeoutSeconds : properties.queryTimeoutSeconds();
+
+        try (Connection conn = dataSource.getConnection()) {
+            dialect.prepareReadOnly(conn);
+            // We do not rewrite the query with LIMIT here: the caller may legitimately want all rows
+            // up to maxRows. Truncation is enforced via ResultSet iteration + maxRows+1 probe.
+            try (PreparedStatement ps = conn.prepareStatement(sql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                applyLimits(ps, effectiveTimeout, effectiveLimit);
+                bindParameters(ps, params);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return readResult(rs, effectiveLimit);
+                }
+            }
+        }
+    }
+
+    private NamedParameterRewriter.PreparedSql rewriteNamed(String sql, Map<String, ?> namedParams) {
+        Objects.requireNonNull(namedParams, "namedParams must not be null");
+        return NamedParameterRewriter.rewrite(sql, namedParams);
     }
 
     private void applyLimits(Statement st, int timeoutSec, int maxRows) throws SQLException {

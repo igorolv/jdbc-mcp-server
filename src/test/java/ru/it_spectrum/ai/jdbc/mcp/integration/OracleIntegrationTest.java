@@ -135,6 +135,14 @@ class OracleIntegrationTest {
     }
 
     @Test
+    void executeNamedParameterSelect() throws Exception {
+        QueryResult r = executor.queryNamed(
+                "SELECT COUNT(*) AS c FROM orders WHERE customer_id = :customerId",
+                Map.of("customerId", 1), null, null);
+        assertThat(r.rows()).hasSize(1);
+    }
+
+    @Test
     void rejectsWriteViaGuard() {
         assertThatThrownBy(() -> executor.query("DELETE FROM customers", null, null, null))
                 .hasMessageContaining("Only SELECT");

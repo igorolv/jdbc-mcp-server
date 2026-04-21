@@ -63,6 +63,18 @@ public class BenchmarkService {
     public Map<String, Object> benchmark(String sql, List<Object> params,
                                          int limit, int timeoutSeconds,
                                          int coldRuns, int warmRuns) throws SQLException {
+        return benchmark(sql, params, null, limit, timeoutSeconds, coldRuns, warmRuns);
+    }
+
+    public Map<String, Object> benchmark(String sql, Map<String, Object> namedParams,
+                                         int limit, int timeoutSeconds,
+                                         int coldRuns, int warmRuns) throws SQLException {
+        return benchmark(sql, null, namedParams, limit, timeoutSeconds, coldRuns, warmRuns);
+    }
+
+    private Map<String, Object> benchmark(String sql, List<Object> params, Map<String, Object> namedParams,
+                                         int limit, int timeoutSeconds,
+                                         int coldRuns, int warmRuns) throws SQLException {
         if (limit <= 0) {
             throw new IllegalArgumentException("limit is required and must be > 0");
         }
@@ -80,6 +92,12 @@ public class BenchmarkService {
             throw new IllegalArgumentException("coldRuns + warmRuns must not exceed " + MAX_RUNS);
         }
 
+        boolean hasPositional = params != null && !params.isEmpty();
+        boolean hasNamed = namedParams != null && !namedParams.isEmpty();
+        if (hasPositional && hasNamed) {
+            throw new IllegalArgumentException("Use either params or namedParams, not both");
+        }
+
         List<Double> cold = new ArrayList<>(coldRuns);
         List<Double> warm = new ArrayList<>(warmRuns);
         List<Double> all  = new ArrayList<>(totalRuns);
@@ -87,14 +105,18 @@ public class BenchmarkService {
 
         for (int i = 0; i < coldRuns; i++) {
             long t0 = System.nanoTime();
-            last = executor.query(sql, params, limit, timeoutSeconds);
+            last = hasNamed
+                    ? executor.queryNamed(sql, namedParams, limit, timeoutSeconds)
+                    : executor.query(sql, params, limit, timeoutSeconds);
             double ms = (System.nanoTime() - t0) / 1_000_000.0;
             cold.add(ms);
             all.add(ms);
         }
         for (int i = 0; i < warmRuns; i++) {
             long t0 = System.nanoTime();
-            last = executor.query(sql, params, limit, timeoutSeconds);
+            last = hasNamed
+                    ? executor.queryNamed(sql, namedParams, limit, timeoutSeconds)
+                    : executor.query(sql, params, limit, timeoutSeconds);
             double ms = (System.nanoTime() - t0) / 1_000_000.0;
             warm.add(ms);
             all.add(ms);
@@ -136,9 +158,27 @@ public class BenchmarkService {
      */
     public Map<String, Object> timed(String sql, List<Object> params,
                                      Integer limit, Integer timeoutSeconds) throws SQLException {
+        return timed(sql, params, null, limit, timeoutSeconds);
+    }
+
+    public Map<String, Object> timed(String sql, Map<String, Object> namedParams,
+                                     Integer limit, Integer timeoutSeconds) throws SQLException {
+        return timed(sql, null, namedParams, limit, timeoutSeconds);
+    }
+
+    private Map<String, Object> timed(String sql, List<Object> params, Map<String, Object> namedParams,
+                                     Integer limit, Integer timeoutSeconds) throws SQLException {
+        boolean hasPositional = params != null && !params.isEmpty();
+        boolean hasNamed = namedParams != null && !namedParams.isEmpty();
+        if (hasPositional && hasNamed) {
+            throw new IllegalArgumentException("Use either params or namedParams, not both");
+        }
+
         Map<String, Counters> before = snapshotPss();
         long t0 = System.nanoTime();
-        QueryResult result = executor.query(sql, params, limit, timeoutSeconds);
+        QueryResult result = hasNamed
+                ? executor.queryNamed(sql, namedParams, limit, timeoutSeconds)
+                : executor.query(sql, params, limit, timeoutSeconds);
         double elapsedMs = (System.nanoTime() - t0) / 1_000_000.0;
         Map<String, Counters> after = snapshotPss();
 
