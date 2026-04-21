@@ -4,6 +4,7 @@ spring-ai = "2.0.0-M3"
 postgresql = "42.7.4"
 ojdbc = "23.6.0.24.10"
 testcontainers = "1.20.4"
+commons-lang3 = "3.14.0"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
@@ -20,3 +21,4 @@ orai18n = { module = "com.oracle.database.nls:orai18n", version.ref = "ojdbc" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 testcontainers-oracle-free = { module = "org.testcontainers:oracle-free", version.ref = "testcontainers" }
+commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "commons-lang3" }

@@ -31,6 +31,12 @@ dependencies {
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.oracle.free)
+    testImplementation(libs.commons.lang3)
+
+    // Force all testcontainers modules to 1.20.4 to avoid version conflicts
+    testImplementation("org.testcontainers:testcontainers:1.20.4")
+    testImplementation("org.testcontainers:database-commons:1.20.4")
+    testImplementation("org.testcontainers:jdbc:1.20.4")
 }
 
 tasks.jar {
@@ -76,7 +82,7 @@ tasks.register<Test>("liveOracleTest") {
             "tests are skipped when unset."
     // Propagate LIVE_ORACLE_* from the invoking shell into the test JVM.
     listOf("LIVE_ORACLE_URL", "LIVE_ORACLE_USERNAME", "LIVE_ORACLE_PASSWORD",
-            "LIVE_ORACLE_SCHEMA").forEach { key ->
+        "LIVE_ORACLE_SCHEMA").forEach { key ->
         System.getenv(key)?.let { environment(key, it) }
     }
     outputs.upToDateWhen { false }  // always re-run — depends on external DB state
