@@ -220,11 +220,19 @@ public class QueryTools {
         }
         try {
             SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
-            String preparedSql = binding.namedParams() != null
-                    ? NamedParameterRewriter.rewrite(normalizedSql, binding.namedParams()).sql()
-                    : normalizedSql;
+            String preparedSql = normalizedSql;
+            List<Object> preparedParams = binding.params();
+            if (binding.namedParams() != null) {
+                NamedParameterRewriter.PreparedSql prepared =
+                        NamedParameterRewriter.rewrite(normalizedSql, binding.namedParams());
+                preparedSql = prepared.sql();
+                preparedParams = prepared.params();
+            }
+            final String finalPreparedSql = preparedSql;
+            final List<Object> finalPreparedParams = preparedParams;
             return executor.withConnection(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(preparedSql)) {
+                try (PreparedStatement ps = conn.prepareStatement(finalPreparedSql)) {
+                    bind(ps, finalPreparedParams);
                     int paramCount = ps.getParameterMetaData().getParameterCount();
                     int colCount = 0;
                     try {

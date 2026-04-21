@@ -41,7 +41,7 @@ class OracleIntegrationQueryToolsTest extends AbstractOracleToolsIntegrationTest
         String valid = queryTools().validateQuery("SELECT * FROM customers", null, null);
         assertThat(valid).startsWith("VALID.");
         String validNamed = queryTools().validateQuery(
-                "SELECT COUNT(*) FROM orders WHERE status = :status",
+                "SELECT COUNT(*) FROM events WHERE status = :status",
                 null, Map.of("status", "PAID"));
         assertThat(validNamed).startsWith("VALID.");
 
