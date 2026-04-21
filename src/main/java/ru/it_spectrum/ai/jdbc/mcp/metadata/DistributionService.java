@@ -360,7 +360,7 @@ public class DistributionService {
                 planRows = queryNoParams(conn, explainSql);
             }
             return planParser.parse(planRows, false);
-        });
+        }, displaySql == null);
         PlanNode root = parsed.root();
         return root == null ? null : root.estimatedRows();
     }

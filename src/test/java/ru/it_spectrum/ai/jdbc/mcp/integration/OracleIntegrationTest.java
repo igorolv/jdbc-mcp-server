@@ -157,10 +157,14 @@ class OracleIntegrationTest {
                 schema, 30, 1000, 100, "off");
         DataSource ds = buildPool(propsNoGuard);
         try (Connection c = ds.getConnection()) {
+            c.setAutoCommit(false);
             new OracleDialect().prepareReadOnly(c);
             try (var st = c.createStatement()) {
                 assertThatThrownBy(() -> st.execute("INSERT INTO customers(name, email) VALUES ('X', 'x@x')"))
                         .hasMessageContaining("ORA-");
+            } finally {
+                c.rollback();
+                c.setAutoCommit(true);
             }
         }
     }

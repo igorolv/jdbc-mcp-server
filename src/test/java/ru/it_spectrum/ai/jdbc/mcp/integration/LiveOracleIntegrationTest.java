@@ -349,7 +349,7 @@ class LiveOracleIntegrationTest {
                 }
                 return new QueryResult(cols, types, rows, false, rows.size());
             }
-        });
+        }, false);
         StringBuilder planText = new StringBuilder();
         for (Map<String, Object> row : planRows.rows()) {
             Object v = row.get("PLAN");
@@ -386,7 +386,7 @@ class LiveOracleIntegrationTest {
                 }
                 return new QueryResult(cols, types, rows, false, rows.size());
             }
-        });
+        }, false);
         ParsedPlan plan = new OraclePlanParser().parse(structuredRows, false);
         @SuppressWarnings("unchecked")
         Map<String, Object> summary = (Map<String, Object>) (Map<?, ?>) PlanAnalyzer.summarize(plan);

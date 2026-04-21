@@ -105,7 +105,7 @@ public class QueryTools {
                 }
                 QueryResult planRows = queryWithParams(conn, preparedExplainSql, preparedParams);
                 return rowsAsText(planRows);
-            });
+            }, displaySql == null);
         } catch (SqlNotAllowedException e) {
             return "Rejected: " + e.getMessage();
         } catch (SQLException e) {
@@ -149,7 +149,7 @@ public class QueryTools {
                     planRows = queryWithParams(conn, preparedExplainSql, preparedParams);
                 }
                 return planParser.parse(planRows, doAnalyze);
-            });
+            }, displaySql == null);
             return MetadataTools.JsonWriter.write(PlanAnalyzer.summarize(parsed));
         } catch (SqlNotAllowedException e) {
             return "Rejected: " + e.getMessage();
