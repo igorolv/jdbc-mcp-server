@@ -13,6 +13,7 @@ import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
+import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParameterBindingResolver;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlNotAllowedException;
 
@@ -30,6 +31,18 @@ import java.util.Map;
  */
 @Service
 public class QueryTools {
+
+    private static final String BINDING_RULES =
+            "Binding rules: if SQL has no placeholders, omit both 'params' and 'namedParams'. " +
+            "If SQL contains '?', pass values in 'params' only, in placeholder order. " +
+            "If SQL contains named placeholders in the form ':paramName' such as ':userId' or ':status', " +
+            "pass values in 'namedParams' only. " +
+            "Never mix '?' and named placeholders in the same SQL statement, and never pass both argument styles. ";
+
+    private static final String BINDING_EXAMPLES =
+            "Examples: positional -> sql='SELECT * FROM orders WHERE customer_id = ? AND status = ?', " +
+            "params=[123, 'PAID']; named -> sql='SELECT * FROM orders WHERE customer_id = :customerId " +
+            "AND status = :status', namedParams={customerId: 123, status: 'PAID'}. ";
 
     private final SqlExecutor executor;
     private final SqlDialect dialect;
@@ -50,13 +63,14 @@ public class QueryTools {
     @McpTool(description = "Execute a read-only SQL SELECT / WITH / EXPLAIN statement and return the result. " +
             "Only pure read statements are allowed — write operations (INSERT, UPDATE, DELETE, DDL, etc.) " +
             "are rejected before being sent to the database. " +
-            "Use either '?' placeholders with values in 'params', or named placeholders like ':userId' with values in 'namedParams'. " +
+            BINDING_RULES +
+            BINDING_EXAMPLES +
             "Output format: 'json' (default), 'markdown', or 'csv'. " +
             "Results are truncated to 'limit' rows (default JDBC_MAX_ROWS) with a 'truncated' marker.")
     public String executeQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders, in order (optional)", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders (optional)", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
+            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds,
             @McpToolParam(description = "Output format: json (default), markdown, csv", required = false) String format
@@ -78,12 +92,13 @@ public class QueryTools {
     @McpTool(description = "Return the execution plan for a SQL SELECT / WITH statement. " +
             "PostgreSQL: uses EXPLAIN (FORMAT TEXT); with analyze=true runs EXPLAIN ANALYZE (note: this actually executes the query!). " +
             "Oracle: uses EXPLAIN PLAN + DBMS_XPLAN.DISPLAY; analyze flag is ignored (Oracle returns a static plan). " +
-            "Parameters may be positional in 'params' or named in 'namedParams'. " +
+            BINDING_RULES +
+            BINDING_EXAMPLES +
             "The statement is still read-only-validated before execution.")
     public String explainQuery(
             @McpToolParam(description = "SQL statement to explain") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders (optional)", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders (optional)", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
+            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "PostgreSQL only: collect actual run-time stats via EXPLAIN ANALYZE. " +
                     "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
     ) {
@@ -95,7 +110,7 @@ public class QueryTools {
             String displaySql = dialect.explainDisplayQuery();
 
             return executor.withConnection(conn -> {
-                QueryBinding binding = resolveBinding(normalizedSql, params, namedParams);
+                SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
                 String preparedExplainSql;
                 List<Object> preparedParams;
                 if (binding.namedParams() != null) {
@@ -133,12 +148,13 @@ public class QueryTools {
             "nested loops with large outer inputs, and disk-sort spills. " +
             "PostgreSQL: uses EXPLAIN (FORMAT JSON); analyze=true switches to EXPLAIN ANALYZE (the query is executed!). " +
             "Oracle: uses EXPLAIN PLAN + PLAN_TABLE; analyze flag is ignored (static plan only, no actual rows / times). " +
-            "Parameters may be positional in 'params' or named in 'namedParams'. " +
+            BINDING_RULES +
+            BINDING_EXAMPLES +
             "Use this to decide whether to add an index, refresh statistics, or rewrite a JOIN.")
     public String analyzePlan(
             @McpToolParam(description = "SQL statement to analyze") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders (optional)", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders (optional)", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
+            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "PostgreSQL only: collect actual row counts / timings via EXPLAIN ANALYZE. " +
                     "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
     ) {
@@ -150,7 +166,7 @@ public class QueryTools {
             String displaySql = dialect.structuredPlanQuery();
 
             ParsedPlan parsed = executor.withConnection(conn -> {
-                QueryBinding binding = resolveBinding(normalizedSql, params, namedParams);
+                SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
                 String preparedExplainSql;
                 List<Object> preparedParams;
                 if (binding.namedParams() != null) {
@@ -188,12 +204,13 @@ public class QueryTools {
 
     @McpTool(description = "Validate a SQL statement without executing it: checks the read-only guard " +
             "and prepares it with the driver (which verifies syntax and referenced objects). " +
-            "Parameters may be positional in 'params' or named in 'namedParams'. " +
+            BINDING_RULES +
+            BINDING_EXAMPLES +
             "Useful to let an LLM self-correct before running a real query.")
     public String validateQuery(
             @McpToolParam(description = "SQL statement to validate") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders (optional)", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders (optional)", required = false) Map<String, Object> namedParams
+            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
+            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams
     ) {
         String normalizedSql = normalizeSql(sql);
         try {
@@ -202,7 +219,7 @@ public class QueryTools {
             return "INVALID (guard): " + e.getMessage();
         }
         try {
-            QueryBinding binding = resolveBinding(normalizedSql, params, namedParams);
+            SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
             String preparedSql = binding.namedParams() != null
                     ? NamedParameterRewriter.rewrite(normalizedSql, binding.namedParams()).sql()
                     : normalizedSql;
@@ -231,20 +248,16 @@ public class QueryTools {
 
     private QueryResult query(String sql, List<Object> params, Map<String, Object> namedParams,
                               Integer limit, Integer timeoutSeconds) throws SQLException {
-        QueryBinding binding = resolveBinding(sql, params, namedParams);
+        SqlParameterBindingResolver.Binding binding = resolveBinding(sql, params, namedParams);
         if (binding.namedParams() != null) {
             return executor.queryNamed(sql, binding.namedParams(), limit, timeoutSeconds);
         }
         return executor.query(sql, binding.params(), limit, timeoutSeconds);
     }
 
-    private QueryBinding resolveBinding(String sql, List<Object> params, Map<String, Object> namedParams) {
-        boolean hasPositional = params != null && !params.isEmpty();
-        boolean hasNamed = namedParams != null && !namedParams.isEmpty();
-        if (hasPositional && hasNamed) {
-            throw new IllegalArgumentException("Use either params or namedParams, not both");
-        }
-        return new QueryBinding(sql, hasPositional ? params : null, hasNamed ? namedParams : null);
+    private SqlParameterBindingResolver.Binding resolveBinding(String sql, List<Object> params,
+                                                              Map<String, Object> namedParams) {
+        return SqlParameterBindingResolver.resolve(sql, params, namedParams);
     }
 
     private String normalizeSql(String sql) {
@@ -330,6 +343,4 @@ public class QueryTools {
         return Collections.emptyList();
     }
 
-    private record QueryBinding(String sql, List<Object> params, Map<String, Object> namedParams) {
-    }
 }

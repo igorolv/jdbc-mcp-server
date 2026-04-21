@@ -23,6 +23,17 @@ import java.util.Map;
 @Service
 public class BenchmarkTools {
 
+    private static final String BINDING_RULES =
+            "Binding rules: if SQL has no placeholders, omit both 'params' and 'namedParams'. " +
+            "If SQL contains '?', pass values in 'params' only, in placeholder order. " +
+            "If SQL contains named placeholders in the form ':paramName' such as ':userId' or ':status', " +
+            "pass values in 'namedParams' only. " +
+            "Never mix '?' and named placeholders in the same SQL statement, and never pass both argument styles. ";
+
+    private static final String BINDING_EXAMPLES =
+            "Examples: positional -> sql='SELECT * FROM events WHERE status = ?', params=['OK']; " +
+            "named -> sql='SELECT * FROM events WHERE status = :status', namedParams={status: 'OK'}. ";
+
     private final BenchmarkService benchmarks;
 
     public BenchmarkTools(BenchmarkService benchmarks) {
@@ -33,14 +44,15 @@ public class BenchmarkTools {
             "wall-clock latency: the first 'coldRuns' executions (default 1) are reported separately " +
             "as 'cold' (caches cold, plan not primed), then 'warmRuns' executions (default 3) are " +
             "aggregated into min / median / max. " +
-            "Use either positional 'params' for '?' placeholders or 'namedParams' for ':name' placeholders. " +
+            BINDING_RULES +
+            BINDING_EXAMPLES +
             "Both 'limit' and 'timeoutSeconds' are REQUIRED — unbounded queries are rejected. " +
             "Returns the size of the last result (row count, columns, truncation flag), not the rows. " +
             "All runs are subject to the read-only guard; any write statement is rejected.")
     public String benchmarkQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders (optional)", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders (optional)", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
+            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Max rows per run — required, > 0. Prevents benchmarking an unbounded query.") Integer limit,
             @McpToolParam(description = "Per-run timeout in seconds — required, > 0.") Integer timeoutSeconds,
             @McpToolParam(description = "Number of cold runs (default 1). Executed first.", required = false) Integer coldRuns,
@@ -51,9 +63,7 @@ public class BenchmarkTools {
         int cold = coldRuns == null ? 1 : coldRuns;
         int warm = warmRuns == null ? 3 : warmRuns;
         try {
-            Map<String, Object> result = namedParams != null && !namedParams.isEmpty()
-                    ? benchmarks.benchmark(sql, namedParams, limit, timeoutSeconds, cold, warm)
-                    : benchmarks.benchmark(sql, params, limit, timeoutSeconds, cold, warm);
+            Map<String, Object> result = benchmarks.benchmark(sql, params, namedParams, limit, timeoutSeconds, cold, warm);
             return MetadataTools.JsonWriter.write(result);
         } catch (SqlNotAllowedException e) {
             return "Rejected: " + e.getMessage();
@@ -66,22 +76,21 @@ public class BenchmarkTools {
 
     @McpTool(description = "Run a read-only SQL statement once and return the result together with a " +
             "wall-clock elapsed_ms measurement. " +
-            "Use either positional 'params' for '?' placeholders or 'namedParams' for ':name' placeholders. " +
+            BINDING_RULES +
+            BINDING_EXAMPLES +
             "On PostgreSQL, if the pg_stat_statements extension is installed, also attaches a " +
             "per-queryid diff of counters that changed during the run (calls, total_exec_time_ms, rows, " +
             "shared_blks_hit, shared_blks_read) so you can see what the server actually did. " +
             "Subject to the read-only guard, row limit and per-query timeout — same safety as executeQuery.")
     public String timedQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders (optional)", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders (optional)", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
+            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {
         try {
-            Map<String, Object> result = namedParams != null && !namedParams.isEmpty()
-                    ? benchmarks.timed(sql, namedParams, limit, timeoutSeconds)
-                    : benchmarks.timed(sql, params, limit, timeoutSeconds);
+            Map<String, Object> result = benchmarks.timed(sql, params, namedParams, limit, timeoutSeconds);
             return MetadataTools.JsonWriter.write(result);
         } catch (SqlNotAllowedException e) {
             return "Rejected: " + e.getMessage();

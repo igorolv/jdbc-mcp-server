@@ -45,6 +45,17 @@ class PostgresIntegrationQueryToolsTest extends AbstractPostgresToolsIntegration
                 null, Map.of("status", "PAID"));
         assertThat(validNamed).startsWith("VALID.");
 
+        assertInvalidArgument(
+                queryTools().executeQuery(
+                        "SELECT * FROM customers WHERE id = ?",
+                        null, null, 5, 5, null),
+                "contains '?' placeholders");
+        assertInvalidArgument(
+                queryTools().executeQuery(
+                        "SELECT * FROM customers WHERE id = :id",
+                        java.util.List.of(1), null, 5, 5, null),
+                "'namedParams'");
+
         assertThat(queryTools().validateQuery("DELETE FROM customers", null, null))
                 .startsWith("INVALID (guard):");
     }

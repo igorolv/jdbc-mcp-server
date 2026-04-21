@@ -43,5 +43,10 @@ class OracleIntegrationBenchmarkToolsTest extends AbstractOracleToolsIntegration
         assertInvalidArgument(
                 benchmarkTools().benchmarkQuery("SELECT 1", null, null, 0, 5, 1, 1),
                 "limit");
+        assertInvalidArgument(
+                benchmarkTools().timedQuery(
+                        "SELECT * FROM events WHERE status = ?",
+                        null, Map.of("status", "OK"), 10, 5),
+                "pass values in 'params'");
     }
 }
