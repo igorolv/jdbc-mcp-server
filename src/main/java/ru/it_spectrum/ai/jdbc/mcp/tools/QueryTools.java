@@ -10,6 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
+import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -61,8 +62,9 @@ public class QueryTools {
             @McpToolParam(description = "Output format: json (default), markdown, csv", required = false) String format
     ) {
         try {
+            String normalizedSql = normalizeSql(sql);
             OutputFormat fmt = OutputFormat.parse(format);
-            QueryResult result = query(sql, params, namedParams, limit, timeoutSeconds);
+            QueryResult result = query(normalizedSql, params, namedParams, limit, timeoutSeconds);
             return ResultFormatter.format(result, fmt);
         } catch (SqlNotAllowedException e) {
             return "Rejected: " + e.getMessage();
@@ -86,15 +88,25 @@ public class QueryTools {
                     "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
     ) {
         try {
-            guard.check(sql);
+            String normalizedSql = normalizeSql(sql);
+            guard.check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
-            String explainSql = dialect.buildExplain(sql, doAnalyze);
+            String explainSql = dialect.buildExplain(normalizedSql, doAnalyze);
             String displaySql = dialect.explainDisplayQuery();
 
             return executor.withConnection(conn -> {
-                QueryBinding binding = resolveBinding(sql, params, namedParams);
-                String preparedExplainSql = prepareSql(explainSql, binding);
-                List<Object> preparedParams = prepareParams(binding);
+                QueryBinding binding = resolveBinding(normalizedSql, params, namedParams);
+                String preparedExplainSql;
+                List<Object> preparedParams;
+                if (binding.namedParams() != null) {
+                    NamedParameterRewriter.PreparedSql prep =
+                            NamedParameterRewriter.rewrite(explainSql, binding.namedParams());
+                    preparedExplainSql = prep.sql();
+                    preparedParams = prep.params();
+                } else {
+                    preparedExplainSql = explainSql;
+                    preparedParams = params != null ? params : Collections.emptyList();
+                }
 
                 // Two-step plan flow for Oracle (EXPLAIN PLAN FOR ... ; SELECT * FROM DBMS_XPLAN.DISPLAY).
                 // For PostgreSQL displaySql is null — the EXPLAIN itself yields the plan rows.
@@ -110,6 +122,8 @@ public class QueryTools {
             return "Rejected: " + e.getMessage();
         } catch (SQLException e) {
             return "SQL error: " + e.getMessage();
+        } catch (Exception e) {
+            return "Unexpected error: " + e.getMessage();
         }
     }
 
@@ -129,15 +143,25 @@ public class QueryTools {
                     "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
     ) {
         try {
-            guard.check(sql);
+            String normalizedSql = normalizeSql(sql);
+            guard.check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
-            String explainSql = dialect.buildStructuredExplain(sql, doAnalyze);
+            String explainSql = dialect.buildStructuredExplain(normalizedSql, doAnalyze);
             String displaySql = dialect.structuredPlanQuery();
 
             ParsedPlan parsed = executor.withConnection(conn -> {
-                QueryBinding binding = resolveBinding(sql, params, namedParams);
-                String preparedExplainSql = prepareSql(explainSql, binding);
-                List<Object> preparedParams = prepareParams(binding);
+                QueryBinding binding = resolveBinding(normalizedSql, params, namedParams);
+                String preparedExplainSql;
+                List<Object> preparedParams;
+                if (binding.namedParams() != null) {
+                    NamedParameterRewriter.PreparedSql prep =
+                            NamedParameterRewriter.rewrite(explainSql, binding.namedParams());
+                    preparedExplainSql = prep.sql();
+                    preparedParams = prep.params();
+                } else {
+                    preparedExplainSql = explainSql;
+                    preparedParams = params != null ? params : Collections.emptyList();
+                }
 
                 QueryResult planRows;
                 if (displaySql != null) {
@@ -157,6 +181,8 @@ public class QueryTools {
             return "SQL error: " + e.getMessage();
         } catch (IllegalArgumentException e) {
             return "Plan parse error: " + e.getMessage();
+        } catch (Exception e) {
+            return "Unexpected error: " + e.getMessage();
         }
     }
 
@@ -166,14 +192,15 @@ public class QueryTools {
     public String validateQuery(
             @McpToolParam(description = "SQL statement to validate") String sql
     ) {
+        String normalizedSql = normalizeSql(sql);
         try {
-            guard.check(sql);
+            guard.check(normalizedSql);
         } catch (SqlNotAllowedException e) {
             return "INVALID (guard): " + e.getMessage();
         }
         try {
             return executor.withConnection(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                try (PreparedStatement ps = conn.prepareStatement(normalizedSql)) {
                     int paramCount = ps.getParameterMetaData().getParameterCount();
                     int colCount = 0;
                     try {
@@ -209,18 +236,17 @@ public class QueryTools {
         return new QueryBinding(sql, hasPositional ? params : null, hasNamed ? namedParams : null);
     }
 
-    private String prepareSql(String sql, QueryBinding binding) {
-        if (binding.namedParams() == null) {
+    private String normalizeSql(String sql) {
+        if (sql == null || sql.indexOf('\\') < 0) {
             return sql;
         }
-        return ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter.rewrite(sql, binding.namedParams()).sql();
-    }
-
-    private List<Object> prepareParams(QueryBinding binding) {
-        if (binding.namedParams() == null) {
-            return binding.params();
-        }
-        return ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter.rewrite(binding.sql(), binding.namedParams()).params();
+        return sql
+                .replace("\\r\\n", "\n")
+                .replace("\\n", "\n")
+                .replace("\\r", "\r")
+                .replace("\\t", "\t")
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\");
     }
 
     private QueryResult queryWithParams(Connection conn, String sql, List<Object> params) throws SQLException {

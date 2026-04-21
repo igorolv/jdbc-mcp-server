@@ -13,8 +13,10 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
+import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
+import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
@@ -61,6 +63,7 @@ class LiveOracleIntegrationTest {
     private MetadataService metadata;
     private StatsService stats;
     private SqlDialect dialect;
+    private QueryTools queryTools;
 
     @BeforeAll
     void setup() {
@@ -88,6 +91,7 @@ class LiveOracleIntegrationTest {
         executor = new SqlExecutor(ds, dialect, props, guard);
         metadata = new MetadataService(executor, dialect, props);
         stats = new StatsService(executor, dialect, props);
+        queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser());
     }
 
     private DataSource buildPool(JdbcProperties p) {
@@ -393,5 +397,265 @@ class LiveOracleIntegrationTest {
 
         assertThat(summary).containsKeys("engine", "analyzed", "node_count", "top_expensive_nodes");
         assertThat(summary.get("engine")).isEqualTo("oracle");
+    }
+
+    @Test
+    void explainQueryNamedParamsWithInList_doesNotDoubleRewrite() {
+        // Regression test for ORA-17041: when named parameters include an IN-list expression
+        // like ":p IN ('A', 'K', 'C')", the original QueryTools code called
+        // NamedParameterRewriter.rewrite() twice — once in prepareSql() and once in
+        // prepareParams() — causing the second parse on the original SQL to misinterpret
+        // the ':' inside the IN-list, yielding a mismatched parameter count and ORA-17041.
+        // The fix consolidates both steps into a single rewrite call.
+        String sql = """
+            SELECT 1 FROM dual
+             WHERE :code IN ('A', 'K', 'C')
+                OR (:code NOT IN ('A', 'K', 'C') AND :userId IS NOT NULL)
+            """;
+        Map<String, Object> namedParams = Map.of(
+                "code", "A",
+                "userId", "DUMMY_USER");
+
+        String explainResult = queryTools.explainQuery(sql, null, namedParams, null);
+        assertThat(explainResult)
+                .doesNotContain("ORA-17041")
+                .doesNotContain("SQL error");
+
+        String analyzeResult = queryTools.analyzePlan(sql, null, namedParams, null);
+        assertThat(analyzeResult)
+                .doesNotContain("ORA-17041")
+                .doesNotContain("SQL error")
+                .doesNotContain("Plan parse error");
+    }
+
+    @Test
+    void explainQuery_complexPermissionsQuery_throughQueryTools() {
+        // Exact query that fails via the running MCP server with ORA-17041.
+        // The SQL arrives from the MCP client as a single-line JSON string with literal \n escapes.
+        String sql = "select sf.system_function_id,\n" +
+                "\n" +
+                "       sga.system_grid_id,\n" +
+                "\n" +
+                "       sga.system_action_id,\n" +
+                "\n" +
+                "       sa.sa_class_name\n" +
+                "\n" +
+                "  from system_function sf, SYSTEM_FUNCTION_GRID sfg, SYSTEM_GRID_ACTION sga, SYSTEM_ACTION sa\n" +
+                "\n" +
+                "where (sfg.system_function_id = sf.system_function_id)\n" +
+                "\n" +
+                "and (sga.system_grid_id = sfg.system_grid_id)\n" +
+                "\n" +
+                "and (sf.SUBSYSTEM_CODE = :SubSystemCode)\n" +
+                "\n" +
+                "and (sa.system_action_id = sga.system_action_id)\n" +
+                "\n" +
+                "and ( /* подсистемы БЕЗ полномочий по банкам или \"особенные\" функции */\n" +
+                "\n" +
+                "      ((:SubSystemCode IN ('A', 'K', 'C') or UPPER(sga.sga_params) like '%COMMONSUBSYSTEMFUNCTION%' or UPPER(sa.sa_parameters) like '%COMMONSUBSYSTEMFUNCTION%') and\n" +
+                "\n" +
+                "       (exists (select 1\n" +
+                "\n" +
+                "                  from ROLE_FUNCTION_ACTION rfa\n" +
+                "\n" +
+                "                       join EMP_ROLE_NN_USER eru on eru.EMP_ROLE_ID = rfa.EMP_ROLE_ID\n" +
+                "\n" +
+                "                 where eru.USER_ID = :UserId\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_FUNCTION_ID = sfg.SYSTEM_FUNCTION_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_GRID_ID = sga.SYSTEM_GRID_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_ACTION_ID = sga.SYSTEM_ACTION_ID\n" +
+                "\n" +
+                "              )\n" +
+                "\n" +
+                "        or\n" +
+                "\n" +
+                "        exists (select 1\n" +
+                "\n" +
+                "                  from ROLE_FUNCTION_ACTION rfa\n" +
+                "\n" +
+                "                       join INSERTED_ROLE ir on ir.EMP_EMP_ROLE_ID = rfa.EMP_ROLE_ID\n" +
+                "\n" +
+                "                       join LIQ_BANK_USER_ROLE eru on eru.EMP_ROLE_ID = ir.EMP_ROLE_ID\n" +
+                "\n" +
+                "                 where eru.USER_ID = :UserId\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_FUNCTION_ID = sfg.SYSTEM_FUNCTION_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_GRID_ID = sga.SYSTEM_GRID_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_ACTION_ID = sga.SYSTEM_ACTION_ID\n" +
+                "\n" +
+                "               )\n" +
+                "\n" +
+                "        or\n" +
+                "\n" +
+                "          exists ( select 1\n" +
+                "\n" +
+                "                from  USER_GROUP_USER ugu\n" +
+                "\n" +
+                "                    join USER_GROUP_ROLE ugr on ugr.USER_GROUP_ID = ugu.USER_GROUP_ID\n" +
+                "\n" +
+                "                    join INSERTED_ROLE ir on ir.EMP_ROLE_ID = ugr.EMP_ROLE_ID\n" +
+                "\n" +
+                "                    join ROLE_FUNCTION_ACTION rfa on rfa.emp_role_id = ir.EMP_emp_role_id\n" +
+                "\n" +
+                "                    join LIQ_BANK_USER_GROUP_ROLE lbugr on lbugr.USER_GROUP_ID = ugu.USER_GROUP_ID\n" +
+                "\n" +
+                "                                                                                                                  and lbugr.EMP_ROLE_ID = ugr.EMP_ROLE_ID\n" +
+                "\n" +
+                "                    where ugu.user_id = :UserId\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_FUNCTION_ID = sfg.SYSTEM_FUNCTION_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_GRID_ID = sga.SYSTEM_GRID_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_ACTION_ID = sga.SYSTEM_ACTION_ID\n" +
+                "\n" +
+                "                )\n" +
+                "\n" +
+                "         or\n" +
+                "\n" +
+                "          exists (select 1\n" +
+                "\n" +
+                "                   from  USER_GROUP_USER ugu\n" +
+                "\n" +
+                "                    join USER_GROUP_ROLE ugr on ugr.USER_GROUP_ID = ugu.USER_GROUP_ID\n" +
+                "\n" +
+                "                    join ROLE_FUNCTION_ACTION rfa on rfa.emp_role_id = ugr.emp_role_id\n" +
+                "\n" +
+                "                    join LIQ_BANK_USER_GROUP_ROLE lbugr on lbugr.USER_GROUP_ID = ugu.USER_GROUP_ID\n" +
+                "\n" +
+                "                                                                                                                  and lbugr.EMP_ROLE_ID = ugr.EMP_ROLE_ID\n" +
+                "\n" +
+                "                      where ugu.user_id = :UserId\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_FUNCTION_ID = sfg.SYSTEM_FUNCTION_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_GRID_ID = sga.SYSTEM_GRID_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_ACTION_ID = sga.SYSTEM_ACTION_ID\n" +
+                "\n" +
+                "               )\n" +
+                "\n" +
+                "       )\n" +
+                "\n" +
+                "      ) OR /* подсистемы С полномочиями по банкам */\n" +
+                "\n" +
+                "      (:SubSystemCode not in ('A', 'K', 'C') and\n" +
+                "\n" +
+                "       (exists (select 1\n" +
+                "\n" +
+                "                  from ROLE_FUNCTION_ACTION rfa\n" +
+                "\n" +
+                "                       join LIQ_BANK_USER_ROLE eru on eru.EMP_ROLE_ID = rfa.EMP_ROLE_ID\n" +
+                "\n" +
+                "                 where eru.USER_ID = :UserId\n" +
+                "\n" +
+                "                   and eru.LIQ_BANK_DIR_CODE = :LiqBankId\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_FUNCTION_ID = sfg.SYSTEM_FUNCTION_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_GRID_ID = sga.SYSTEM_GRID_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_ACTION_ID = sga.SYSTEM_ACTION_ID\n" +
+                "\n" +
+                "              )\n" +
+                "\n" +
+                "        or\n" +
+                "\n" +
+                "        exists (select 1\n" +
+                "\n" +
+                "                  from ROLE_FUNCTION_ACTION rfa\n" +
+                "\n" +
+                "                       join INSERTED_ROLE ir on ir.EMP_EMP_ROLE_ID = rfa.EMP_ROLE_ID\n" +
+                "\n" +
+                "                       join LIQ_BANK_USER_ROLE eru on eru.EMP_ROLE_ID = ir.EMP_ROLE_ID\n" +
+                "\n" +
+                "                 where eru.USER_ID = :UserId\n" +
+                "\n" +
+                "                   and eru.LIQ_BANK_DIR_CODE = :LiqBankId\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_FUNCTION_ID = sfg.SYSTEM_FUNCTION_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_GRID_ID = sga.SYSTEM_GRID_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_ACTION_ID = sga.SYSTEM_ACTION_ID\n" +
+                "\n" +
+                "               )\n" +
+                "\n" +
+                "          or\n" +
+                "\n" +
+                "          exists ( select 1\n" +
+                "\n" +
+                "                from  USER_GROUP_USER ugu\n" +
+                "\n" +
+                "                    join USER_GROUP_ROLE ugr on ugr.USER_GROUP_ID = ugu.USER_GROUP_ID\n" +
+                "\n" +
+                "                    join INSERTED_ROLE ir on ir.EMP_ROLE_ID = ugr.EMP_ROLE_ID\n" +
+                "\n" +
+                "                    join ROLE_FUNCTION_ACTION rfa on rfa.emp_role_id = ir.EMP_EMP_ROLE_ID\n" +
+                "\n" +
+                "                    join LIQ_BANK_USER_GROUP_ROLE lbugr on lbugr.USER_GROUP_ID = ugu.USER_GROUP_ID\n" +
+                "\n" +
+                "                                                                                                                  and lbugr.EMP_ROLE_ID = ugr.EMP_ROLE_ID\n" +
+                "\n" +
+                "                    where ugu.user_id = :UserId\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_FUNCTION_ID = sfg.SYSTEM_FUNCTION_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_GRID_ID = sga.SYSTEM_GRID_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_ACTION_ID = sga.SYSTEM_ACTION_ID\n" +
+                "\n" +
+                "                )\n" +
+                "\n" +
+                "         or\n" +
+                "\n" +
+                "          exists (select 1\n" +
+                "\n" +
+                "                   from  USER_GROUP_USER ugu\n" +
+                "\n" +
+                "                    join USER_GROUP_ROLE ugr on ugr.USER_GROUP_ID = ugu.USER_GROUP_ID\n" +
+                "\n" +
+                "                    join ROLE_FUNCTION_ACTION rfa on rfa.emp_role_id = ugr.emp_role_id\n" +
+                "\n" +
+                "                    join LIQ_BANK_USER_GROUP_ROLE lbugr on lbugr.USER_GROUP_ID = ugu.USER_GROUP_ID\n" +
+                "\n" +
+                "                                                                                                                  and lbugr.EMP_ROLE_ID = ugr.EMP_ROLE_ID\n" +
+                "\n" +
+                "                      where ugu.user_id = :UserId\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_FUNCTION_ID = sfg.SYSTEM_FUNCTION_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_GRID_ID = sga.SYSTEM_GRID_ID\n" +
+                "\n" +
+                "                   and rfa.SYSTEM_ACTION_ID = sga.SYSTEM_ACTION_ID\n" +
+                "\n" +
+                "               )\n" +
+                "\n" +
+                "       )\n" +
+                "\n" +
+                "      )\n" +
+                "\n" +
+                "     )";
+        Map<String, Object> namedParams = Map.of(
+                "SubSystemCode", "A",
+                "UserId", "DUMMY_USER",
+                "LiqBankId", 1);
+
+        String result = queryTools.explainQuery(sql, null, namedParams, null);
+        assertThat(result)
+                .doesNotContain("ORA-17041")
+                .doesNotContain("SQL error")
+                .doesNotContain("ORA-00933");
+
+        String planResult = queryTools.analyzePlan(sql, null, namedParams, null);
+        assertThat(result)
+                .doesNotContain("ORA-17041")
+                .doesNotContain("SQL error")
+                .doesNotContain("ORA-00933");
     }
 }
