@@ -4,7 +4,6 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.List;
 
 public class OracleDialect implements SqlDialect {
@@ -16,16 +15,10 @@ public class OracleDialect implements SqlDialect {
 
     @Override
     public void prepareReadOnly(Connection connection) throws SQLException {
-        // Oracle ignores setReadOnly in the driver, so we enforce a server-side read-only transaction.
-        // DDL bypasses transactions — that is caught by ReadOnlyGuard before we get here.
+        // Oracle's JDBC driver mostly treats setReadOnly as advisory. The primary protection for
+        // user SQL is ReadOnlyGuard; this is just a cheap best-effort hint for tools / pools.
         if (!connection.isReadOnly()) {
             connection.setReadOnly(true);
-        }
-        try (Statement st = connection.createStatement()) {
-            st.execute("SET TRANSACTION READ ONLY");
-        } catch (SQLException ignore) {
-            // Can fail if a transaction is already in progress — pool's autoCommit=true
-            // normally makes this a no-op, so we just try our best.
         }
     }
 
@@ -133,7 +126,7 @@ public class OracleDialect implements SqlDialect {
                        sequence_name  AS name,
                        min_value      AS min_value,
                        max_value      AS max_value,
-                       increment_by   AS increment,
+                       increment_by   AS "increment",
                        last_number    AS last_value
                 FROM all_sequences
                 WHERE (? IS NULL OR sequence_owner = UPPER(?))

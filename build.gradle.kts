@@ -32,6 +32,7 @@ dependencies {
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.oracle.free)
     testImplementation(libs.commons.lang3)
+    testImplementation("com.fasterxml.jackson.core:jackson-databind")
 
     // Force all testcontainers modules to 1.20.4 to avoid version conflicts
     testImplementation("org.testcontainers:testcontainers:1.20.4")
