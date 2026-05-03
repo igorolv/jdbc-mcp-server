@@ -11,6 +11,8 @@ import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParameterBindingResolver;
@@ -49,15 +51,21 @@ public class QueryTools {
     private final JdbcProperties properties;
     private final ReadOnlyGuard guard;
     private final PlanParser planParser;
+    private final QueryAnalysisService analysis;
+    private final QueryLintService lint;
 
     public QueryTools(SqlExecutor executor, SqlDialect dialect,
                       JdbcProperties properties, ReadOnlyGuard guard,
-                      PlanParser planParser) {
+                      PlanParser planParser,
+                      QueryAnalysisService analysis,
+                      QueryLintService lint) {
         this.executor = executor;
         this.dialect = dialect;
         this.properties = properties;
         this.guard = guard;
         this.planParser = planParser;
+        this.analysis = analysis;
+        this.lint = lint;
     }
 
     @McpTool(description = "Execute a read-only SQL SELECT / WITH / EXPLAIN statement and return the result. " +
@@ -216,7 +224,7 @@ public class QueryTools {
         try {
             guard.check(normalizedSql);
         } catch (SqlNotAllowedException e) {
-            return validationFailure("guard", e.getMessage());
+            return validationFailure("guard", e.getMessage(), analysis.inspect(normalizedSql));
         }
         try {
             SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
@@ -244,21 +252,50 @@ public class QueryTools {
                     body.put("valid", true);
                     body.put("parameters", paramCount);
                     body.put("columns", colCount);
+                    body.put("inspection", analysis.inspect(normalizedSql));
                     return JsonWriter.write(body);
                 }
             });
         } catch (RuntimeException e) {
-            return validationFailure("params", e.getMessage());
+            return validationFailure("params", e.getMessage(), analysis.inspect(normalizedSql));
         } catch (SQLException e) {
-            return validationFailure("driver", e.getMessage());
+            return validationFailure("driver", e.getMessage(), analysis.inspect(normalizedSql));
         }
     }
 
-    private static String validationFailure(String stage, String message) {
+    @McpTool(description = "Parse SQL with JSqlParser and return an AST-derived summary for LLM query authoring: " +
+            "tables, aliases, selected expressions, joins, predicates, order by, referenced columns, parameters, " +
+            "features and parser-level warnings. This is informational only; it does not execute SQL and does not " +
+            "replace the read-only guard or driver validation.")
+    public String inspectQuery(
+            @McpToolParam(description = "SQL statement to inspect") String sql
+    ) {
+        return JsonWriter.write(analysis.inspect(normalizeSql(sql)));
+    }
+
+    @McpTool(description = "Parse SQL and run metadata-aware lint checks for LLM query authoring. " +
+            "Returns advisory warnings such as unknown table/column, SELECT *, joins without conditions, " +
+            "FKs without supporting indexes, and predicate/order-by columns that are not leading columns " +
+            "of any visible index. This tool does not execute SQL and never blocks execution.")
+    public String queryLint(
+            @McpToolParam(description = "SQL statement to lint") String sql,
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema
+    ) {
+        try {
+            return JsonWriter.write(lint.lint(normalizeSql(sql), schema));
+        } catch (SQLException e) {
+            return ToolErrors.sql(e);
+        } catch (IllegalArgumentException e) {
+            return ToolErrors.argument(e);
+        }
+    }
+
+    private static String validationFailure(String stage, String message, Map<String, Object> inspection) {
         java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("valid", false);
         body.put("stage", stage);
         body.put("error", message);
+        body.put("inspection", inspection);
         return JsonWriter.write(body);
     }
 

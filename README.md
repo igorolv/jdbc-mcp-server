@@ -18,9 +18,10 @@
 С сервером LLM:
 1. вызывает `schemaOverview` / `schemaBrief` / `queryContext` — получает готовый контекст схемы (таблицы, колонки, связи, ограничения);
 2. при необходимости уточняет — `tableContext` вокруг конкретной таблицы или `findJoinPaths` для поиска путей JOIN;
-3. пишет запрос и вызывает `validateQuery` с теми же `params` / `namedParams`, которые потом пойдут в execution-tool — проверяет синтаксис без выполнения;
-4. при необходимости вызывает `explainQuery` — смотрит план;
-5. вызывает `executeQuery` — получает данные.
+3. пишет запрос и при необходимости вызывает `inspectQuery` / `queryLint` — получает AST-сводку и advisory-предупреждения по метаданным;
+4. вызывает `validateQuery` с теми же `params` / `namedParams`, которые потом пойдут в execution-tool — проверяет синтаксис без выполнения;
+5. при необходимости вызывает `explainQuery` — смотрит план;
+6. вызывает `executeQuery` — получает данные.
 
 Любой non-SELECT запрос блокируется ещё до отправки в БД.
 
@@ -45,7 +46,9 @@
 | `executeQuery` | Выполнить `SELECT` / `WITH` / `EXPLAIN`. Параметры: `sql`, `params` (массив для `?`) или `namedParams` (объект для `:name`), `limit`, `timeoutSeconds`, `format` (`json` по умолчанию, `markdown`, `csv`). Результат помечается `truncated: true`, если превысил лимит |
 | `explainQuery` | План выполнения запроса. PG: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`). Флаг `analyze=true` (PG) включает `EXPLAIN ANALYZE` — осторожно, запрос реально выполнится |
 | `analyzePlan` | Компактная LLM-ориентированная сводка плана вместо многостраничного дампа: самые дорогие узлы, full scans по крупным таблицам, ошибки оценки (planner vs. реальность — нужен `analyze=true` на PG), рискованные Nested Loop с большим внешним входом, спиллы сортировки на диск. PG: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (`analyze` игнорируется — Oracle даёт только статический план). Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`) |
-| `validateQuery` | Проверка синтаксиса без выполнения: guard + `prepareStatement` в драйвере. Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`). Полезно для самокоррекции LLM |
+| `validateQuery` | Проверка синтаксиса без выполнения: guard + `prepareStatement` в драйвере + JSqlParser-сводка `inspection`, если SQL удалось разобрать. Параметры можно передавать как `params` (`?`) или `namedParams` (`:name`). Полезно для самокоррекции LLM |
+| `inspectQuery` | Разобрать SQL через JSqlParser без обращения к БД и вернуть AST-сводку: таблицы, алиасы, CTE, select-items, JOIN, predicates, order by, колонки, параметры, features и parser warnings |
+| `queryLint` | Разобрать SQL и совместить AST с метаданными/индексами/FK. Возвращает advisory-предупреждения: неизвестные таблицы/колонки, `SELECT *`, JOIN без условий, FK без supporting index, predicate/order-by колонки не в начале индекса. SQL не выполняется |
 
 ### Замеры
 
@@ -386,7 +389,7 @@ JDBC_PASSWORD=secret \
 │   │   ├── OutputFormat.java
 │   │   └── ResultFormatter.java        — JSON / Markdown / CSV
 │   └── tools/
-│       ├── QueryTools.java             — executeQuery, explainQuery, analyzePlan, validateQuery
+│       ├── QueryTools.java             — executeQuery, explainQuery, analyzePlan, validateQuery, inspectQuery, queryLint
 │       ├── MetadataTools.java          — schemas / tables / describe / view / routines / sequences / search
 │       ├── SampleTools.java            — sampleRows
 │       ├── DistributionTools.java      — columnStats, columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality

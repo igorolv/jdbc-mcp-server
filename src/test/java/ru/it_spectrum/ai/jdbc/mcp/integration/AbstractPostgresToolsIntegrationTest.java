@@ -15,6 +15,8 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.tools.BenchmarkTools;
@@ -63,10 +65,12 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
             DistributionService distribution = new DistributionService(
                     executor, dialect, properties, new PostgresPlanParser());
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
+            QueryAnalysisService analysis = new QueryAnalysisService();
+            QueryLintService lint = new QueryLintService(analysis, metadata, stats);
 
             return new IntegrationTestContext(
                     properties.defaultSchema(),
-                    new QueryTools(executor, dialect, properties, guard, new PostgresPlanParser()),
+                    new QueryTools(executor, dialect, properties, guard, new PostgresPlanParser(), analysis, lint),
                     new MetadataTools(metadata),
                     new SampleTools(executor, dialect),
                     new StatsTools(stats),

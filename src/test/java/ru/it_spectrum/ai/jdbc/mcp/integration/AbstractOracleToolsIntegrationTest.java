@@ -13,6 +13,8 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.tools.BenchmarkTools;
@@ -61,10 +63,12 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
             DistributionService distribution = new DistributionService(
                     executor, dialect, properties, new OraclePlanParser());
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
+            QueryAnalysisService analysis = new QueryAnalysisService();
+            QueryLintService lint = new QueryLintService(analysis, metadata, stats);
 
             return new IntegrationTestContext(
                     schema,
-                    new QueryTools(executor, dialect, properties, guard, new OraclePlanParser()),
+                    new QueryTools(executor, dialect, properties, guard, new OraclePlanParser(), analysis, lint),
                     new MetadataTools(metadata),
                     new SampleTools(executor, dialect),
                     new StatsTools(stats),

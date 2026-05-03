@@ -40,6 +40,7 @@ class PostgresIntegrationQueryToolsTest extends AbstractPostgresToolsIntegration
 
         ObjectNode valid = object(queryTools().validateQuery("SELECT * FROM customers", null, null));
         assertThat(field(valid, "valid").asBoolean()).isTrue();
+        assertThat(field(field(valid, "inspection"), "parseable").asBoolean()).isTrue();
         ObjectNode validNamed = object(queryTools().validateQuery(
                 "SELECT COUNT(*) FROM events WHERE status = :status",
                 null, Map.of("status", "PAID")));
@@ -59,6 +60,7 @@ class PostgresIntegrationQueryToolsTest extends AbstractPostgresToolsIntegration
         ObjectNode invalid = object(queryTools().validateQuery("DELETE FROM customers", null, null));
         assertThat(field(invalid, "valid").asBoolean()).isFalse();
         assertThat(field(invalid, "stage").asText()).isEqualTo("guard");
+        assertThat(field(invalid, "inspection")).isNotNull();
     }
 
     @Test
@@ -66,5 +68,32 @@ class PostgresIntegrationQueryToolsTest extends AbstractPostgresToolsIntegration
         assertRejected(
                 queryTools().executeQuery("DELETE FROM customers", null, null, null, null, null),
                 "Only SELECT");
+    }
+
+    @Test
+    void inspectQueryAndQueryLintReturnAuthoringSignals() {
+        ObjectNode inspection = object(queryTools().inspectQuery("""
+                SELECT c.name, o.total
+                FROM customers c
+                JOIN orders o ON o.customer_id = c.id
+                WHERE c.email LIKE '%@example.com'
+                ORDER BY o.total
+                """));
+        assertThat(field(inspection, "parseable").asBoolean()).isTrue();
+        assertThat(field(inspection, "tables").size()).isEqualTo(2);
+        assertThat(field(inspection, "predicates").size()).isEqualTo(1);
+
+        ObjectNode lint = object(queryTools().queryLint("""
+                SELECT *
+                FROM customers c
+                JOIN orders o ON o.customer_id = c.id
+                WHERE c.email LIKE '%@example.com'
+                ORDER BY o.total
+                """, schema()));
+        assertThat(field(lint, "lintable").asBoolean()).isTrue();
+        assertThat(field(lint, "warningCount").asInt()).isGreaterThan(0);
+        assertThat(field(lint, "warnings").toString())
+                .contains("select_star")
+                .contains("leading_wildcard_like");
     }
 }

@@ -11,10 +11,8 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
-import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
-import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
-import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
-import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
@@ -91,7 +89,9 @@ class LiveOracleIntegrationTest {
         executor = new SqlExecutor(ds, dialect, props, guard);
         metadata = new MetadataService(executor, dialect, props);
         stats = new StatsService(executor, dialect, props);
-        queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser());
+        QueryAnalysisService analysis = new QueryAnalysisService();
+        QueryLintService lint = new QueryLintService(analysis, metadata, stats);
+        queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lint);
     }
 
     private DataSource buildPool(JdbcProperties p) {

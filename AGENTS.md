@@ -1,7 +1,7 @@
 # JDBC MCP Server — Setup Guide for AI Agents
 
 This is a local MCP server that provides read-only access to PostgreSQL and Oracle databases.
-It exposes 38 read-only tools across eight groups:
+It exposes 40 read-only tools across eight groups:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarised plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
@@ -112,7 +112,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **38 read-only MCP tools**.
+The server exposes **40 read-only MCP tools**.
 
 ### Query tools
 
@@ -121,7 +121,9 @@ The server exposes **38 read-only MCP tools**.
 | `executeQuery` | Run a SELECT / WITH / EXPLAIN statement. Params: `sql`, `params` (array of values for `?` placeholders) or `namedParams` (object for `:name` placeholders), `limit`, `timeoutSeconds`, `format` (`json` default, `markdown`, `csv`). Result includes `truncated` flag if the row limit was hit |
 | `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. `analyze=true` enables `EXPLAIN ANALYZE` on PostgreSQL (actually runs the query). Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
 | `analyzePlan` | Compact, LLM-friendly summary of the execution plan: top-cost nodes, full scans on large relations, estimation errors (planner vs. reality — requires `analyze=true` on PG), risky nested loops with large outer input, disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (static only, `analyze` ignored). Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
-| `validateQuery` | Validate a statement without running it — read-only guard + driver-side `prepareStatement`. Params: `sql`, `params` (`?`) or `namedParams` (`:name`) |
+| `validateQuery` | Validate a statement without running it — read-only guard + driver-side `prepareStatement` plus a JSqlParser-derived `inspection` summary when possible. Params: `sql`, `params` (`?`) or `namedParams` (`:name`) |
+| `inspectQuery` | Parse SQL with JSqlParser and return an AST-derived authoring summary without touching the database: tables, aliases, CTEs, select items, joins, predicates, order-by, referenced columns, parameters, features and parser-level warnings. Params: `sql` |
+| `queryLint` | Parse SQL and combine the AST with metadata/index/FK checks. Returns advisory warnings such as unknown table/column, `SELECT *`, joins without conditions, missing FK indexes, and predicate/order-by columns that are not leading index columns. Does not execute SQL. Params: `sql`, `schema` |
 
 ### Benchmark tools
 
@@ -244,10 +246,11 @@ Recommended flow when the user asks a data question:
 2. If a single table is the focus, call `describeTable` — one call returns columns, PK, FKs,
    indexes, constraints, allowed values from CHECKs, and triggers.
 3. Optionally call `sampleRows` to peek at actual data shape.
-4. Write the SQL and call `validateQuery` with the same `params` / `namedParams` you intend to use for execution — fix errors without wasting executions.
-5. Call `analyzePlan` (compact LLM-friendly summary) or `explainQuery` (full textual plan) if the query might be expensive.
-6. Call `executeQuery`. Use `limit` to keep the response small.
-7. If the response has `"truncated": true`, either narrow the query or raise `limit`.
+4. Write the SQL and call `inspectQuery` or `queryLint` when you want an AST/metadata sanity pass before touching the database.
+5. Call `validateQuery` with the same `params` / `namedParams` you intend to use for execution — fix errors without wasting executions.
+6. Call `analyzePlan` (compact LLM-friendly summary) or `explainQuery` (full textual plan) if the query might be expensive.
+7. Call `executeQuery`. Use `limit` to keep the response small.
+8. If the response has `"truncated": true`, either narrow the query or raise `limit`.
 
 Recommended flow when the user asks to optimise / audit queries or schema:
 
