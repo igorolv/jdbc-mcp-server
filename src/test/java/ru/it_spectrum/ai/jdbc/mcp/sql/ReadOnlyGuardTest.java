@@ -27,6 +27,7 @@ class ReadOnlyGuardTest {
             "SELECT \"a; b; c\" AS s",         // semicolon inside double-quoted ident too
             "SELECT 'it''s still read only' AS s",
             "SELECT \"a\"\"b\" FROM t",
+            "SELECT now()::timestamp",
     })
     void acceptsReadOnlyStatements(String sql) {
         guard.check(sql);

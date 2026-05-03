@@ -1,5 +1,19 @@
 package ru.it_spectrum.ai.jdbc.mcp.sql;
 
+import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.statement.ParenthesedStatement;
+import net.sf.jsqlparser.statement.ExplainStatement;
+import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.Statements;
+import net.sf.jsqlparser.statement.delete.ParenthesedDelete;
+import net.sf.jsqlparser.statement.insert.ParenthesedInsert;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.select.SetOperationList;
+import net.sf.jsqlparser.statement.select.WithItem;
+import net.sf.jsqlparser.statement.update.ParenthesedUpdate;
 import org.springframework.stereotype.Component;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 
@@ -14,11 +28,13 @@ import java.util.Set;
  *
  * <p>Algorithm:
  * <ol>
- *     <li>Strip line ({@code --}) and block ({@code /* *}{@code /}) comments;</li>
- *     <li>Reject input that contains more than one statement (semicolons inside the body);</li>
- *     <li>Require the first non-whitespace token to be one of {@code SELECT}, {@code WITH},
- *         or {@code EXPLAIN};</li>
- *     <li>Scan the whole statement for DML/DDL keywords outside of string literals and
+ *     <li>Try to parse the statement with JSqlParser and inspect the AST;</li>
+ *     <li>If parsing fails (for example because of dialect-specific syntax), fall back to the
+ *         original lightweight lexical guard;</li>
+ *     <li>The lexical fallback strips line ({@code --}) and block ({@code /* *}{@code /})
+ *         comments, rejects multi-statement input, requires the first token to be one of
+ *         {@code SELECT}, {@code WITH}, or {@code EXPLAIN}, and scans the whole statement for
+ *         DML/DDL keywords outside of string literals and
  *         quoted identifiers — this catches bypass patterns such as
  *         {@code WITH x AS (INSERT ... RETURNING *) SELECT * FROM x},
  *         {@code SELECT ... INTO new_table FROM ...}, and {@code SELECT ... FOR UPDATE}.</li>
@@ -61,6 +77,122 @@ public class ReadOnlyGuard {
         if (sql == null || sql.isBlank()) {
             throw new SqlNotAllowedException("SQL is empty");
         }
+        Statements statements;
+        try {
+            statements = parseStatementsForGuard(sql);
+        } catch (JSQLParserException | RuntimeException e) {
+            checkLexically(sql);
+            return;
+        }
+        checkParsedStatements(statements);
+    }
+
+    private Statements parseStatementsForGuard(String sql) throws JSQLParserException {
+        String stripped = stripComments(sql).trim();
+        while (stripped.endsWith(";")) {
+            stripped = stripped.substring(0, stripped.length() - 1).trim();
+        }
+        if (stripped.isEmpty()) {
+            throw new SqlNotAllowedException("SQL contains only comments");
+        }
+        String firstToken = firstToken(stripped).toUpperCase();
+        if (!ALLOWED_FIRST_TOKENS.contains(firstToken)) {
+            throw new SqlNotAllowedException(
+                    "Only SELECT / WITH / EXPLAIN statements are allowed in read-only mode. " +
+                            "Got: '" + firstToken + "'. " +
+                            "(Set jdbc.readonly-guard=off to disable this client-side check.)");
+        }
+
+        return CCJSqlParserUtil.parseStatements(stripped);
+    }
+
+    private void checkParsedStatements(Statements statements) {
+        if (statements.size() != 1) {
+            throw new SqlNotAllowedException(
+                    "Multiple SQL statements are not allowed — send a single SELECT/WITH/EXPLAIN");
+        }
+        Statement statement = statements.get(0);
+        if (statement instanceof ExplainStatement explain) {
+            if (explain.getStatement() == null) {
+                throw new SqlNotAllowedException("Read-only guard: EXPLAIN must wrap a SELECT/WITH statement");
+            }
+            checkSelect(explain.getStatement());
+            return;
+        }
+        if (statement instanceof Select select) {
+            checkSelect(select);
+            return;
+        }
+        throw new SqlNotAllowedException(
+                "Only SELECT / WITH / EXPLAIN statements are allowed in read-only mode. " +
+                        "Got: '" + statement.getClass().getSimpleName() + "'. " +
+                        "(Set jdbc.readonly-guard=off to disable this client-side check.)");
+    }
+
+    private void checkSelect(Select select) {
+        if (select.getForClause() != null || select.getForMode() != null
+                || select.getForUpdateTable() != null || select.getWait() != null
+                || select.isNoWait() || select.isSkipLocked()) {
+            throw new SqlNotAllowedException(
+                    "Read-only guard: FOR UPDATE / locking clauses are not allowed in read-only mode. " +
+                            "(Set jdbc.readonly-guard=off to disable this client-side check.)");
+        }
+        if (select.getWithItemsList() != null) {
+            for (WithItem<?> item : select.getWithItemsList()) {
+                checkWithItem(item);
+            }
+        }
+        if (select instanceof PlainSelect plain) {
+            if ((plain.getIntoTables() != null && !plain.getIntoTables().isEmpty())
+                    || plain.getIntoTempTable() != null) {
+                throw new SqlNotAllowedException(
+                        "Read-only guard: SELECT INTO is not allowed in read-only mode. " +
+                                "(Set jdbc.readonly-guard=off to disable this client-side check.)");
+            }
+            return;
+        }
+        if (select instanceof ParenthesedSelect parenthesed) {
+            if (parenthesed.getSelect() != null) {
+                checkSelect(parenthesed.getSelect());
+            }
+            return;
+        }
+        if (select instanceof SetOperationList set) {
+            if (set.getSelects() != null) {
+                for (Select nested : set.getSelects()) {
+                    checkSelect(nested);
+                }
+            }
+            return;
+        }
+        throw new SqlNotAllowedException(
+                "Read-only guard: unsupported SELECT form '" + select.getClass().getSimpleName() + "'. " +
+                        "Use a SELECT / WITH / EXPLAIN query or disable the client-side guard explicitly.");
+    }
+
+    private void checkWithItem(WithItem<?> item) {
+        ParenthesedStatement body = item.getParenthesedStatement();
+        if (body instanceof ParenthesedInsert) {
+            throw forbiddenCte("INSERT");
+        }
+        if (body instanceof ParenthesedUpdate) {
+            throw forbiddenCte("UPDATE");
+        }
+        if (body instanceof ParenthesedDelete) {
+            throw forbiddenCte("DELETE");
+        }
+        if (body instanceof ParenthesedSelect select && select.getSelect() != null) {
+            checkSelect(select.getSelect());
+        }
+    }
+
+    private SqlNotAllowedException forbiddenCte(String keyword) {
+        return new SqlNotAllowedException(
+                "Read-only guard: forbidden " + keyword + " statement inside CTE. " +
+                        "(Set jdbc.readonly-guard=off to disable this client-side check.)");
+    }
+
+    private void checkLexically(String sql) {
         String stripped = stripComments(sql).trim();
         while (stripped.endsWith(";")) {
             stripped = stripped.substring(0, stripped.length() - 1).trim();

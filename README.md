@@ -175,9 +175,12 @@
 Защита многоуровневая, рассчитана в первую очередь на «случайные» `DELETE`/`DROP` от LLM,
 не на злоумышленника (злоумышленнику у вас и так есть URL, логин и пароль).
 
-1. **ReadOnlyGuard (в нашем коде).** Перед отправкой в БД проверяем, что первый значимый
-   токен — это `SELECT`, `WITH` или `EXPLAIN`. Отклоняем multi-statement (точки с запятой
-   между операторами). Комментарии игнорируются. Это 99% защиты.
+1. **ReadOnlyGuard (в нашем коде).** Перед отправкой в БД сначала разбираем SQL через
+   JSqlParser и проверяем AST: разрешены только один `SELECT` / `WITH` / `EXPLAIN`,
+   запрещены write-CTE, `SELECT INTO` и locking clauses вроде `FOR UPDATE`. Если JSqlParser
+   не смог разобрать диалектный SQL, guard возвращается к прежней лексической проверке:
+   первый значимый токен, запрет multi-statement, игнорирование комментариев и поиск
+   write-ключевых слов вне строк/quoted identifiers.
 2. **Флаг `connection.setReadOnly(true)`.** Ставится Hikari и нами при каждом чекауте.
 3. **PostgreSQL: `default_transaction_read_only=on`** добавляется в JDBC URL автоматически
    (если вы не указали свой `options=`). Даже DDL на сервере будет отклонён.
@@ -368,7 +371,7 @@ JDBC_PASSWORD=secret \
 │   │   ├── OracleDialect.java          — EXPLAIN PLAN, ALL_VIEWS, ALL_SOURCE, SET TRANSACTION READ ONLY
 │   │   └── DialectConfig.java          — выбор реализации по DatabaseKind
 │   ├── sql/
-│   │   ├── ReadOnlyGuard.java          — простой проверщик первого токена
+│   │   ├── ReadOnlyGuard.java          — JSqlParser AST guard + лексический fallback
 │   │   ├── SqlNotAllowedException.java
 │   │   ├── QueryResult.java            — структура результата
 │   │   ├── SqlExecutor.java            — исполнение запросов с лимитами
