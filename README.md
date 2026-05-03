@@ -16,10 +16,11 @@
 - в пылу «размышления» случайно сгенерировать `DELETE` или `TRUNCATE`.
 
 С сервером LLM:
-1. вызывает `listSchemas` / `listTables` / `describeTable` — видит реальную структуру;
-2. пишет запрос и вызывает `validateQuery` с теми же `params` / `namedParams`, которые потом пойдут в execution-tool — проверяет синтаксис без выполнения;
-3. при необходимости вызывает `explainQuery` — смотрит план;
-4. вызывает `executeQuery` — получает данные.
+1. вызывает `schemaOverview` / `schemaBrief` / `queryContext` — получает готовый контекст схемы (таблицы, колонки, связи, ограничения);
+2. при необходимости уточняет — `tableContext` вокруг конкретной таблицы или `findJoinPaths` для поиска путей JOIN;
+3. пишет запрос и вызывает `validateQuery` с теми же `params` / `namedParams`, которые потом пойдут в execution-tool — проверяет синтаксис без выполнения;
+4. при необходимости вызывает `explainQuery` — смотрит план;
+5. вызывает `executeQuery` — получает данные.
 
 Любой non-SELECT запрос блокируется ещё до отправки в БД.
 
@@ -68,6 +69,22 @@
 | `getRoutineDefinition` | Исходник функции/процедуры (для Oracle — все строки `ALL_SOURCE` склеенные по порядку) |
 | `listSequences` | Последовательности в схеме |
 | `searchObjects` | Поиск по имени (case-insensitive, substring) среди всех non-system объектов — таблиц, представлений, функций, последовательностей |
+
+### Контекст схемы
+
+Высокоуровневые инструменты для быстрой ориентации в схеме и построения SQL. Вместо того чтобы
+вручную вызывать `listTables` → `describeTable` → `sampleRows` для каждой таблицы, LLM может
+одним вызовом получить готовый контекст: таблицы, колонки, связи, ограничения, примеры строк.
+
+| Tool | Описание |
+|---|---|
+| `schemaOverview` | Компактный снимок схемы для написания SQL: таблицы/вью, колонки, PK, FK, индексы и рёбра связей. Параметры: `schema`, `namePattern` (с `%` / `_`), `includeViews`, `includeStats`, `includeInferred` (связи по `*_id`), `maxTables` (по умолчанию 50, макс 300) |
+| `tableContext` | Контекст вокруг одной таблицы: сама таблица, FK-родители, опционально — дочерние таблицы и рёбра связей. Обход FK на заданную глубину (по умолчанию 1, макс 4). Параметры: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeInferred` |
+| `findJoinPaths` | Поиск путей JOIN между двумя таблицами по FK. Граф обходится в обоих направлениях, каждое ребро содержит `joinCondition`. Параметры: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (по умолчанию 4), `maxPaths` (по умолчанию 5), `includeInferred` |
+| `schemaBrief` | Компактная текстовая сводка схемы: hub-таблицы, fact/detail, lookup/reference, ключевые связи, enum-like CHECK-колонки, подозрительные неявные JOIN и краткие заметки по таблицам. Удобно, когда полный JSON был бы слишком объёмным |
+| `schemaGraph` | Метрики графа связей схемы: узлы с входящей/исходящей степенью и классификацией, рёбра, центральные таблицы, изолированные таблицы, компоненты связности, намёки на циклы. Опционально — кратчайший путь между двумя таблицами |
+| `schemaLint` | Линт-аудит схемы: отсутствующие PK, FK без индексов, несоответствие типов FK, inferred-но-не-declared связи, nullable unique, status/type без CHECK, сиротские `*_id`, отсутствующие remarks, изолированные таблицы, широкие таблицы. Набор проверок настраивается через `checks` |
+| `queryContext` | Построение компактного контекста для написания SQL по поисковым терминам и/или явно указанным таблицам. Находит релевантные таблицы и колонки, включает ограничения и allowed values, связи и пути JOIN между выбранными таблицами, опционально — примеры строк (до 3 на таблицу) |
 
 ### Исследование данных
 
@@ -312,7 +329,8 @@ JDBC_PASSWORD=secret \
 │   ├── metadata/
 │   │   ├── MetadataService.java        — DatabaseMetaData + dialect-specific
 │   │   ├── StatsService.java           — table/index stats, FK coverage, redundant/unused indexes
-│   │   └── DistributionService.java    — column distribution / histogram / null ratio / selectivity / join cardinality
+│   │   ├── DistributionService.java    — column distribution / histogram / null ratio / selectivity / join cardinality
+│   │   └── SchemaContextService.java   — high-level schema context: overview, table context, join paths, graph, lint, brief, query context
 │   ├── plan/
 │   │   ├── ParsedPlan.java / PlanNode.java — единая модель плана (engine-agnostic)
 │   │   ├── PlanParser.java             — интерфейс парсера
@@ -329,7 +347,8 @@ JDBC_PASSWORD=secret \
 │       ├── SampleTools.java            — sampleRows, columnStats
 │       ├── DistributionTools.java      — columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality
 │       ├── StatsTools.java             — tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
-│       └── BenchmarkTools.java         — benchmarkQuery, timedQuery
+│       ├── BenchmarkTools.java         — benchmarkQuery, timedQuery
+│       └── SchemaContextTools.java     — schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext
 └── src/main/resources/
     ├── application.yml                 — MCP stdio + JDBC properties
     └── logback-spring.xml              — логи в stderr (stdout занят MCP)
