@@ -118,6 +118,27 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
         assertThat((ArrayNode) field(shortestPath, "edges")).hasSize(2);
     }
 
+    @Test
+    void returnsQueryAuthoringContext() {
+        ObjectNode context = object(schemaContextTools().queryContext(
+                "public", "customer orders total", "customers,orders", true, 10, true));
+
+        ArrayNode tables = (ArrayNode) field(context, "tables");
+        ObjectNode customers = (ObjectNode) findByField(tables, "name", "customers");
+        ObjectNode orders = (ObjectNode) findByField(tables, "name", "orders");
+        assertThat(customers).isNotNull();
+        assertThat(orders).isNotNull();
+        assertThat(findByField((ArrayNode) field(orders, "relevantColumns"), "name", "total")).isNotNull();
+        assertThat(field(field(customers, "sample"), "rowCount").asInt()).isGreaterThan(0);
+
+        ArrayNode relationships = (ArrayNode) field(context, "relationships");
+        assertThat(relationship(relationships, "orders", "customers")).isNotNull();
+
+        ArrayNode joinPaths = (ArrayNode) field(context, "joinPaths");
+        assertThat(joinPaths).isNotEmpty();
+        assertThat(field(joinPaths.get(0), "found").asBoolean()).isTrue();
+    }
+
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {
         for (JsonNode edge : relationships) {
             if (fromTable.equals(field(edge, "fromTable").asText())

@@ -156,4 +156,26 @@ public class SchemaContextTools {
             return "Invalid argument: " + e.getMessage();
         }
     }
+
+    @McpTool(description = "Build a compact SQL authoring context from natural-language terms and/or known tables. " +
+            "The tool discovers relevant tables/columns, includes constraints and allowed values, " +
+            "adds relationships and join paths between selected tables, and can include tiny best-effort samples.")
+    public String queryContext(
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Search terms from the user request, e.g. 'customers order totals'", required = false) String terms,
+            @McpToolParam(description = "Comma-separated table names to force-include, e.g. 'customers,orders' (optional)", required = false) String tables,
+            @McpToolParam(description = "Include up to 3 sample rows per selected table. Default false.", required = false) Boolean includeSamples,
+            @McpToolParam(description = "Maximum tables to include. Default 12, capped at 50.", required = false) Integer maxTables,
+            @McpToolParam(description = "Include inferred relationships based on *_id naming. Default true.", required = false) Boolean includeInferred
+    ) {
+        try {
+            Map<String, Object> result = schemaContext.queryContext(
+                    schema, terms, tables, includeSamples, maxTables, includeInferred);
+            return MetadataTools.JsonWriter.write(result);
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Invalid argument: " + e.getMessage();
+        }
+    }
 }

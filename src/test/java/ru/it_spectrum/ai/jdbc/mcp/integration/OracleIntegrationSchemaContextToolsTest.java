@@ -118,6 +118,27 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
         assertThat((ArrayNode) field(shortestPath, "edges")).hasSize(2);
     }
 
+    @Test
+    void returnsQueryAuthoringContext() {
+        ObjectNode context = object(schemaContextTools().queryContext(
+                schema(), "customer orders total", "CUSTOMERS,ORDERS", true, 10, true));
+
+        ArrayNode tables = (ArrayNode) field(context, "tables");
+        ObjectNode customers = (ObjectNode) findByField(tables, "name", "CUSTOMERS");
+        ObjectNode orders = (ObjectNode) findByField(tables, "name", "ORDERS");
+        assertThat(customers).isNotNull();
+        assertThat(orders).isNotNull();
+        assertThat(findByField((ArrayNode) field(orders, "relevantColumns"), "name", "TOTAL")).isNotNull();
+        assertThat(field(field(customers, "sample"), "rowCount").asInt()).isGreaterThan(0);
+
+        ArrayNode relationships = (ArrayNode) field(context, "relationships");
+        assertThat(relationship(relationships, "ORDERS", "CUSTOMERS")).isNotNull();
+
+        ArrayNode joinPaths = (ArrayNode) field(context, "joinPaths");
+        assertThat(joinPaths).isNotEmpty();
+        assertThat(field(joinPaths.get(0), "found").asBoolean()).isTrue();
+    }
+
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {
         for (JsonNode edge : relationships) {
             if (fromTable.equals(field(edge, "fromTable").asText())

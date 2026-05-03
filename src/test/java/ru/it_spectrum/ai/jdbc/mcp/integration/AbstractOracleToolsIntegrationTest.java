@@ -54,7 +54,7 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
             SqlExecutor executor = new SqlExecutor(dataSource, dialect, properties, guard);
             MetadataService metadata = new MetadataService(executor, dialect, properties);
             StatsService stats = new StatsService(executor, dialect, properties);
-            SchemaContextService schemaContext = new SchemaContextService(metadata, stats);
+            SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect);
             DistributionService distribution = new DistributionService(
                     executor, dialect, properties, new OraclePlanParser());
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
