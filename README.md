@@ -234,6 +234,14 @@ Connection-level protections (`setReadOnly`, `default_transaction_read_only`,
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
 - Gradle 9.3.1 with version catalog
 
+## License
+
+This project is licensed under the Apache License, Version 2.0. See `LICENSE`.
+
+Runtime and test dependencies are licensed by their respective owners. See
+`THIRD_PARTY_NOTICES.md`, especially if you distribute a built fat jar containing bundled JDBC
+drivers.
+
 ## Build
 
 ```bash
