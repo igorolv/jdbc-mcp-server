@@ -10,6 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.DistributionTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SampleTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
 
 import java.util.ArrayList;
@@ -41,6 +42,10 @@ abstract class AbstractToolsIntegrationTest {
 
     protected final StatsTools statsTools() {
         return context().statsTools();
+    }
+
+    protected final SchemaContextTools schemaContextTools() {
+        return context().schemaContextTools();
     }
 
     protected final DistributionTools distributionTools() {

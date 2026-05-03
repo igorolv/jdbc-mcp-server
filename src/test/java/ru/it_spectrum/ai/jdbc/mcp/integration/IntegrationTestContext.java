@@ -5,6 +5,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.DistributionTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SampleTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
 
 record IntegrationTestContext(
@@ -13,6 +14,7 @@ record IntegrationTestContext(
         MetadataTools metadataTools,
         SampleTools sampleTools,
         StatsTools statsTools,
+        SchemaContextTools schemaContextTools,
         DistributionTools distributionTools,
         BenchmarkTools benchmarkTools
 ) {

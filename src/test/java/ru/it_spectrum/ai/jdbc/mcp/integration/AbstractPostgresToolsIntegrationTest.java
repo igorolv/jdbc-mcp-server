@@ -10,6 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.PostgresDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
@@ -20,6 +21,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.DistributionTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SampleTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
 
 import javax.sql.DataSource;
@@ -54,6 +56,7 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
             SqlExecutor executor = new SqlExecutor(dataSource, dialect, properties, guard);
             MetadataService metadata = new MetadataService(executor, dialect, properties);
             StatsService stats = new StatsService(executor, dialect, properties);
+            SchemaContextService schemaContext = new SchemaContextService(metadata, stats);
             DistributionService distribution = new DistributionService(
                     executor, dialect, properties, new PostgresPlanParser());
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
@@ -64,6 +67,7 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
                     new MetadataTools(metadata),
                     new SampleTools(executor, dialect),
                     new StatsTools(stats),
+                    new SchemaContextTools(schemaContext),
                     new DistributionTools(distribution),
                     new BenchmarkTools(benchmarks)
             );
