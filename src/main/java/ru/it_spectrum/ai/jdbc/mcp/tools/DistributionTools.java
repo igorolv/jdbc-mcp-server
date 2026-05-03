@@ -3,7 +3,10 @@ package ru.it_spectrum.ai.jdbc.mcp.tools;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.format.OutputFormat;
+import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 
 import java.sql.SQLException;
 import java.util.Map;
@@ -21,6 +24,24 @@ public class DistributionTools {
 
     public DistributionTools(DistributionService distribution) {
         this.distribution = distribution;
+    }
+
+    @McpTool(description = "Return basic statistics for a column: total row count, non-null count, " +
+            "distinct value count, min and max. A cheap one-shot scan when you only need the extremes; " +
+            "use columnHistogram for percentiles or nullRatio for per-column null shares across the whole table.")
+    public String columnStats(
+            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
+            @McpToolParam(description = "Table or view name") String table,
+            @McpToolParam(description = "Column name") String column
+    ) {
+        try {
+            QueryResult r = distribution.columnStats(schema, table, column);
+            return ResultFormatter.format(r, OutputFormat.JSON);
+        } catch (SQLException e) {
+            return ToolErrors.sql(e);
+        } catch (IllegalArgumentException e) {
+            return ToolErrors.argument(e);
+        }
     }
 
     @McpTool(description = "Return the top-N most frequent values of a column together with their " +
@@ -110,17 +131,17 @@ public class DistributionTools {
             "and the selectivity versus the Cartesian product. Supported join types: INNER " +
             "(default), LEFT, RIGHT, FULL.")
     public String joinCardinality(
-            @McpToolParam(description = "Left schema name (optional — defaults to current/default schema)", required = false) String leftSchema,
-            @McpToolParam(description = "Left table or view name") String leftTable,
-            @McpToolParam(description = "Left join column") String leftColumn,
-            @McpToolParam(description = "Right schema name (optional — defaults to current/default schema)", required = false) String rightSchema,
-            @McpToolParam(description = "Right table or view name") String rightTable,
-            @McpToolParam(description = "Right join column") String rightColumn,
+            @McpToolParam(description = "From-side schema name (optional — defaults to current/default schema)", required = false) String fromSchema,
+            @McpToolParam(description = "From-side table or view name") String fromTable,
+            @McpToolParam(description = "From-side join column") String leftColumn,
+            @McpToolParam(description = "To-side schema name (optional — defaults to current/default schema)", required = false) String toSchema,
+            @McpToolParam(description = "To-side table or view name") String toTable,
+            @McpToolParam(description = "To-side join column") String rightColumn,
             @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType
     ) {
         try {
-            Map<String, Object> r = distribution.joinCardinality(leftSchema, leftTable, leftColumn,
-                    rightSchema, rightTable, rightColumn, joinType);
+            Map<String, Object> r = distribution.joinCardinality(fromSchema, fromTable, leftColumn,
+                    toSchema, toTable, rightColumn, joinType);
             return JsonWriter.write(r);
         } catch (SQLException e) {
             return ToolErrors.sql(e);

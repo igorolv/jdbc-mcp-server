@@ -12,6 +12,14 @@ import static org.assertj.core.api.Assertions.within;
 class PostgresIntegrationDistributionToolsTest extends AbstractPostgresToolsIntegrationTest {
 
     @Test
+    void columnStatsReturnsBasicExtremes() {
+        ObjectNode result = object(distributionTools().columnStats("public", "orders", "total"));
+        assertThat(field(row(result, 0), "total_rows").asInt()).isEqualTo(3);
+        assertThat(field(row(result, 0), "non_null_rows").asInt()).isEqualTo(3);
+        assertThat(field(row(result, 0), "distinct_values").asInt()).isEqualTo(3);
+    }
+
+    @Test
     void distributionAndHistogramExposeSkew() {
         ObjectNode distribution = object(distributionTools().columnDistribution("public", "events", "status", 5));
         assertThat(field(distribution, "total_rows").asInt()).isEqualTo(100);

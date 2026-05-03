@@ -72,6 +72,29 @@ public class DistributionService {
         this.schemaResolver = schemaResolver;
     }
 
+    // ---------------- columnStats ----------------
+
+    /**
+     * Returns basic single-column extremes — total rows, non-null rows, distinct value count,
+     * min and max — in one aggregate scan. Cheaper than {@link #columnHistogram} when only the
+     * extremes (and not the spread) are needed.
+     */
+    public QueryResult columnStats(String schema, String table, String column) throws SQLException {
+        requireIdent("table", table);
+        requireIdent("column", column);
+        String qTable = qualify(schema, table);
+        String qCol = quoteIdent(column);
+        String sql = """
+                SELECT COUNT(*)            AS total_rows,
+                       COUNT(%s)           AS non_null_rows,
+                       COUNT(DISTINCT %s)  AS distinct_values,
+                       MIN(%s)             AS min_value,
+                       MAX(%s)             AS max_value
+                FROM %s
+                """.formatted(qCol, qCol, qCol, qCol, qTable);
+        return executor.queryInternal(sql, Collections.emptyList(), 1);
+    }
+
     // ---------------- columnDistribution ----------------
 
     /**
@@ -298,25 +321,27 @@ public class DistributionService {
     // ---------------- joinCardinality ----------------
 
     /**
-     * Estimates the row count of {@code leftTable JOIN rightTable ON left.col = right.col}
+     * Estimates the row count of {@code fromTable JOIN toTable ON left.col = right.col}
      * via an EXPLAIN on {@code SELECT 1 FROM ...}. The query itself is not executed.
      *
-     * <p>Supported join types: {@code INNER} (default), {@code LEFT}, {@code RIGHT}, {@code FULL}.
+     * <p>Parameter order encodes JOIN direction: the {@code from*} side is the driving table
+     * (matters for {@code LEFT} / {@code RIGHT} joins). Supported join types: {@code INNER}
+     * (default), {@code LEFT}, {@code RIGHT}, {@code FULL}.
      */
-    public Map<String, Object> joinCardinality(String leftSchema, String leftTable, String leftColumn,
-                                               String rightSchema, String rightTable, String rightColumn,
+    public Map<String, Object> joinCardinality(String fromSchema, String fromTable, String leftColumn,
+                                               String toSchema, String toTable, String rightColumn,
                                                String joinType) throws SQLException {
-        requireIdent("leftTable", leftTable);
+        requireIdent("fromTable", fromTable);
         requireIdent("leftColumn", leftColumn);
-        requireIdent("rightTable", rightTable);
+        requireIdent("toTable", toTable);
         requireIdent("rightColumn", rightColumn);
         String jt = (joinType == null || joinType.isBlank()) ? "INNER" : joinType.trim().toUpperCase(Locale.ROOT);
         if (!jt.equals("INNER") && !jt.equals("LEFT") && !jt.equals("RIGHT") && !jt.equals("FULL")) {
             throw new IllegalArgumentException("joinType must be one of INNER, LEFT, RIGHT, FULL");
         }
 
-        String lTable = qualify(leftSchema, leftTable);
-        String rTable = qualify(rightSchema, rightTable);
+        String lTable = qualify(fromSchema, fromTable);
+        String rTable = qualify(toSchema, toTable);
         String lCol = quoteIdent(leftColumn);
         String rCol = quoteIdent(rightColumn);
         String joinKeyword = jt.equals("INNER") ? "JOIN" : jt + " JOIN";
@@ -329,14 +354,14 @@ public class DistributionService {
         Long rBase = explainRootRows("SELECT 1 FROM " + rTable);
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("left_schema", resolveSchema(leftSchema));
-        out.put("left_table", leftTable);
+        out.put("from_schema", resolveSchema(fromSchema));
+        out.put("from_table", fromTable);
         out.put("left_column", leftColumn);
-        out.put("left_row_estimate", lBase);
-        out.put("right_schema", resolveSchema(rightSchema));
-        out.put("right_table", rightTable);
+        out.put("from_row_estimate", lBase);
+        out.put("to_schema", resolveSchema(toSchema));
+        out.put("to_table", toTable);
         out.put("right_column", rightColumn);
-        out.put("right_row_estimate", rBase);
+        out.put("to_row_estimate", rBase);
         out.put("join_type", jt);
         out.put("estimated_rows", estimated);
         if (estimated != null && lBase != null && rBase != null) {

@@ -142,28 +142,28 @@ The server exposes **38 read-only MCP tools**.
 | `listRoutines` | List functions, procedures, packages. Params: `schema`, `namePattern` |
 | `getRoutineDefinition` | Return the source code of a routine. On Oracle this concatenates lines from `ALL_SOURCE`. Params: `schema`, `name` |
 | `listSequences` | List sequences (schema is optional — omit to list across all schemas). Params: `schema` |
-| `searchObjects` | Case-insensitive substring search across non-system objects (tables, views, routines, sequences, synonyms). Useful when the LLM has a partial name. Params: `pattern` |
+| `searchObjects` | Case-insensitive substring search across non-system objects (tables, views, routines, sequences, synonyms). Useful when the LLM has a partial name. Params: `namePattern` |
 
 ### Data exploration tools
 
 | Tool | Description |
 |---|---|
 | `sampleRows` | Return a few rows from a table or view. Shortcut for `SELECT * FROM t LIMIT N`. Params: `schema`, `table`, `limit` (default 10, max 100) |
-| `columnStats` | Basic column statistics: `total_rows`, `non_null_rows`, `distinct_values`, `min`, `max`. Params: `schema`, `table`, `column` |
 
 ### Selectivity and distribution tools (predicate / join tuning)
 
-`columnStats` only reports extremes. These tools answer "how selective is this predicate?" and
-"how skewed are the values?" — the information an LLM needs to pick an index column order, add
-a partial index, or rewrite a join.
+`columnStats` only reports extremes. The other tools answer "how selective is this predicate?"
+and "how skewed are the values?" — the information an LLM needs to pick an index column order,
+add a partial index, or rewrite a join.
 
 | Tool | Description |
 |---|---|
+| `columnStats` | Basic column statistics: `total_rows`, `non_null_rows`, `distinct_values`, `min`, `max`. A cheap one-shot scan when only the extremes are needed. Params: `schema`, `table`, `column` |
 | `columnDistribution` | Top-N most frequent values of a column plus their share of the table. Surfaces skew (e.g. `70 %` of rows have `status='OK'` — a plain index on `status` is nearly useless). Executes `GROUP BY + COUNT` — prefer a small `topN` on very large tables. Params: `schema`, `table`, `column`, `topN` (default 20, max 1000) |
 | `columnHistogram` | Percentile summary for an orderable column: `min`, `max`, `P25`, `P50`, `P75`, `P90`, `P95`, `P99`, plus null counts. Uses SQL:2003 `WITHIN GROUP`: `percentile_cont` for numeric types (interpolated), `percentile_disc` for dates / timestamps / text. Params: `schema`, `table`, `column` |
 | `nullRatio` | Null / non-null ratio for **every column** of a table in one scan. Columns returned sorted by descending `null_ratio`; the `sparse` flag is set when more than 50 % of rows are null (candidate for a partial index with `WHERE col IS NOT NULL`). Params: `schema`, `table` |
 | `estimateSelectivity` | Planner's row estimate for `SELECT 1 FROM t WHERE <predicate>` — **without running the query**. Uses `EXPLAIN (FORMAT JSON)` (PostgreSQL) or `EXPLAIN PLAN` (Oracle). Returns `estimated_rows`, a `baseline_rows` count (no predicate) and the `selectivity` ratio. Reject `;` in the predicate. Params: `schema`, `table`, `predicate` (raw SQL, no `WHERE` keyword) |
-| `joinCardinality` | Planner's row estimate for an equi-join between two tables, without executing it. Returns `estimated_rows`, per-side row estimates and `selectivity_vs_cartesian`. Join types: `INNER` (default), `LEFT`, `RIGHT`, `FULL`. Params: `leftSchema`, `leftTable`, `leftColumn`, `rightSchema`, `rightTable`, `rightColumn`, `joinType` |
+| `joinCardinality` | Planner's row estimate for an equi-join between two tables, without executing it. Returns `estimated_rows`, per-side row estimates and `selectivity_vs_cartesian`. Join types: `INNER` (default), `LEFT`, `RIGHT`, `FULL`. Parameter order encodes JOIN direction (matters for `LEFT` / `RIGHT`). Params: `fromSchema`, `fromTable`, `leftColumn`, `toSchema`, `toTable`, `rightColumn`, `joinType` |
 
 ### Object statistics tools (query optimisation)
 
@@ -186,7 +186,7 @@ keep the response compact; raise the caps when needed.
 | `schemaOverview` | Compact schema snapshot: tables/views, columns, PK/FK, indexes, relationship edges. Params: `schema`, `namePattern`, `includeViews`, `includeStats`, `includeInferred` (`*_id` heuristic), `maxTables` (default 50, cap 300) |
 | `tableContext` | Neighbourhood around one table: the table, FK parents, optionally child tables and edges. Params: `schema`, `table`, `depth` (default 1, cap 4), `includeIncoming`, `includeStats`, `includeInferred`, `inferredScanLimit` (default 300, cap 300 — only used when `includeInferred=true`, controls how many schema tables are scanned for `*_id` matches) |
 | `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, cap 300), `includeInferred` |
-| `schemaBrief` | Plain-text synopsis: hub tables, fact/detail, lookup/reference, key relationships, enum-like CHECK columns, suspicious implicit joins. Use when full JSON would be too verbose. Params: `schema`, `focus`, `maxTables` (default 50, cap 300), `includeInferred` |
+| `schemaBrief` | Plain-text synopsis: hub tables, fact/detail, lookup/reference, key relationships, enum-like CHECK columns, suspicious implicit joins. Use when full JSON would be too verbose. Params: `schema`, `terms` (optional substring narrowing), `maxTables` (default 50, cap 300), `includeInferred` |
 | `schemaGraph` | Relationship-graph metrics: nodes with in/out degree, central tables, isolated tables, components, cycle hints; optional shortest path. Params: `schema`, `maxTables` (default 50, cap 300), `includeInferred`, `fromTable`, `toTable`, `maxDepth` |
 | `schemaLint` | Lint audit: missing PK, FK without index, FK type mismatch, inferred-but-undeclared relationships, nullable unique, status/type without CHECK, orphan `*_id`, missing remarks, isolated and wide tables. Params: `schema`, `table`, `checks` (allow-list), `maxTables` (default 50, cap 300), `maxFindings`, `includeInferred` |
 | `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables` (default 12, cap 50 — narrower than the other context tools to keep responses concise), `includeInferred` |

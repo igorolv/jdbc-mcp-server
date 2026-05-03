@@ -46,35 +46,6 @@ public class SampleTools {
         }
     }
 
-    @McpTool(description = "Return basic statistics for a column: total row count, non-null count, " +
-            "distinct value count, min and max. Useful for understanding the shape of the data " +
-            "before writing more complex queries.")
-    public String columnStats(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
-            @McpToolParam(description = "Table or view name") String table,
-            @McpToolParam(description = "Column name") String column
-    ) {
-        if (table == null || table.isBlank() || column == null || column.isBlank()) {
-            return ToolErrors.argument("table and column must be provided");
-        }
-        String qTable = qualify(schema, table);
-        String qCol = quoteIdent(column);
-        String sql = """
-                SELECT COUNT(*)            AS total_rows,
-                       COUNT(%s)           AS non_null_rows,
-                       COUNT(DISTINCT %s)  AS distinct_values,
-                       MIN(%s)             AS min_value,
-                       MAX(%s)             AS max_value
-                FROM %s
-                """.formatted(qCol, qCol, qCol, qCol, qTable);
-        try {
-            QueryResult r = executor.queryInternal(sql, Collections.emptyList(), 1);
-            return ResultFormatter.format(r, OutputFormat.JSON);
-        } catch (SQLException e) {
-            return ToolErrors.sql(e);
-        }
-    }
-
     // ---------------- helpers ----------------
 
     private String qualify(String schema, String table) {

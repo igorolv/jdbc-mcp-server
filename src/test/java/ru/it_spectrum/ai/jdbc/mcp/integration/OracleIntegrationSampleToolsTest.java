@@ -17,11 +17,4 @@ class OracleIntegrationSampleToolsTest extends AbstractOracleToolsIntegrationTes
         assertThat(field(row(result, 0), "NAME").asText()).isEqualTo("Alice");
     }
 
-    @Test
-    void columnStatsReturnsBasicExtremes() {
-        ObjectNode result = object(sampleTools().columnStats(schema(), "ORDERS", "TOTAL"));
-        assertThat(field(row(result, 0), "TOTAL_ROWS").asInt()).isEqualTo(3);
-        assertThat(field(row(result, 0), "NON_NULL_ROWS").asInt()).isEqualTo(3);
-        assertThat(field(row(result, 0), "DISTINCT_VALUES").asInt()).isEqualTo(3);
-    }
 }

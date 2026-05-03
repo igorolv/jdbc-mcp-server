@@ -17,11 +17,4 @@ class PostgresIntegrationSampleToolsTest extends AbstractPostgresToolsIntegratio
         assertThat(field(row(result, 0), "name").asText()).isEqualTo("Alice");
     }
 
-    @Test
-    void columnStatsReturnsBasicExtremes() {
-        ObjectNode result = object(sampleTools().columnStats("public", "orders", "total"));
-        assertThat(field(row(result, 0), "total_rows").asInt()).isEqualTo(3);
-        assertThat(field(row(result, 0), "non_null_rows").asInt()).isEqualTo(3);
-        assertThat(field(row(result, 0), "distinct_values").asInt()).isEqualTo(3);
-    }
 }

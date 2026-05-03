@@ -81,7 +81,7 @@
 | `schemaOverview` | Компактный снимок схемы для написания SQL: таблицы/вью, колонки, PK, FK, индексы и рёбра связей. Параметры: `schema`, `namePattern` (с `%` / `_`), `includeViews`, `includeStats`, `includeInferred` (связи по `*_id`), `maxTables` (по умолчанию 50, макс 300) |
 | `tableContext` | Контекст вокруг одной таблицы: сама таблица, FK-родители, опционально — дочерние таблицы и рёбра связей. Обход FK на заданную глубину (по умолчанию 1, макс 4). Параметры: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeInferred`, `inferredScanLimit` (по умолчанию 300, макс 300 — сколько таблиц схемы сканировать для inferred-связей; нужен только при `includeInferred=true`) |
 | `findJoinPaths` | Поиск путей JOIN между двумя таблицами по FK. Граф обходится в обоих направлениях, каждое ребро содержит `joinCondition`. Параметры: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (по умолчанию 4), `maxPaths` (по умолчанию 5), `scanLimit` (по умолчанию 300, макс 300), `includeInferred` |
-| `schemaBrief` | Компактная текстовая сводка схемы: hub-таблицы, fact/detail, lookup/reference, ключевые связи, enum-like CHECK-колонки, подозрительные неявные JOIN и краткие заметки по таблицам. Удобно, когда полный JSON был бы слишком объёмным |
+| `schemaBrief` | Компактная текстовая сводка схемы: hub-таблицы, fact/detail, lookup/reference, ключевые связи, enum-like CHECK-колонки, подозрительные неявные JOIN и краткие заметки по таблицам. Удобно, когда полный JSON был бы слишком объёмным. Параметры: `schema`, `terms` (опциональный поиск по подстроке), `maxTables`, `includeInferred` |
 | `schemaGraph` | Метрики графа связей схемы: узлы с входящей/исходящей степенью и классификацией, рёбра, центральные таблицы, изолированные таблицы, компоненты связности, намёки на циклы. Опционально — кратчайший путь между двумя таблицами |
 | `schemaLint` | Линт-аудит схемы: отсутствующие PK, FK без индексов, несоответствие типов FK, inferred-но-не-declared связи, nullable unique, status/type без CHECK, сиротские `*_id`, отсутствующие remarks, изолированные таблицы, широкие таблицы. Набор проверок настраивается через `checks` |
 | `queryContext` | Построение компактного контекста для написания SQL по поисковым терминам и/или явно указанным таблицам. Находит релевантные таблицы и колонки, включает ограничения и allowed values, связи и пути JOIN между выбранными таблицами, опционально — примеры строк (до 3 на таблицу) |
@@ -109,11 +109,14 @@
 | Tool | Описание |
 |---|---|
 | `sampleRows` | Несколько строк из таблицы/вью (`SELECT * FROM t LIMIT N`). Параметры: `schema`, `table`, `limit` (по умолчанию 10, макс 100) |
-| `columnStats` | Базовая статистика колонки: `total_rows`, `non_null_rows`, `distinct_values`, `min`, `max` |
 
 ### Селективность и распределение (для оптимизации предикатов)
 
-`columnStats` показывает только границы. Эти инструменты отвечают на вопросы «насколько
+| Tool | Описание |
+|---|---|
+| `columnStats` | Базовая статистика колонки: `total_rows`, `non_null_rows`, `distinct_values`, `min`, `max`. Дешёвый one-shot аггрегат, когда нужны только границы |
+
+`columnStats` показывает только границы. Остальные инструменты отвечают на вопросы «насколько
 предикат избирателен?» и «насколько значения в колонке перекошены?» — то, без чего LLM не
 может осмысленно выбрать индекс или переписать JOIN.
 
@@ -385,8 +388,8 @@ JDBC_PASSWORD=secret \
 │   └── tools/
 │       ├── QueryTools.java             — executeQuery, explainQuery, analyzePlan, validateQuery
 │       ├── MetadataTools.java          — schemas / tables / describe / view / routines / sequences / search
-│       ├── SampleTools.java            — sampleRows, columnStats
-│       ├── DistributionTools.java      — columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality
+│       ├── SampleTools.java            — sampleRows
+│       ├── DistributionTools.java      — columnStats, columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality
 │       ├── StatsTools.java             — tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 │       ├── BenchmarkTools.java         — benchmarkQuery, timedQuery
 │       └── SchemaContextTools.java     — schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext, schemaGraphDot

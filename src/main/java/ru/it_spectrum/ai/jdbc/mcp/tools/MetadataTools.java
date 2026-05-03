@@ -147,10 +147,10 @@ public class MetadataTools {
             "materialized views, routines, packages, sequences and synonyms. " +
             "Useful when the LLM knows a partial name and needs to locate the object and its schema.")
     public String searchObjects(
-            @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String pattern
+            @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String namePattern
     ) {
         try {
-            QueryResult r = metadata.searchObjects(pattern);
+            QueryResult r = metadata.searchObjects(namePattern);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
             return ToolErrors.sql(e);

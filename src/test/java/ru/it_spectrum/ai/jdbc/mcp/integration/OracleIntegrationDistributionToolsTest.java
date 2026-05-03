@@ -11,6 +11,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrationTest {
 
     @Test
+    void columnStatsReturnsBasicExtremes() {
+        ObjectNode result = object(distributionTools().columnStats(schema(), "ORDERS", "TOTAL"));
+        assertThat(field(row(result, 0), "TOTAL_ROWS").asInt()).isEqualTo(3);
+        assertThat(field(row(result, 0), "NON_NULL_ROWS").asInt()).isEqualTo(3);
+        assertThat(field(row(result, 0), "DISTINCT_VALUES").asInt()).isEqualTo(3);
+    }
+
+    @Test
     void distributionAndHistogramExposeSkew() {
         ObjectNode distribution = object(distributionTools().columnDistribution(schema(), "EVENTS", "STATUS", 5));
         assertThat(field(distribution, "total_rows").asInt()).isEqualTo(100);

@@ -304,11 +304,11 @@ public class SchemaContextService {
         return out;
     }
 
-    public String schemaBrief(String schema, String focus, Integer maxTables,
+    public String schemaBrief(String schema, String terms, Integer maxTables,
                               Boolean includeInferred) throws SQLException {
         int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
         boolean inferred = includeInferred == null || includeInferred;
-        Map<String, Map<String, Object>> tables = loadBriefTables(schema, focus, tableLimit);
+        Map<String, Map<String, Object>> tables = loadBriefTables(schema, terms, tableLimit);
         List<Map<String, Object>> fkEdges = new ArrayList<>();
         for (Map<String, Object> info : tables.values()) {
             fkEdges.addAll(outgoingEdges(info));
@@ -326,7 +326,7 @@ public class SchemaContextService {
         StringBuilder sb = new StringBuilder();
         sb.append("Schema brief");
         if (schema != null && !schema.isBlank()) sb.append(" for ").append(schema);
-        if (focus != null && !focus.isBlank()) sb.append(" (focus: ").append(focus).append(')');
+        if (terms != null && !terms.isBlank()) sb.append(" (terms: ").append(terms).append(')');
         sb.append('\n');
         sb.append("- Tables scanned: ").append(tables.size()).append('\n');
         sb.append("- Declared relationships: ").append(fkEdges.size()).append('\n');
@@ -575,11 +575,11 @@ public class SchemaContextService {
         return out;
     }
 
-    private Map<String, Map<String, Object>> loadBriefTables(String schema, String focus, int limit)
+    private Map<String, Map<String, Object>> loadBriefTables(String schema, String terms, int limit)
             throws SQLException {
-        String pattern = focus == null || focus.isBlank() ? "%" : "%" + focus + "%";
+        String pattern = terms == null || terms.isBlank() ? "%" : "%" + terms + "%";
         List<Map<String, Object>> listed = metadata.listTables(schema, pattern, parseTypes("TABLE"));
-        if (listed.isEmpty() && focus != null && !focus.isBlank()) {
+        if (listed.isEmpty() && terms != null && !terms.isBlank()) {
             listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
         }
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
