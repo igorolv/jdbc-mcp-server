@@ -91,4 +91,28 @@ public class SchemaContextTools {
             return "Invalid argument: " + e.getMessage();
         }
     }
+
+    @McpTool(description = "Run a compact schema lint audit for SQL-writing and query-optimization risks. " +
+            "Checks include missing primary keys, FK columns without supporting indexes, FK type mismatch, " +
+            "inferred-but-undeclared relationships, nullable unique columns, status/type columns without CHECK, " +
+            "orphan *_id columns, missing remarks, isolated tables, and wide tables. " +
+            "The optional checks parameter is a comma-separated allow-list; omit it to run the default set.")
+    public String schemaLint(
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Single table to lint (optional — omit to scan the schema)", required = false) String table,
+            @McpToolParam(description = "Comma-separated checks to run, e.g. 'missingPrimaryKey,fkWithoutIndex' (optional)", required = false) String checks,
+            @McpToolParam(description = "Maximum schema tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
+            @McpToolParam(description = "Maximum findings to return. Default 200, capped at 1000.", required = false) Integer maxFindings,
+            @McpToolParam(description = "Include inferred relationship checks based on *_id naming. Default true.", required = false) Boolean includeInferred
+    ) {
+        try {
+            Map<String, Object> result = schemaContext.schemaLint(
+                    schema, table, checks, maxTables, maxFindings, includeInferred);
+            return MetadataTools.JsonWriter.write(result);
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Invalid argument: " + e.getMessage();
+        }
+    }
 }

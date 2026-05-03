@@ -69,11 +69,35 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
         assertThat(field(firstPath.get(0), "joinCondition").asText()).contains("CUSTOMER_NOTES.CUSTOMER_ID");
     }
 
+    @Test
+    void lintsSchemaForSqlAuthoringRisks() {
+        ObjectNode result = object(schemaContextTools().schemaLint(
+                schema(), null, null, 100, 200, true));
+
+        ArrayNode findings = (ArrayNode) field(result, "findings");
+        assertThat(finding(findings, "fkWithoutIndex", "ORDERS", "CUSTOMER_ID")).isNotNull();
+        assertThat(finding(findings, "inferredRelationship", "CUSTOMER_NOTES", "CUSTOMER_ID")).isNotNull();
+        assertThat(finding(findings, "unconstrainedStatusColumn", "EVENTS", "STATUS")).isNotNull();
+        assertThat(finding(findings, "missingTableRemarks", "ORDERS", null)).isNotNull();
+    }
+
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {
         for (JsonNode edge : relationships) {
             if (fromTable.equals(field(edge, "fromTable").asText())
                     && toTable.equals(field(edge, "toTable").asText())) {
                 return edge;
+            }
+        }
+        return null;
+    }
+
+    private JsonNode finding(ArrayNode findings, String check, String table, String column) {
+        for (JsonNode finding : findings) {
+            if (!check.equals(field(finding, "check").asText())) continue;
+            if (!table.equals(field(finding, "table").asText())) continue;
+            JsonNode findingColumn = finding.get("column");
+            if (column == null || (findingColumn != null && column.equals(findingColumn.asText()))) {
+                return finding;
             }
         }
         return null;
