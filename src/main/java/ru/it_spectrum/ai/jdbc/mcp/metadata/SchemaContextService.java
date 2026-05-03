@@ -42,9 +42,10 @@ public class SchemaContextService {
 
     public Map<String, Object> schemaOverview(String schema, String namePattern,
                                               Boolean includeViews, Boolean includeStats,
-                                              Integer maxTables) throws SQLException {
+                                              Boolean includeInferred, Integer maxTables) throws SQLException {
         int limit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
         boolean views = includeViews == null || includeViews;
+        boolean inferred = includeInferred == null || includeInferred;
         String types = views ? "TABLE,VIEW,MATERIALIZED VIEW" : "TABLE";
 
         List<Map<String, Object>> listed = metadata.listTables(schema, namePattern, parseTypes(types));
@@ -52,6 +53,7 @@ public class SchemaContextService {
         List<Map<String, Object>> selected = listed.subList(0, Math.min(limit, listed.size()));
 
         List<Map<String, Object>> tables = new ArrayList<>(selected.size());
+        List<Map<String, Object>> describedTables = new ArrayList<>(selected.size());
         List<Map<String, Object>> relationships = new ArrayList<>();
         Set<String> relationshipKeys = new HashSet<>();
 
@@ -66,8 +68,14 @@ public class SchemaContextService {
                 tables.add(errorTable(row, e));
                 continue;
             }
+            describedTables.add(described);
             tables.add(compactTable(described, Boolean.TRUE.equals(includeStats)));
             for (Map<String, Object> edge : outgoingEdges(described)) {
+                addUnique(relationships, relationshipKeys, edge);
+            }
+        }
+        if (inferred) {
+            for (Map<String, Object> edge : inferRelationshipEdges(describedTables)) {
                 addUnique(relationships, relationshipKeys, edge);
             }
         }
@@ -77,6 +85,7 @@ public class SchemaContextService {
         out.put("namePattern", namePattern);
         out.put("includeViews", views);
         out.put("includeStats", Boolean.TRUE.equals(includeStats));
+        out.put("includeInferred", inferred);
         out.put("tableCount", listed.size());
         out.put("returnedTableCount", tables.size());
         out.put("truncated", truncated);
@@ -96,17 +105,26 @@ public class SchemaContextService {
     }
 
     public Map<String, Object> tableContext(String schema, String table, Integer depth,
-                                            Boolean includeIncoming, Boolean includeStats)
+                                            Boolean includeIncoming, Boolean includeStats,
+                                            Boolean includeInferred, Integer maxTables)
             throws SQLException {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("table must be provided");
         }
         int maxDepth = clamp(depth, DEFAULT_DEPTH, 0, MAX_DEPTH);
         boolean incoming = includeIncoming == null || includeIncoming;
+        boolean inferred = includeInferred == null || includeInferred;
 
         Map<String, Object> root = metadata.describeTable(schema, table);
         String rootSchema = str(root.get("schema"));
         String rootTable = str(root.get("name"));
+
+        Map<String, Map<String, Object>> schemaTables = inferred
+                ? loadSchemaTables(rootSchema, clamp(maxTables, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT))
+                : Map.of();
+        List<Map<String, Object>> inferredEdges = inferred
+                ? inferRelationshipEdges(new ArrayList<>(schemaTables.values()))
+                : List.of();
 
         Map<String, Map<String, Object>> described = new LinkedHashMap<>();
         Queue<NodeDepth> queue = new ArrayDeque<>();
@@ -126,6 +144,16 @@ public class SchemaContextService {
                 described.put(neighborKey, neighborInfo);
                 queue.add(new NodeDepth(neighbor.schema, neighbor.table, current.depth + 1));
             }
+            if (inferred) {
+                for (Neighbor neighbor : inferredNeighbors(currentInfo, inferredEdges, incoming)) {
+                    String neighborKey = key(neighbor.schema, neighbor.table);
+                    if (described.containsKey(neighborKey)) continue;
+                    Map<String, Object> neighborInfo = schemaTables.get(neighborKey);
+                    if (neighborInfo == null) continue;
+                    described.put(neighborKey, neighborInfo);
+                    queue.add(new NodeDepth(neighbor.schema, neighbor.table, current.depth + 1));
+                }
+            }
         }
 
         List<Map<String, Object>> tables = new ArrayList<>();
@@ -142,6 +170,15 @@ public class SchemaContextService {
                 }
             }
         }
+        if (inferred) {
+            Set<String> describedKeys = described.keySet();
+            for (Map<String, Object> edge : inferredEdges) {
+                if (describedKeys.contains(key(str(edge.get("fromSchema")), str(edge.get("fromTable"))))
+                        && describedKeys.contains(key(str(edge.get("toSchema")), str(edge.get("toTable"))))) {
+                    addUnique(relationships, relationshipKeys, edge);
+                }
+            }
+        }
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rootSchema", rootSchema);
@@ -149,6 +186,7 @@ public class SchemaContextService {
         out.put("depth", maxDepth);
         out.put("includeIncoming", incoming);
         out.put("includeStats", Boolean.TRUE.equals(includeStats));
+        out.put("includeInferred", inferred);
         out.put("tables", tables);
         out.put("relationships", relationships);
         return out;
@@ -157,7 +195,7 @@ public class SchemaContextService {
     public Map<String, Object> findJoinPaths(String fromSchema, String fromTable,
                                              String toSchema, String toTable,
                                              Integer maxDepth, Integer maxPaths,
-                                             Integer maxTables) throws SQLException {
+                                             Integer maxTables, Boolean includeInferred) throws SQLException {
         if (fromTable == null || fromTable.isBlank()) {
             throw new IllegalArgumentException("fromTable must be provided");
         }
@@ -167,6 +205,7 @@ public class SchemaContextService {
         int depthLimit = clamp(maxDepth, MAX_DEPTH, 1, MAX_DEPTH);
         int pathLimit = clamp(maxPaths, DEFAULT_MAX_PATHS, 1, MAX_PATHS_LIMIT);
         int tableLimit = clamp(maxTables, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT);
+        boolean inferred = includeInferred == null || includeInferred;
 
         Map<String, Object> fromInfo = metadata.describeTable(fromSchema, fromTable);
         String effectiveFromSchema = str(fromInfo.get("schema"));
@@ -182,6 +221,12 @@ public class SchemaContextService {
         List<GraphEdge> graphEdges = new ArrayList<>();
         for (Map<String, Object> info : described.values()) {
             for (Map<String, Object> edge : outgoingEdges(info)) {
+                graphEdges.add(GraphEdge.forward(edge));
+                graphEdges.add(GraphEdge.reverse(edge));
+            }
+        }
+        if (inferred) {
+            for (Map<String, Object> edge : inferRelationshipEdges(new ArrayList<>(described.values()))) {
                 graphEdges.add(GraphEdge.forward(edge));
                 graphEdges.add(GraphEdge.reverse(edge));
             }
@@ -202,6 +247,7 @@ public class SchemaContextService {
         out.put("toSchema", effectiveToSchema);
         out.put("toTable", effectiveToTable);
         out.put("maxDepth", depthLimit);
+        out.put("includeInferred", inferred);
         out.put("schemaTablesScanned", described.size());
         out.put("pathCount", paths.size());
         out.put("paths", paths);
@@ -330,12 +376,32 @@ public class SchemaContextService {
         return out;
     }
 
+    private List<Neighbor> inferredNeighbors(Map<String, Object> info,
+                                             List<Map<String, Object>> inferredEdges,
+                                             boolean includeIncoming) {
+        String schema = str(info.get("schema"));
+        String table = str(info.get("name"));
+        String currentKey = key(schema, table);
+        List<Neighbor> out = new ArrayList<>();
+        for (Map<String, Object> edge : inferredEdges) {
+            String fromKey = key(str(edge.get("fromSchema")), str(edge.get("fromTable")));
+            String toKey = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+            if (currentKey.equals(fromKey)) {
+                out.add(new Neighbor(str(edge.get("toSchema")), str(edge.get("toTable"))));
+            } else if (includeIncoming && currentKey.equals(toKey)) {
+                out.add(new Neighbor(str(edge.get("fromSchema")), str(edge.get("fromTable"))));
+            }
+        }
+        return out;
+    }
+
     private List<Map<String, Object>> outgoingEdges(Map<String, Object> info) {
         String schema = str(info.get("schema"));
         String table = str(info.get("name"));
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> fk : mapList(info.get("foreignKeys"))) {
             Map<String, Object> edge = new LinkedHashMap<>();
+            edge.put("relationshipType", "foreignKey");
             edge.put("fkName", fk.get("name"));
             edge.put("fromSchema", schema);
             edge.put("fromTable", table);
@@ -354,6 +420,7 @@ public class SchemaContextService {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> fk : mapList(info.get("referencedBy"))) {
             Map<String, Object> edge = new LinkedHashMap<>();
+            edge.put("relationshipType", "foreignKey");
             edge.put("fkName", fk.get("name"));
             edge.put("fromSchema", fk.get("fromSchema"));
             edge.put("fromTable", fk.get("fromTable"));
@@ -364,6 +431,158 @@ public class SchemaContextService {
             out.add(edge);
         }
         return out;
+    }
+
+    private List<Map<String, Object>> inferRelationshipEdges(List<Map<String, Object>> tables) {
+        Map<String, ReferencedColumn> referencedColumns = new HashMap<>();
+        Set<String> realRelationshipKeys = new HashSet<>();
+        for (Map<String, Object> table : tables) {
+            for (Map<String, Object> edge : outgoingEdges(table)) {
+                realRelationshipKeys.add(edgeKey(edge));
+            }
+            for (ReferencedColumn column : candidateReferencedColumns(table)) {
+                referencedColumns.merge(column.matchName, column,
+                        (existing, replacement) -> existing.primaryKey ? existing : replacement);
+            }
+        }
+
+        List<Map<String, Object>> inferred = new ArrayList<>();
+        Set<String> inferredKeys = new HashSet<>();
+        for (Map<String, Object> table : tables) {
+            String schema = str(table.get("schema"));
+            String tableName = str(table.get("name"));
+            for (Map<String, Object> column : mapList(table.get("columns"))) {
+                String columnName = str(column.get("name"));
+                if (columnName == null || isKnownKeyColumn(table, columnName)) continue;
+                String referenceName = referenceNameFromColumn(columnName);
+                if (referenceName == null) continue;
+                ReferencedColumn referenced = referencedColumns.get(normalizeIdentifier(referenceName));
+                if (referenced == null) continue;
+                if (key(schema, tableName).equals(key(referenced.schema, referenced.table))) continue;
+                if (!typesCompatible(str(column.get("typeName")), referenced.typeName)) continue;
+
+                Map<String, Object> edge = new LinkedHashMap<>();
+                edge.put("relationshipType", "inferred");
+                edge.put("fkName", "inferred_" + tableName + "_" + columnName + "_to_" + referenced.table);
+                edge.put("fromSchema", schema);
+                edge.put("fromTable", tableName);
+                edge.put("fromColumns", List.of(columnName));
+                edge.put("toSchema", referenced.schema);
+                edge.put("toTable", referenced.table);
+                edge.put("toColumns", List.of(referenced.column));
+                edge.put("confidence", confidence(columnName, referenced));
+                edge.put("reason", "Column name matches target table name plus _id and data types are compatible");
+                if (!realRelationshipKeys.contains(edgeKey(edge)) && inferredKeys.add(edgeKey(edge))) {
+                    inferred.add(edge);
+                }
+            }
+        }
+        return inferred;
+    }
+
+    private List<ReferencedColumn> candidateReferencedColumns(Map<String, Object> table) {
+        String schema = str(table.get("schema"));
+        String tableName = str(table.get("name"));
+        List<String> primaryKey = stringList(mapValue(table.get("primaryKey")), "columns");
+        List<ReferencedColumn> out = new ArrayList<>();
+        if (primaryKey.size() == 1) {
+            Map<String, Object> column = columnByName(table, primaryKey.get(0));
+            if (!column.isEmpty()) {
+                out.add(new ReferencedColumn(schema, tableName, primaryKey.get(0),
+                        str(column.get("typeName")), normalizeIdentifier(tableName), true));
+                out.add(new ReferencedColumn(schema, tableName, primaryKey.get(0),
+                        str(column.get("typeName")), singular(normalizeIdentifier(tableName)), true));
+            }
+        }
+        for (Map<String, Object> unique : mapList(table.get("uniqueConstraints"))) {
+            List<String> columns = stringList(unique, "columns");
+            if (columns.size() != 1) continue;
+            Map<String, Object> column = columnByName(table, columns.get(0));
+            if (column.isEmpty()) continue;
+            out.add(new ReferencedColumn(schema, tableName, columns.get(0),
+                    str(column.get("typeName")), normalizeIdentifier(tableName), false));
+            out.add(new ReferencedColumn(schema, tableName, columns.get(0),
+                    str(column.get("typeName")), singular(normalizeIdentifier(tableName)), false));
+        }
+        return out;
+    }
+
+    private Map<String, Object> columnByName(Map<String, Object> table, String columnName) {
+        for (Map<String, Object> column : mapList(table.get("columns"))) {
+            if (columnName.equalsIgnoreCase(str(column.get("name")))) {
+                return column;
+            }
+        }
+        return Map.of();
+    }
+
+    private boolean isKnownKeyColumn(Map<String, Object> table, String columnName) {
+        if (stringList(mapValue(table.get("primaryKey")), "columns").stream()
+                .anyMatch(c -> c.equalsIgnoreCase(columnName))) {
+            return true;
+        }
+        for (Map<String, Object> fk : mapList(table.get("foreignKeys"))) {
+            if (stringList(fk, "columns").stream().anyMatch(c -> c.equalsIgnoreCase(columnName))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String referenceNameFromColumn(String columnName) {
+        String normalized = normalizeIdentifier(columnName);
+        if (!normalized.endsWith("_id") || normalized.length() <= 3) return null;
+        return normalized.substring(0, normalized.length() - 3);
+    }
+
+    private double confidence(String columnName, ReferencedColumn referenced) {
+        String stem = referenceNameFromColumn(columnName);
+        double score = 0.70;
+        if (referenced.primaryKey) score += 0.15;
+        if (stem != null && stem.equals(singular(normalizeIdentifier(referenced.table)))) score += 0.10;
+        return Math.min(0.95, score);
+    }
+
+    private boolean typesCompatible(String leftType, String rightType) {
+        if (leftType == null || rightType == null) return true;
+        String left = typeFamily(leftType);
+        String right = typeFamily(rightType);
+        return left.equals(right);
+    }
+
+    private String typeFamily(String typeName) {
+        String t = typeName.toLowerCase(Locale.ROOT);
+        if (t.contains("int") || t.contains("number") || t.contains("numeric")
+                || t.contains("decimal") || t.contains("serial")) {
+            return "numeric";
+        }
+        if (t.contains("char") || t.contains("text") || t.contains("clob") || t.contains("uuid")) {
+            return "text";
+        }
+        if (t.contains("date") || t.contains("time")) {
+            return "temporal";
+        }
+        return t;
+    }
+
+    private String normalizeIdentifier(String value) {
+        if (value == null) return "";
+        return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_")
+                .replaceAll("^_+", "").replaceAll("_+$", "");
+    }
+
+    private String singular(String value) {
+        if (value == null || value.length() < 2) return value;
+        if (value.endsWith("ies") && value.length() > 3) {
+            return value.substring(0, value.length() - 3) + "y";
+        }
+        if (value.endsWith("ses") && value.length() > 3) {
+            return value.substring(0, value.length() - 2);
+        }
+        if (value.endsWith("s") && !value.endsWith("ss")) {
+            return value.substring(0, value.length() - 1);
+        }
+        return value;
     }
 
     private void addUnique(List<Map<String, Object>> target, Set<String> seen, Map<String, Object> edge) {
@@ -442,35 +661,47 @@ public class SchemaContextService {
     private record PathState(String node, List<Map<String, Object>> edges, Set<String> visited) {
     }
 
-    private record GraphEdge(String direction, String fkName,
+    private record ReferencedColumn(String schema, String table, String column, String typeName,
+                                    String matchName, boolean primaryKey) {
+    }
+
+    private record GraphEdge(String direction, String relationshipType, String fkName,
                              String fromSchema, String fromTable, Object fromColumns,
-                             String toSchema, String toTable, Object toColumns) {
+                             String toSchema, String toTable, Object toColumns,
+                             Object confidence, Object reason) {
 
         static GraphEdge forward(Map<String, Object> edge) {
             return new GraphEdge("forward",
+                    strStatic(edge.get("relationshipType")),
                     strStatic(edge.get("fkName")),
                     strStatic(edge.get("fromSchema")),
                     strStatic(edge.get("fromTable")),
                     edge.get("fromColumns"),
                     strStatic(edge.get("toSchema")),
                     strStatic(edge.get("toTable")),
-                    edge.get("toColumns"));
+                    edge.get("toColumns"),
+                    edge.get("confidence"),
+                    edge.get("reason"));
         }
 
         static GraphEdge reverse(Map<String, Object> edge) {
             return new GraphEdge("reverse",
+                    strStatic(edge.get("relationshipType")),
                     strStatic(edge.get("fkName")),
                     strStatic(edge.get("toSchema")),
                     strStatic(edge.get("toTable")),
                     edge.get("toColumns"),
                     strStatic(edge.get("fromSchema")),
                     strStatic(edge.get("fromTable")),
-                    edge.get("fromColumns"));
+                    edge.get("fromColumns"),
+                    edge.get("confidence"),
+                    edge.get("reason"));
         }
 
         Map<String, Object> asMap() {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("direction", direction);
+            out.put("relationshipType", relationshipType);
             out.put("fkName", fkName);
             out.put("fromSchema", fromSchema);
             out.put("fromTable", fromTable);
@@ -479,6 +710,8 @@ public class SchemaContextService {
             out.put("toTable", toTable);
             out.put("toColumns", toColumns);
             out.put("joinCondition", joinCondition());
+            if (confidence != null) out.put("confidence", confidence);
+            if (reason != null) out.put("reason", reason);
             return out;
         }
 

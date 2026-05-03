@@ -41,7 +41,7 @@ class PostgresIntegrationStatsToolsTest extends AbstractPostgresToolsIntegration
     void unusedIndexesReturnsCandidates() {
         ObjectNode unused = object(statsTools().unusedIndexes("public", null));
         assertThat(field(unused, "supported").asBoolean()).isTrue();
-        assertThat(findByField((ArrayNode) field(unused, "indexes"), "index", "idx_customers_name"))
+        assertThat(findByField((ArrayNode) field(unused, "indexes"), "index", "idx_customer_notes_note"))
                 .isNotNull();
     }
 }

@@ -29,11 +29,12 @@ public class SchemaContextTools {
             @McpToolParam(description = "Table/view name pattern with JDBC wildcards, e.g. '%customer%' (optional)", required = false) String namePattern,
             @McpToolParam(description = "Include views and materialized views. Default true.", required = false) Boolean includeViews,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
+            @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred,
             @McpToolParam(description = "Maximum tables/views to describe. Default 50, capped at 300.", required = false) Integer maxTables
     ) {
         try {
             Map<String, Object> result = schemaContext.schemaOverview(
-                    schema, namePattern, includeViews, includeStats, maxTables);
+                    schema, namePattern, includeViews, includeStats, includeInferred, maxTables);
             return MetadataTools.JsonWriter.write(result);
         } catch (SQLException e) {
             return "SQL error: " + e.getMessage();
@@ -51,11 +52,13 @@ public class SchemaContextTools {
             @McpToolParam(description = "Root table or view name") String table,
             @McpToolParam(description = "FK traversal depth. Default 1, capped at 4.", required = false) Integer depth,
             @McpToolParam(description = "Include incoming references from child tables. Default true.", required = false) Boolean includeIncoming,
-            @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats
+            @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
+            @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred,
+            @McpToolParam(description = "Maximum schema tables to scan for inferred relationships. Default 300, capped at 300.", required = false) Integer maxTables
     ) {
         try {
             Map<String, Object> result = schemaContext.tableContext(
-                    schema, table, depth, includeIncoming, includeStats);
+                    schema, table, depth, includeIncoming, includeStats, includeInferred, maxTables);
             return MetadataTools.JsonWriter.write(result);
         } catch (SQLException e) {
             return "SQL error: " + e.getMessage();
@@ -75,11 +78,12 @@ public class SchemaContextTools {
             @McpToolParam(description = "Target table name") String toTable,
             @McpToolParam(description = "Maximum FK hops. Default 4, capped at 4.", required = false) Integer maxDepth,
             @McpToolParam(description = "Maximum paths to return. Default 5, capped at 25.", required = false) Integer maxPaths,
-            @McpToolParam(description = "Maximum schema tables to scan. Default 300, capped at 300.", required = false) Integer maxTables
+            @McpToolParam(description = "Maximum schema tables to scan. Default 300, capped at 300.", required = false) Integer maxTables,
+            @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred
     ) {
         try {
             Map<String, Object> result = schemaContext.findJoinPaths(
-                    fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, maxTables);
+                    fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, maxTables, includeInferred);
             return MetadataTools.JsonWriter.write(result);
         } catch (SQLException e) {
             return "SQL error: " + e.getMessage();

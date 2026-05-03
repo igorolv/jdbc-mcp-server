@@ -86,6 +86,8 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
             statement.execute("CREATE TABLE line_items (id SERIAL PRIMARY KEY, order_id INT REFERENCES orders(id), sku TEXT, qty INT)");
             statement.execute("CREATE INDEX idx_li_order_sku ON line_items(order_id, sku)");
             statement.execute("CREATE INDEX idx_li_order ON line_items(order_id)");
+            statement.execute("CREATE TABLE customer_notes (id SERIAL PRIMARY KEY, customer_id INT NOT NULL, note TEXT)");
+            statement.execute("CREATE INDEX idx_customer_notes_note ON customer_notes(note)");
             statement.execute("CREATE TABLE events (" +
                     "id SERIAL PRIMARY KEY, " +
                     "status TEXT NOT NULL, " +
@@ -104,6 +106,7 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
             statement.execute("INSERT INTO customers(name, email) VALUES ('Alice', 'a@example.com'), ('Bob', 'b@example.com')");
             statement.execute("INSERT INTO orders(customer_id, total) VALUES (1, 10.5), (1, 20.0), (2, 5.0)");
             statement.execute("INSERT INTO line_items(order_id, sku, qty) VALUES (1, 'a', 1), (1, 'b', 2), (2, 'a', 3)");
+            statement.execute("INSERT INTO customer_notes(customer_id, note) VALUES (1, 'vip'), (2, 'trial')");
             statement.execute("INSERT INTO events(status, category, amount) " +
                     "SELECT 'OK', CASE WHEN g % 2 = 0 THEN 'A' ELSE 'B' END, (g * 1.5)::numeric(10,2) " +
                     "FROM generate_series(1, 90) g");
@@ -119,6 +122,7 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
             statement.execute("ANALYZE customers");
             statement.execute("ANALYZE orders");
             statement.execute("ANALYZE line_items");
+            statement.execute("ANALYZE customer_notes");
             statement.execute("ANALYZE events");
         }
     }

@@ -14,7 +14,7 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
     @Test
     void returnsCompactSchemaOverview() {
         ObjectNode overview = object(schemaContextTools().schemaOverview(
-                schema(), "%", true, false, 20));
+                schema(), "%", true, false, true, 20));
 
         assertThat(field(overview, "truncated").asBoolean()).isFalse();
         ArrayNode tables = (ArrayNode) field(overview, "tables");
@@ -23,12 +23,15 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
         ArrayNode relationships = (ArrayNode) field(overview, "relationships");
         assertThat(relationship(relationships, "ORDERS", "CUSTOMERS")).isNotNull();
+        JsonNode inferred = relationship(relationships, "CUSTOMER_NOTES", "CUSTOMERS");
+        assertThat(inferred).isNotNull();
+        assertThat(field(inferred, "relationshipType").asText()).isEqualTo("inferred");
     }
 
     @Test
     void returnsTableNeighborhood() {
         ObjectNode context = object(schemaContextTools().tableContext(
-                schema(), "ORDERS", 1, true, false));
+                schema(), "ORDERS", 1, true, false, true, 100));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         assertThat(findByField(tables, "name", "ORDERS")).isNotNull();
@@ -43,7 +46,7 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
     @Test
     void findsFkJoinPath() {
         ObjectNode result = object(schemaContextTools().findJoinPaths(
-                schema(), "LINE_ITEMS", schema(), "CUSTOMERS", 4, 5, 100));
+                schema(), "LINE_ITEMS", schema(), "CUSTOMERS", 4, 5, 100, true));
 
         assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
         ArrayNode paths = (ArrayNode) field(result, "paths");
@@ -51,6 +54,19 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
         assertThat(firstPath).hasSize(2);
         assertThat(field(firstPath.get(0), "joinCondition").asText()).contains("LINE_ITEMS.ORDER_ID");
         assertThat(field(firstPath.get(1), "joinCondition").asText()).contains("ORDERS.CUSTOMER_ID");
+    }
+
+    @Test
+    void findsInferredJoinPathWithoutDeclaredFk() {
+        ObjectNode result = object(schemaContextTools().findJoinPaths(
+                schema(), "CUSTOMER_NOTES", schema(), "CUSTOMERS", 2, 5, 100, true));
+
+        assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
+        ArrayNode paths = (ArrayNode) field(result, "paths");
+        ArrayNode firstPath = (ArrayNode) paths.get(0);
+        assertThat(firstPath).hasSize(1);
+        assertThat(field(firstPath.get(0), "relationshipType").asText()).isEqualTo("inferred");
+        assertThat(field(firstPath.get(0), "joinCondition").asText()).contains("CUSTOMER_NOTES.CUSTOMER_ID");
     }
 
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {
