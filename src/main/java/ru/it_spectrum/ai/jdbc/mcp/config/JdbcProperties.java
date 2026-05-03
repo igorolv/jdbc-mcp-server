@@ -18,6 +18,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param fetchSize           JDBC fetch size hint
  * @param readonlyGuard       strict (default) — reject anything that does not start with SELECT/WITH/EXPLAIN;
  *                            off — no client-side guard (drivers' readOnly flag still applied)
+ * @param metadataCacheTtlSeconds in-memory metadata snapshot TTL in seconds (default 300, 0 disables)
+ * @param metadataCacheMaxEntries hard cap on cached entries (defensive — clears the cache if exceeded)
  */
 @ConfigurationProperties(prefix = "jdbc")
 public record JdbcProperties(
@@ -28,9 +30,15 @@ public record JdbcProperties(
         int queryTimeoutSeconds,
         int maxRows,
         int fetchSize,
-        String readonlyGuard
+        String readonlyGuard,
+        int metadataCacheTtlSeconds,
+        int metadataCacheMaxEntries
 ) {
     public boolean guardEnabled() {
         return readonlyGuard == null || !"off".equalsIgnoreCase(readonlyGuard.trim());
+    }
+
+    public boolean metadataCacheEnabled() {
+        return metadataCacheTtlSeconds > 0;
     }
 }

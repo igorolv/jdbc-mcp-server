@@ -11,6 +11,7 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
@@ -22,6 +23,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SampleTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.SnapshotTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
 
 import javax.sql.DataSource;
@@ -49,12 +51,13 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
 
             JdbcProperties properties = new JdbcProperties(
                     PG.getJdbcUrl(), PG.getUsername(), PG.getPassword(),
-                    "public", 10, 1000, 100, "strict");
+                    "public", 10, 1000, 100, "strict", 300, 2000);
             DataSource dataSource = buildPool(properties);
             SqlDialect dialect = new PostgresDialect();
             ReadOnlyGuard guard = new ReadOnlyGuard(properties);
             SqlExecutor executor = new SqlExecutor(dataSource, dialect, properties, guard);
-            MetadataService metadata = new MetadataService(executor, dialect, properties);
+            SchemaSnapshotCache cache = new SchemaSnapshotCache(properties);
+            MetadataService metadata = new MetadataService(executor, dialect, properties, cache);
             StatsService stats = new StatsService(executor, dialect, properties);
             SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect);
             DistributionService distribution = new DistributionService(
@@ -69,7 +72,8 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
                     new StatsTools(stats),
                     new SchemaContextTools(schemaContext),
                     new DistributionTools(distribution),
-                    new BenchmarkTools(benchmarks)
+                    new BenchmarkTools(benchmarks),
+                    new SnapshotTools(metadata, cache)
             );
         } catch (Exception e) {
             throw new ExceptionInInitializerError(e);

@@ -84,7 +84,7 @@ class LiveOracleIntegrationTest {
 
         JdbcProperties props = new JdbcProperties(
                 url, username, password,
-                schema, 30, 1000, 100, "strict");
+                schema, 30, 1000, 100, "strict", 300, 2000);
         DataSource ds = buildPool(props);
         dialect = new OracleDialect();
         ReadOnlyGuard guard = new ReadOnlyGuard(props);

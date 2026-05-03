@@ -1,10 +1,16 @@
 # JDBC MCP Server — Setup Guide for AI Agents
 
 This is a local MCP server that provides read-only access to PostgreSQL and Oracle databases.
-It exposes 24 read-only tools for executing SELECT queries, obtaining execution plans,
-exploring database schema, tables, columns, indexes, foreign keys, views, routines and sequences,
-gathering object-level statistics that help with query optimisation, and analysing column-level
-distribution, null ratios, predicate selectivity and join cardinality estimates.
+It exposes 40 read-only tools across eight groups:
+
+- **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarised plans.
+- **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
+- **Metadata** — schemas, tables, columns, indexes, FKs, constraints, triggers, views, routines, sequences, object search.
+- **Data exploration** — sample rows, basic column stats.
+- **Selectivity / distribution** — top-N, percentiles, null ratios, planner-only predicate and join estimates.
+- **Object statistics** — table/index size and activity, unused/redundant indexes, FK index coverage.
+- **Schema context** — high-level snapshots, table neighbourhoods, FK join paths, schema lint, ERD/DOT export.
+- **Snapshot / cache** — in-memory metadata snapshot with TTL plus refresh / inspect / invalidate tools.
 
 The server communicates over stdio (stdin/stdout). Both PostgreSQL and Oracle JDBC drivers
 are bundled inside the fat jar.
@@ -29,6 +35,11 @@ Optionally:
 
 - **Default schema** for metadata tools (`JDBC_DEFAULT_SCHEMA`). If omitted, the server uses the
   connection's current schema. On Oracle, this defaults to the connecting user's schema (UPPER CASE).
+- **Per-statement timeout** — `JDBC_QUERY_TIMEOUT_SECONDS` (default 30, `0` disables).
+- **Row cap** — `JDBC_MAX_ROWS` (default 1000); responses include `truncated: true` when hit.
+- **Read-only guard** — `JDBC_READONLY_GUARD` (`strict` default, `off` disables the client-side check; connection-level read-only flags stay on).
+- **Metadata snapshot cache** — `JDBC_METADATA_CACHE_TTL_SECONDS` (default 300, `0` disables) and
+  `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000). Caches structural metadata only; live stats are not cached.
 
 ## Step 2: Build
 
@@ -101,7 +112,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **24 read-only MCP tools**.
+The server exposes **40 read-only MCP tools**.
 
 ### Query tools
 
@@ -112,13 +123,23 @@ The server exposes **24 read-only MCP tools**.
 | `analyzePlan` | Compact, LLM-friendly summary of the execution plan: top-cost nodes, full scans on large relations, estimation errors (planner vs. reality — requires `analyze=true` on PG), risky nested loops with large outer input, disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (static only, `analyze` ignored). Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
 | `validateQuery` | Validate a statement without running it — read-only guard + driver-side `prepareStatement`. Params: `sql`, `params` (`?`) or `namedParams` (`:name`) |
 
+### Benchmark tools
+
+| Tool | Description |
+|---|---|
+| `benchmarkQuery` | Run the query `coldRuns + warmRuns` times (defaults 1 + 3) and report wall-clock min/median/max for the warm runs (cold runs reported separately). `limit` and `timeoutSeconds` are **required** — unbounded queries are rejected. Returns the size of the last result (row count, columns, truncated flag), not the rows. Params: `sql`, `params` / `namedParams`, `limit`, `timeoutSeconds`, `coldRuns`, `warmRuns` |
+| `timedQuery` | Same shape as `executeQuery` plus `elapsed_ms` wall-clock. On PostgreSQL also attaches a before/after diff from `pg_stat_statements` (per `queryid`: added `calls`, `total_exec_time_ms`, `rows`, `shared_blks_hit/read`). Requires the extension; if missing returns `pg_stat_statements.available: false` |
+
 ### Metadata tools
 
 | Tool | Description |
 |---|---|
 | `listSchemas` | List all schemas. System schemas (`pg_catalog`, `information_schema`, `SYS`, ...) are hidden unless `includeSystem=true` |
 | `listTables` | List tables and views in a schema. Params: `schema`, `namePattern` (JDBC wildcards `%` / `_`), `types` (comma-separated, e.g. `TABLE,VIEW,MATERIALIZED VIEW`) |
-| `describeTable` | Full table/view description in a single call: columns (name, type, size, nullable, default, remarks), primary key, unique constraints, indexes, outgoing foreign keys, tables referencing this one. Params: `schema`, `table` |
+| `describeTable` | Full table/view description in a single call: columns (name, type, size, nullable, default, remarks), primary key, unique constraints, indexes, outgoing foreign keys, tables referencing this one, constraints, allowed-values map (parsed from CHECK), triggers (compact). Params: `schema`, `table` |
+| `listTableConstraints` | Unified constraint list for a table — primary key, unique, foreign keys, check (with `definition` so allowed values and business invariants are visible without sampling). Params: `schema`, `table` |
+| `listTriggers` | Triggers on a table (name, timing, events, enabled). `includeDefinition=true` adds the trigger body. Params: `schema`, `table`, `includeDefinition` |
+| `getTriggerDefinition` | Trigger body for one named trigger. Params: `schema`, `table`, `trigger` |
 | `getViewDefinition` | Return the SQL definition of a view / materialized view. Params: `schema`, `name` |
 | `listRoutines` | List functions, procedures, packages. Params: `schema`, `namePattern` |
 | `getRoutineDefinition` | Return the source code of a routine. On Oracle this concatenates lines from `ALL_SOURCE`. Params: `schema`, `name` |
@@ -156,6 +177,35 @@ a partial index, or rewrite a join.
 | `redundantIndexes` | Indexes whose leading columns are a strict prefix of another index on the same table — the shorter one is redundant. Skips unique indexes; requires matching index type. Params: `schema`, `table` (optional) |
 | `fkIndexCoverage` | Foreign keys on the child side that lack a supporting index. A classic cause of slow DELETE / UPDATE cascades. Returns a `suggested_index_columns` list ready for `CREATE INDEX`. Params: `schema`, `table` (optional — omit to scan the whole schema) |
 
+### Schema context tools (high-level, for SQL authoring)
+
+These compose lower-level metadata into ready-to-consume packets. Prefer them over manually
+chaining `listTables` → `describeTable` → `sampleRows`. Traversal sizes are capped by default to
+keep the response compact; raise the caps when needed.
+
+| Tool | Description |
+|---|---|
+| `schemaOverview` | Compact schema snapshot: tables/views, columns, PK/FK, indexes, relationship edges. Params: `schema`, `namePattern`, `includeViews`, `includeStats`, `includeInferred` (`*_id` heuristic), `maxTables` (default 50, cap 300) |
+| `tableContext` | Neighbourhood around one table: the table, FK parents, optionally child tables and edges. Params: `schema`, `table`, `depth` (default 1, cap 4), `includeIncoming`, `includeStats`, `includeInferred` |
+| `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `maxTables`, `includeInferred` |
+| `schemaBrief` | Plain-text synopsis: hub tables, fact/detail, lookup/reference, key relationships, enum-like CHECK columns, suspicious implicit joins. Use when full JSON would be too verbose. Params: `schema`, `focus`, `maxTables`, `includeInferred` |
+| `schemaGraph` | Relationship-graph metrics: nodes with in/out degree, central tables, isolated tables, components, cycle hints; optional shortest path. Params: `schema`, `maxTables`, `includeInferred`, `fromTable`, `toTable`, `maxDepth` |
+| `schemaLint` | Lint audit: missing PK, FK without index, FK type mismatch, inferred-but-undeclared relationships, nullable unique, status/type without CHECK, orphan `*_id`, missing remarks, isolated and wide tables. Params: `schema`, `table`, `checks` (allow-list), `maxTables`, `maxFindings`, `includeInferred` |
+| `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables`, `includeInferred` |
+| `schemaGraphDot` | DOT/Graphviz ERD: nodes are tables with all columns and types (PK marked 🔑, FK with →); declared FK edges are solid, inferred `*_id` edges are dashed grey. Params: `schema`, `tables` (optional filter), `includeInferred` |
+
+### Snapshot / metadata cache tools
+
+Structural metadata (columns, keys, indexes, FKs, constraints, triggers) is cached in memory with
+a TTL set by `JDBC_METADATA_CACHE_TTL_SECONDS` (default 300, `0` disables). Live statistics are
+not cached. Hard cap on entries: `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000).
+
+| Tool | Description |
+|---|---|
+| `getSchemaSnapshot` | Meta-info about the cache (TTL, hit/miss counters, cached table names per schema). Does not return full table descriptions — use `schemaOverview` for that. Params: `schema` (optional filter) |
+| `refreshSchemaSnapshot` | Invalidate and eagerly re-warm the cache. With `table` — only that table; with `schema` — all tables in the schema; with neither — full clear (no warm). Params: `schema`, `table`, `maxTables` (default 300) |
+| `invalidateSnapshot` | Drop cached entries without re-warming. Params: `schema`, `table` |
+
 All tools are **read-only**. Any attempt to run a non-SELECT statement is rejected by the
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
 read-only, PostgreSQL uses `default_transaction_read_only=on`, and Oracle uses
@@ -165,12 +215,16 @@ read-only, PostgreSQL uses `default_transaction_read_only=on`, and Oracle uses
 
 Recommended flow when the user asks a data question:
 
-1. If the agent does not already know the schema, call `listSchemas` and `listTables`.
-2. Call `describeTable` on each table involved — one call returns everything needed
-   (columns, PK, FKs, indexes).
+1. If the agent does not already know the schema, prefer the high-level context tools over
+   manual chaining. `queryContext` (natural-language terms or explicit table list) returns the
+   tables, columns, constraints, allowed values, relationships and join paths in one call.
+   Fall back to `schemaOverview` / `tableContext` / `schemaBrief` for broader exploration, and
+   to `listSchemas` + `listTables` only when those are not enough.
+2. If a single table is the focus, call `describeTable` — one call returns columns, PK, FKs,
+   indexes, constraints, allowed values from CHECKs, and triggers.
 3. Optionally call `sampleRows` to peek at actual data shape.
 4. Write the SQL and call `validateQuery` with the same `params` / `namedParams` you intend to use for execution — fix errors without wasting executions.
-5. Call `explainQuery` if the query might be expensive.
+5. Call `analyzePlan` (compact LLM-friendly summary) or `explainQuery` (full textual plan) if the query might be expensive.
 6. Call `executeQuery`. Use `limit` to keep the response small.
 7. If the response has `"truncated": true`, either narrow the query or raise `limit`.
 
@@ -185,15 +239,30 @@ Recommended flow when the user asks to optimise / audit queries or schema:
 4. Call `redundantIndexes` — safe drops that shrink storage and write overhead.
 5. Call `unusedIndexes` (PostgreSQL) — indexes that have had zero scans since the
    last stats reset; treat as a strong hint only if the workload has run long enough.
-6. For a specific slow query, combine `analyzePlan` (compact summary of expensive nodes,
+6. Call `schemaLint` for a broader audit (missing PK, nullable unique, FK type mismatch,
+   inferred-but-undeclared relationships, isolated and wide tables, etc.).
+7. For a specific slow query, combine `analyzePlan` (compact summary of expensive nodes,
    full scans, estimation errors, nested-loop risks, sort spills) + `indexStats` on the
    relevant tables and propose concrete `CREATE INDEX` / rewrite actions. Fall back to
    `explainQuery` only when you need the full textual plan.
-7. Before proposing a composite index, call `estimateSelectivity` for each candidate
+8. Before proposing a composite index, call `estimateSelectivity` for each candidate
    predicate on the involved table — place the most selective column first. Use
-   `columnDistribution` / `nullRatio` on the same columns to detect skew or high null
-   ratio (strong signals for a partial index). For join-heavy queries, `joinCardinality`
-   predicts the output size without executing the join.
+   `columnDistribution` / `nullRatio` / `columnHistogram` on the same columns to detect
+   skew or high null ratio (strong signals for a partial index). For join-heavy queries,
+   `joinCardinality` predicts the output size without executing the join.
+9. To compare rewrites, use `benchmarkQuery` (cold + warm wall-clock) or `timedQuery`
+   (`pg_stat_statements` deltas on PostgreSQL).
+
+Notes on the metadata snapshot cache:
+
+- Structural metadata is cached in memory with a TTL (default 300 s; set
+  `JDBC_METADATA_CACHE_TTL_SECONDS=0` to disable). Repeated `schemaOverview`,
+  `tableContext`, `findJoinPaths`, `schemaLint`, `schemaGraph`, `queryContext` and
+  `describeTable` calls are served from the cache.
+- Live counters (table/index/column stats, samples, plans) are **never** cached.
+- If an external DDL changes the schema during a session, call `refreshSchemaSnapshot`
+  (warms the cache) or `invalidateSnapshot` (drops it) to force a re-read. Use
+  `getSchemaSnapshot` to inspect what is currently cached and the hit/miss counters.
 
 ## Troubleshooting
 

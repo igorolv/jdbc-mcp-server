@@ -11,6 +11,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SampleTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.SnapshotTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
 
 import java.util.ArrayList;
@@ -54,6 +55,10 @@ abstract class AbstractToolsIntegrationTest {
 
     protected final BenchmarkTools benchmarkTools() {
         return context().benchmarkTools();
+    }
+
+    protected final SnapshotTools snapshotTools() {
+        return context().snapshotTools();
     }
 
     protected final ObjectNode object(String json) {

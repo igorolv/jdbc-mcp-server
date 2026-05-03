@@ -31,11 +31,22 @@ public class MetadataService {
     private final SqlExecutor executor;
     private final SqlDialect dialect;
     private final JdbcProperties properties;
+    private final SchemaSnapshotCache cache;
 
     public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties) {
+        this(executor, dialect, properties, new SchemaSnapshotCache(properties));
+    }
+
+    public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties,
+                           SchemaSnapshotCache cache) {
         this.executor = executor;
         this.dialect = dialect;
         this.properties = properties;
+        this.cache = cache;
+    }
+
+    public SchemaSnapshotCache cache() {
+        return cache;
     }
 
     // ---------- Schemas / tables ----------
@@ -62,6 +73,12 @@ public class MetadataService {
         String[] effectiveTypes = types != null && types.length > 0
                 ? types
                 : new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"};
+        return cache.listTables(effectiveSchema, namePattern, effectiveTypes,
+                () -> listTablesUncached(effectiveSchema, namePattern, effectiveTypes));
+    }
+
+    private List<Map<String, Object>> listTablesUncached(String effectiveSchema, String namePattern,
+                                                         String[] effectiveTypes) throws SQLException {
         return executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
             List<Map<String, Object>> out = new ArrayList<>();
@@ -90,6 +107,11 @@ public class MetadataService {
             throw new IllegalArgumentException("table must be provided");
         }
         String effectiveSchema = resolveSchema(schema);
+        return cache.describeTable(effectiveSchema, table,
+                () -> describeTableUncached(effectiveSchema, table));
+    }
+
+    private Map<String, Object> describeTableUncached(String effectiveSchema, String table) throws SQLException {
         return executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
             Map<String, Object> result = new LinkedHashMap<>();

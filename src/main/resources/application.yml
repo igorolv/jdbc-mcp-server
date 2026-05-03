@@ -24,3 +24,5 @@ jdbc:
   max-rows: ${JDBC_MAX_ROWS:1000}
   fetch-size: ${JDBC_FETCH_SIZE:500}
   readonly-guard: ${JDBC_READONLY_GUARD:strict}
+  metadata-cache-ttl-seconds: ${JDBC_METADATA_CACHE_TTL_SECONDS:300}
+  metadata-cache-max-entries: ${JDBC_METADATA_CACHE_MAX_ENTRIES:2000}
