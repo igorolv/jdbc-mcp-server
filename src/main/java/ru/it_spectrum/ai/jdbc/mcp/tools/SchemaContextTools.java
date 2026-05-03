@@ -178,4 +178,22 @@ public class SchemaContextTools {
             return "Invalid argument: " + e.getMessage();
         }
     }
+
+    @McpTool(description = "Return a DOT/Graphviz representation of the schema relationship graph. " +
+            "Nodes are tables with all columns and types (PK marked with 🔑, FK with →), " +
+            "edges include join conditions. Declared FK edges use solid lines, inferred *_id edges use dashed gray lines. " +
+            "Use this to visualize the ERD in an external Graphviz tool.")
+    public String schemaGraphDot(
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Comma-separated table names to include, e.g. 'customers,orders' (optional — all tables if omitted)", required = false) String tables,
+            @McpToolParam(description = "Include inferred relationships based on *_id naming. Default true.", required = false) Boolean includeInferred
+    ) {
+        try {
+            return schemaContext.schemaGraphDot(schema, tables, includeInferred);
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Invalid argument: " + e.getMessage();
+        }
+    }
 }

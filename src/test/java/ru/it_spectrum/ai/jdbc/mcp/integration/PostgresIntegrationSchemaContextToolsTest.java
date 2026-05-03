@@ -139,6 +139,30 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
         assertThat(field(joinPaths.get(0), "found").asBoolean()).isTrue();
     }
 
+    @Test
+    void returnsSchemaGraphDot() {
+        String dot = schemaContextTools().schemaGraphDot("public", null, true);
+
+        assertThat(dot).startsWith("digraph");
+        assertThat(dot).contains("customers");
+        assertThat(dot).contains("orders");
+        assertThat(dot).contains("->");
+        assertThat(dot).contains("style=solid");
+        assertThat(dot).contains("style=dashed");
+        assertThat(dot).contains("orders.customer_id = customers.id");
+    }
+
+    @Test
+    void returnsSchemaGraphDotFiltered() {
+        String dot = schemaContextTools().schemaGraphDot("public", "customers,orders", false);
+
+        assertThat(dot).startsWith("digraph");
+        assertThat(dot).contains("customers");
+        assertThat(dot).contains("orders");
+        assertThat(dot).doesNotContain("line_items");
+        assertThat(dot).doesNotContain("style=dashed");
+    }
+
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {
         for (JsonNode edge : relationships) {
             if (fromTable.equals(field(edge, "fromTable").asText())

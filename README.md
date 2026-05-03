@@ -85,6 +85,7 @@
 | `schemaGraph` | Метрики графа связей схемы: узлы с входящей/исходящей степенью и классификацией, рёбра, центральные таблицы, изолированные таблицы, компоненты связности, намёки на циклы. Опционально — кратчайший путь между двумя таблицами |
 | `schemaLint` | Линт-аудит схемы: отсутствующие PK, FK без индексов, несоответствие типов FK, inferred-но-не-declared связи, nullable unique, status/type без CHECK, сиротские `*_id`, отсутствующие remarks, изолированные таблицы, широкие таблицы. Набор проверок настраивается через `checks` |
 | `queryContext` | Построение компактного контекста для написания SQL по поисковым терминам и/или явно указанным таблицам. Находит релевантные таблицы и колонки, включает ограничения и allowed values, связи и пути JOIN между выбранными таблицами, опционально — примеры строк (до 3 на таблицу) |
+| `schemaGraphDot` | DOT/Graphviz-представление графа связей схемы. Узлы — таблицы со всеми колонками и типами (PK помечены 🔑, FK — →), рёбра — с условиями JOIN. Связи declared FK — сплошные линии, inferred `*_id` — пунктирные серые. Параметры: `schema`, `tables` (опциональный фильтр через запятую), `includeInferred` |
 
 ### Исследование данных
 
@@ -348,7 +349,7 @@ JDBC_PASSWORD=secret \
 │       ├── DistributionTools.java      — columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality
 │       ├── StatsTools.java             — tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 │       ├── BenchmarkTools.java         — benchmarkQuery, timedQuery
-│       └── SchemaContextTools.java     — schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext
+│       └── SchemaContextTools.java     — schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext, schemaGraphDot
 └── src/main/resources/
     ├── application.yml                 — MCP stdio + JDBC properties
     └── logback-spring.xml              — логи в stderr (stdout занят MCP)
