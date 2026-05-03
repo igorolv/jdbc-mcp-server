@@ -10,7 +10,8 @@ import java.util.Map;
 /**
  * Database-specific SQL generation and fix-ups. Each concrete implementation knows how to:
  * <ul>
- *     <li>build an {@code EXPLAIN} statement that is read-only (no side effects);</li>
+ *     <li>build an {@code EXPLAIN} statement; PostgreSQL returns rows directly, while Oracle
+ *         writes a static plan into {@code PLAN_TABLE} and then reads it back;</li>
  *     <li>fetch view / routine / sequence definitions via engine-specific catalogs;</li>
  *     <li>apply pagination to a user query (for {@code sampleRows} and output truncation);</li>
  *     <li>prepare a connection for read-only usage (typically {@code setReadOnly(true)}).</li>
@@ -43,11 +44,27 @@ public interface SqlDialect {
     String buildExplain(String sql, boolean analyze);
 
     /**
+     * Build an EXPLAIN statement using a caller-provided statement identifier when the dialect
+     * stores plans out-of-band. Dialects that return the plan directly can ignore the identifier.
+     */
+    default String buildExplain(String sql, boolean analyze, String statementId) {
+        return buildExplain(sql, analyze);
+    }
+
+    /**
      * Some dialects (Oracle) execute EXPLAIN in two steps: the {@code buildExplain()}
      * statement populates a plan table, then this statement reads the result. For PostgreSQL
      * this returns {@code null} — the EXPLAIN itself produces the rows.
      */
     String explainDisplayQuery();
+
+    /**
+     * Display query for an EXPLAIN statement scoped by {@code statementId}. Dialects that do not
+     * store plans out-of-band can ignore the identifier.
+     */
+    default String explainDisplayQuery(String statementId) {
+        return explainDisplayQuery();
+    }
 
     /**
      * Build an EXPLAIN that yields a <b>machine-readable</b> plan — JSON on PostgreSQL,
@@ -60,12 +77,28 @@ public interface SqlDialect {
     String buildStructuredExplain(String sql, boolean analyze);
 
     /**
+     * Build a machine-readable EXPLAIN using a caller-provided statement identifier when the
+     * dialect stores plans out-of-band.
+     */
+    default String buildStructuredExplain(String sql, boolean analyze, String statementId) {
+        return buildStructuredExplain(sql, analyze);
+    }
+
+    /**
      * Two-step structured EXPLAIN (Oracle): the {@code buildStructuredExplain()} statement
      * populates {@code PLAN_TABLE}; this SELECT returns the typed columns the parser needs.
      * On PostgreSQL returns {@code null} — the FORMAT JSON EXPLAIN itself yields the row.
      */
     default String structuredPlanQuery() {
         return null;
+    }
+
+    /**
+     * Structured plan query scoped by {@code statementId}. Dialects that return structured plans
+     * directly can ignore the identifier.
+     */
+    default String structuredPlanQuery(String statementId) {
+        return structuredPlanQuery();
     }
 
     /** SQL that returns the definition of a view ({@code schema}, {@code name}). */

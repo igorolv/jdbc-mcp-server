@@ -25,6 +25,7 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * MCP tools for executing SELECT queries, getting execution plans and validating SQL.
@@ -114,8 +115,10 @@ public class QueryTools {
             String normalizedSql = normalizeSql(sql);
             guard.check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
-            String explainSql = dialect.buildExplain(normalizedSql, doAnalyze);
-            String displaySql = dialect.explainDisplayQuery();
+            String statementId = newExplainStatementId();
+            String explainSql = dialect.buildExplain(normalizedSql, doAnalyze, statementId);
+            String displaySql = dialect.explainDisplayQuery(statementId);
+            List<Object> displayParams = displaySql == null ? Collections.emptyList() : List.of(statementId);
 
             return executor.withConnection(conn -> {
                 SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
@@ -135,7 +138,7 @@ public class QueryTools {
                 // For PostgreSQL displaySql is null — the EXPLAIN itself yields the plan rows.
                 if (displaySql != null) {
                     runUpdate(conn, preparedExplainSql, preparedParams);
-                    QueryResult planRows = queryNoParams(conn, displaySql);
+                    QueryResult planRows = queryWithParams(conn, displaySql, displayParams);
                     return rowsAsText(planRows);
                 }
                 QueryResult planRows = queryWithParams(conn, preparedExplainSql, preparedParams);
@@ -170,8 +173,10 @@ public class QueryTools {
             String normalizedSql = normalizeSql(sql);
             guard.check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
-            String explainSql = dialect.buildStructuredExplain(normalizedSql, doAnalyze);
-            String displaySql = dialect.structuredPlanQuery();
+            String statementId = newExplainStatementId();
+            String explainSql = dialect.buildStructuredExplain(normalizedSql, doAnalyze, statementId);
+            String displaySql = dialect.structuredPlanQuery(statementId);
+            List<Object> displayParams = displaySql == null ? Collections.emptyList() : List.of(statementId);
 
             ParsedPlan parsed = executor.withConnection(conn -> {
                 SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
@@ -191,7 +196,7 @@ public class QueryTools {
                 if (displaySql != null) {
                     // Oracle: populate PLAN_TABLE, then read the typed columns back.
                     runUpdate(conn, preparedExplainSql, preparedParams);
-                    planRows = queryNoParams(conn, displaySql);
+                    planRows = queryWithParams(conn, displaySql, displayParams);
                 } else {
                     // PostgreSQL: FORMAT JSON EXPLAIN returns one row with the plan document.
                     planRows = queryWithParams(conn, preparedExplainSql, preparedParams);
@@ -390,6 +395,12 @@ public class QueryTools {
             if (v != null) sb.append(v).append('\n');
         }
         return sb.toString();
+    }
+
+    private String newExplainStatementId() {
+        int random = ThreadLocalRandom.current().nextInt(36 * 36 * 36);
+        return "JDBC_MCP_" + Long.toString(System.nanoTime(), 36) + "_"
+                + Integer.toString(random, 36);
     }
 
     // Kept to prevent IDE "unused" warnings; the guard instance is injected so Spring wires it.

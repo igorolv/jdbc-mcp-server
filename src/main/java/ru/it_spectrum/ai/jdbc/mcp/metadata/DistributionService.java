@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
 /**
@@ -383,13 +384,14 @@ public class DistributionService {
      * single-step PostgreSQL flow (JSON EXPLAIN is its own query).
      */
     private Long explainRootRows(String sql) throws SQLException {
-        String explainSql = dialect.buildStructuredExplain(sql, false);
-        String displaySql = dialect.structuredPlanQuery();
+        String statementId = newExplainStatementId();
+        String explainSql = dialect.buildStructuredExplain(sql, false, statementId);
+        String displaySql = dialect.structuredPlanQuery(statementId);
         ParsedPlan parsed = executor.withConnection(conn -> {
             QueryResult planRows;
             if (displaySql != null) {
                 runUpdate(conn, explainSql);
-                planRows = queryNoParams(conn, displaySql);
+                planRows = queryWithParams(conn, displaySql, List.of(statementId));
             } else {
                 planRows = queryNoParams(conn, explainSql);
             }
@@ -399,9 +401,22 @@ public class DistributionService {
         return root == null ? null : root.estimatedRows();
     }
 
+    private String newExplainStatementId() {
+        int random = ThreadLocalRandom.current().nextInt(36 * 36 * 36);
+        return "JDBC_MCP_" + Long.toString(System.nanoTime(), 36) + "_"
+                + Integer.toString(random, 36);
+    }
+
     private QueryResult queryNoParams(Connection conn, String sql) throws SQLException {
+        return queryWithParams(conn, sql, List.of());
+    }
+
+    private QueryResult queryWithParams(Connection conn, String sql, List<Object> params) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             if (properties.queryTimeoutSeconds() > 0) ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
             try (ResultSet rs = ps.executeQuery()) {
                 return readAll(rs);
             }

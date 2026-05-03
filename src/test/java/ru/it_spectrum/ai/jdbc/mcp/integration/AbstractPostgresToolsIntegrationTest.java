@@ -53,7 +53,7 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
 
             JdbcProperties properties = new JdbcProperties(
                     PG.getJdbcUrl(), PG.getUsername(), PG.getPassword(),
-                    "public", 10, 1000, 100, "strict", 300, 2000);
+                    "public", 10, 1000, 100, "strict", 40, 1, 10_000, 5_000, 300, 2000);
             DataSource dataSource = buildPool(properties);
             SqlDialect dialect = new PostgresDialect();
             ReadOnlyGuard guard = new ReadOnlyGuard(properties);

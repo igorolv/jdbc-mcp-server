@@ -37,12 +37,20 @@ public class OracleDialect implements SqlDialect {
 
     @Override
     public String buildExplain(String sql, boolean analyze) {
+        return buildExplain(sql, analyze, null);
+    }
+
+    @Override
+    public String buildExplain(String sql, boolean analyze, String statementId) {
         String trimmed = sql.trim();
         while (trimmed.endsWith(";")) {
             trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
         }
         // Oracle populates PLAN_TABLE without executing the query. "analyze" is ignored.
-        return "EXPLAIN PLAN FOR " + trimmed;
+        if (statementId == null || statementId.isBlank()) {
+            return "EXPLAIN PLAN FOR " + trimmed;
+        }
+        return "EXPLAIN PLAN SET STATEMENT_ID = '" + escapeSqlLiteral(statementId) + "' FOR " + trimmed;
     }
 
     @Override
@@ -51,16 +59,27 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
+    public String explainDisplayQuery(String statementId) {
+        if (statementId == null || statementId.isBlank()) {
+            return explainDisplayQuery();
+        }
+        return "SELECT plan_table_output AS plan FROM TABLE(DBMS_XPLAN.DISPLAY(NULL, ?, 'ALL'))";
+    }
+
+    @Override
     public String buildStructuredExplain(String sql, boolean analyze) {
+        return buildStructuredExplain(sql, analyze, null);
+    }
+
+    @Override
+    public String buildStructuredExplain(String sql, boolean analyze, String statementId) {
         // Oracle populates PLAN_TABLE statically regardless of `analyze` — no actual execution.
-        return buildExplain(sql, analyze);
+        return buildExplain(sql, analyze, statementId);
     }
 
     @Override
     public String structuredPlanQuery() {
-        // Only the columns the parser reasons over. Reading the most recently-populated plan
-        // from the session's PLAN_TABLE (ordered by plan_id, id) — EXPLAIN PLAN assigns a fresh
-        // plan_id per call, so taking MAX(plan_id) gives us the just-generated plan.
+        // Backward-compatible fallback for callers that do not provide a statement id.
         return """
                 SELECT id, parent_id, operation, options, object_owner, object_name,
                        cardinality, cost, bytes, cpu_cost, io_cost, time,
@@ -265,6 +284,27 @@ public class OracleDialect implements SqlDialect {
                 WHERE c.owner = UPPER(?)
                   AND c.table_name = UPPER(?)
                 """;
+    }
+
+    @Override
+    public String structuredPlanQuery(String statementId) {
+        if (statementId == null || statementId.isBlank()) {
+            return structuredPlanQuery();
+        }
+        // Only the columns the parser reasons over. Scope by STATEMENT_ID so concurrent explain
+        // calls in the same schema do not race on MAX(plan_id).
+        return """
+                SELECT id, parent_id, operation, options, object_owner, object_name,
+                       cardinality, cost, bytes, cpu_cost, io_cost, time,
+                       access_predicates, filter_predicates, depth
+                FROM plan_table
+                WHERE statement_id = ?
+                ORDER BY id
+                """;
+    }
+
+    private static String escapeSqlLiteral(String value) {
+        return value.replace("'", "''");
     }
 
     @Override

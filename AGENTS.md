@@ -17,7 +17,7 @@ are bundled inside the fat jar.
 
 ## Prerequisites
 
-- JDK 25+ installed (check with `java -version`)
+- JDK 21+ installed (check with `java -version`)
 - A database account. A **read-only** database user is strongly recommended — see the README
   for SQL snippets to create one in PostgreSQL or Oracle.
 
@@ -37,15 +37,17 @@ Optionally:
   connection's current schema. On Oracle, this defaults to the connecting user's schema (UPPER CASE).
 - **Per-statement timeout** — `JDBC_QUERY_TIMEOUT_SECONDS` (default 30, `0` disables).
 - **Row cap** — `JDBC_MAX_ROWS` (default 1000); responses include `truncated: true` when hit.
-- **Read-only guard** — `JDBC_READONLY_GUARD` (`strict` default, `off` disables the client-side check; connection-level read-only flags stay on).
+- **Read-only guard** — `JDBC_READONLY_GUARD` (`strict` default, `off` disables the client-side check; connection-level read-only flags stay on, with Oracle treating them as best-effort).
+- **JDBC pool settings** — `JDBC_POOL_MAX_SIZE` (default 40), `JDBC_POOL_MIN_IDLE` (default 1),
+  `JDBC_CONNECTION_TIMEOUT_MS` (default 10000), and `JDBC_VALIDATION_TIMEOUT_MS` (default 5000).
 - **Metadata snapshot cache** — `JDBC_METADATA_CACHE_TTL_SECONDS` (default 300, `0` disables) and
   `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000). Caches structural metadata only; live stats are not cached.
 
 ## Step 2: Build
 
 ```bash
-# If the default JDK is < 25, set JAVA_HOME explicitly, e.g.:
-# export JAVA_HOME="$HOME/.jdks/jdk-25.0.2"
+# If the default JDK is < 21, set JAVA_HOME explicitly, e.g.:
+# export JAVA_HOME="$HOME/.jdks/jdk-21.0.6"
 
 cd <path-to-this-project>
 ./gradlew build
@@ -208,8 +210,8 @@ not cached. Hard cap on entries: `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000
 
 All tools are **read-only**. Any attempt to run a non-SELECT statement is rejected by the
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
-read-only, PostgreSQL uses `default_transaction_read_only=on`, and Oracle uses
-`SET TRANSACTION READ ONLY`.
+read-only, and PostgreSQL uses `default_transaction_read_only=on`. On Oracle, JDBC read-only mode
+is best-effort; use a dedicated read-only database user for the strongest guarantee.
 
 ## Error responses
 
@@ -290,15 +292,16 @@ Notes on the metadata snapshot cache:
 
 ## Troubleshooting
 
-- **"Gradle requires JVM 17 or later" / toolchain error** — set `JAVA_HOME` to a JDK 25+ before
+- **"Gradle requires JVM 17 or later" / toolchain error** — set `JAVA_HOME` to a JDK 21+ before
   running `./gradlew`.
 - **Connection refused / authentication failed** — verify URL/user/password with the native CLI
   (`psql "$JDBC_URL"` for PostgreSQL, `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...` for Oracle).
 - **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** — guard
   triggered. This is expected for any write statement. For edge cases where a read-only
   operation is wrapped in something the guard does not recognise, set `JDBC_READONLY_GUARD=off`.
-  The connection-level read-only enforcement stays on.
+  Connection-level read-only flags stay on; Oracle treats them as best-effort.
 - **Oracle: empty `describeTable` / `listTables`** — Oracle stores unquoted identifiers in upper
   case. Pass `CUSTOMERS` rather than `customers`.
-- **Oracle: `ORA-01456: may not perform insert/delete/update operation inside a READ ONLY transaction`** —
-  that is the server refusing a write. Guard already blocked it upstream; this is a defence in depth.
+- **Oracle write attempt reached the database** — this should normally be blocked by the guard first.
+  If `JDBC_READONLY_GUARD=off`, rely on a read-only Oracle user; JDBC `setReadOnly(true)` is only a
+  best-effort hint for Oracle.

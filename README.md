@@ -184,7 +184,7 @@ password.
 1. **ReadOnlyGuard in project code.** Before sending SQL to the database, the server first parses it with JSqlParser and checks the AST. Only a single `SELECT`, `WITH`, or `EXPLAIN` is allowed. Write CTEs, `SELECT INTO`, and locking clauses such as `FOR UPDATE` are forbidden. If JSqlParser cannot parse dialect-specific SQL, the guard falls back to the older lexical check: first meaningful token, multi-statement rejection, comment skipping, and write-keyword detection outside strings and quoted identifiers.
 2. **`connection.setReadOnly(true)`.** Set by Hikari and again by this server on each checkout.
 3. **PostgreSQL: `default_transaction_read_only=on`.** Added to the JDBC URL automatically unless you already provided your own `options=`. Even server-side DDL is rejected.
-4. **Oracle: `SET TRANSACTION READ ONLY`.** Executed before each user query. Oracle DDL autocommits outside transaction protection, so only the guard protects against DDL there.
+4. **Oracle: JDBC read-only hint.** Oracle JDBC treats `setReadOnly(true)` mostly as an advisory hint. The client-side guard and a dedicated read-only database user are the primary Oracle protections. Oracle `EXPLAIN PLAN` writes a static plan to `PLAN_TABLE`; this server scopes those reads with a generated `STATEMENT_ID`.
 
 ### Maximum Protection: Use a Read-only Database User
 
@@ -223,12 +223,13 @@ not allow, you can disable client-side validation:
 JDBC_READONLY_GUARD=off
 ```
 
-Connection-level protections (`setReadOnly`, `default_transaction_read_only`,
-`SET TRANSACTION READ ONLY`) remain enabled.
+Connection-level protections (`setReadOnly` and, on PostgreSQL, `default_transaction_read_only`)
+remain enabled. On Oracle, `setReadOnly` is best-effort; use a read-only database user for the
+strongest guarantee.
 
 ## Stack
 
-- Java 25, Spring Boot 4.0, Spring AI MCP 2.0.0-M3 (`stdio` transport)
+- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.0-M3 (`stdio` transport)
 - HikariCP through Spring Boot `starter-jdbc`
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
@@ -245,8 +246,8 @@ drivers.
 ## Build
 
 ```bash
-# Set JDK 25+ explicitly if it is not your default JDK:
-export JAVA_HOME="$HOME/.jdks/jdk-25.0.2"
+# Set JDK 21+ explicitly if it is not your default JDK:
+export JAVA_HOME="$HOME/.jdks/jdk-21.0.6"
 
 ./gradlew build
 ```
@@ -309,6 +310,10 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_MAX_ROWS` | no | Maximum rows in one response, default `1000`. If exceeded, the response includes `truncated: true` |
 | `JDBC_FETCH_SIZE` | no | JDBC `fetchSize`, default `500` |
 | `JDBC_READONLY_GUARD` | no | `strict` by default, or `off` |
+| `JDBC_POOL_MAX_SIZE` | no | Hikari maximum pool size, default `40` |
+| `JDBC_POOL_MIN_IDLE` | no | Hikari minimum idle connections, default `1` |
+| `JDBC_CONNECTION_TIMEOUT_MS` | no | Hikari connection checkout timeout in milliseconds, default `10000` |
+| `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
 
 The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL
 and `jdbc:oracle:` for Oracle.
@@ -378,7 +383,7 @@ as `jdbc-pg` and `jdbc-oracle`, and different environment variable sets.
 |   +-- dialect/
 |   |   +-- SqlDialect.java             - dialect interface
 |   |   +-- PostgresDialect.java        - EXPLAIN, pg_catalog, pg_get_viewdef
-|   |   +-- OracleDialect.java          - EXPLAIN PLAN, ALL_VIEWS, ALL_SOURCE, SET TRANSACTION READ ONLY
+|   |   +-- OracleDialect.java          - EXPLAIN PLAN, ALL_VIEWS, ALL_SOURCE, Oracle metadata queries
 |   |   +-- DialectConfig.java          - implementation selection by DatabaseKind
 |   +-- sql/
 |   |   +-- ReadOnlyGuard.java          - JSqlParser AST guard + lexical fallback
@@ -416,8 +421,8 @@ as `jdbc-pg` and `jdbc-oracle`, and different environment variable sets.
 
 ## Troubleshooting
 
-- **"Cannot find a Java installation ... matching languageVersion=25"** - install JDK 25+ and set `JAVA_HOME`. Gradle toolchains cannot download it without internet access.
+- **"Cannot find a Java installation ... matching languageVersion=21"** - install JDK 21+ and set `JAVA_HOME`. Gradle toolchains cannot download it without internet access.
 - **Connection refused / ORA-01017 / FATAL: password authentication failed** - check `JDBC_URL`, `JDBC_USERNAME`, and `JDBC_PASSWORD`. For PostgreSQL, test with `psql "$JDBC_URL"`; for Oracle, use `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...`.
 - **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** - the guard worked. This is expected for any write operation. If the query is truly read-only, for example a read-only function call through `SELECT func(...)`, it will pass. For fully non-trivial cases, you can disable the guard with `JDBC_READONLY_GUARD=off`.
-- **Oracle: `ORA-01456: may not perform insert/delete/update operation inside a READ ONLY transaction`** - this is also expected if someone tried a write operation past the guard. It means the defense-in-depth layer is working.
+- **Oracle write attempt reached the database** - this should normally be blocked by the guard first. If `JDBC_READONLY_GUARD=off`, rely on a read-only Oracle user; JDBC `setReadOnly(true)` is only a best-effort hint for Oracle.
 - **Empty `describeTable` / `listTables` result on Oracle** - Oracle stores object names in uppercase. Pass `CUSTOMERS`, not `customers`.

@@ -11,7 +11,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ReadOnlyGuardTest {
 
     private final ReadOnlyGuard guard = new ReadOnlyGuard(
-            new JdbcProperties(null, null, null, null, 30, 1000, 500, "strict", 300, 2000));
+            new JdbcProperties(null, null, null, null, 30, 1000, 500, "strict",
+                    40, 1, 10_000, 5_000, 300, 2000));
 
     @ParameterizedTest
     @ValueSource(strings = {
@@ -65,7 +66,8 @@ class ReadOnlyGuardTest {
     @Test
     void canBeDisabled() {
         ReadOnlyGuard off = new ReadOnlyGuard(
-                new JdbcProperties(null, null, null, null, 30, 1000, 500, "off", 300, 2000));
+                new JdbcProperties(null, null, null, null, 30, 1000, 500, "off",
+                        40, 1, 10_000, 5_000, 300, 2000));
         off.check("DELETE FROM t");  // does not throw
     }
 
