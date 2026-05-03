@@ -77,8 +77,22 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
         ArrayNode findings = (ArrayNode) field(result, "findings");
         assertThat(finding(findings, "fkWithoutIndex", "orders", "customer_id")).isNotNull();
         assertThat(finding(findings, "inferredRelationship", "customer_notes", "customer_id")).isNotNull();
-        assertThat(finding(findings, "unconstrainedStatusColumn", "events", "status")).isNotNull();
+        assertThat(finding(findings, "orphanIdColumn", "customer_notes", "customer_id")).isNotNull();
         assertThat(finding(findings, "missingTableRemarks", "orders", null)).isNotNull();
+    }
+
+    @Test
+    void returnsCompactSchemaBrief() {
+        String brief = schemaContextTools().schemaBrief("public", null, 100, true);
+
+        assertThat(brief).contains("Schema brief");
+        assertThat(brief).contains("Hub tables");
+        assertThat(brief).contains("Key relationships");
+        assertThat(brief).contains("orders.customer_id -> customers.id");
+        assertThat(brief).contains("Suspicious implicit joins");
+        assertThat(brief).contains("customer_notes.customer_id -> customers.id");
+        assertThat(brief).contains("Enum-like columns");
+        assertThat(brief).contains("events.status in [OK, FAIL]");
     }
 
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {

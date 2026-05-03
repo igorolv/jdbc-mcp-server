@@ -77,8 +77,22 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
         ArrayNode findings = (ArrayNode) field(result, "findings");
         assertThat(finding(findings, "fkWithoutIndex", "ORDERS", "CUSTOMER_ID")).isNotNull();
         assertThat(finding(findings, "inferredRelationship", "CUSTOMER_NOTES", "CUSTOMER_ID")).isNotNull();
-        assertThat(finding(findings, "unconstrainedStatusColumn", "EVENTS", "STATUS")).isNotNull();
+        assertThat(finding(findings, "orphanIdColumn", "CUSTOMER_NOTES", "CUSTOMER_ID")).isNotNull();
         assertThat(finding(findings, "missingTableRemarks", "ORDERS", null)).isNotNull();
+    }
+
+    @Test
+    void returnsCompactSchemaBrief() {
+        String brief = schemaContextTools().schemaBrief(schema(), null, 100, true);
+
+        assertThat(brief).contains("Schema brief");
+        assertThat(brief).contains("Hub tables");
+        assertThat(brief).contains("Key relationships");
+        assertThat(brief).contains("ORDERS.CUSTOMER_ID -> CUSTOMERS.ID");
+        assertThat(brief).contains("Suspicious implicit joins");
+        assertThat(brief).contains("CUSTOMER_NOTES.CUSTOMER_ID -> CUSTOMERS.ID");
+        assertThat(brief).contains("Enum-like columns");
+        assertThat(brief).contains("EVENTS.status in [OK, FAIL]");
     }
 
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {

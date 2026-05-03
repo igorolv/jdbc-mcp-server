@@ -97,7 +97,8 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
                     "status TEXT NOT NULL, " +
                     "category TEXT, " +
                     "amount NUMERIC(10,2), " +
-                    "created_at TIMESTAMP DEFAULT NOW())");
+                    "created_at TIMESTAMP DEFAULT NOW(), " +
+                    "CONSTRAINT events_status_check CHECK (status IN ('OK', 'FAIL')))");
             statement.execute("CREATE SEQUENCE audit_seq START WITH 100 INCREMENT BY 5");
             statement.execute("""
                     CREATE OR REPLACE FUNCTION customer_count_fn()

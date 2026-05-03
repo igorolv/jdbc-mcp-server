@@ -115,4 +115,23 @@ public class SchemaContextTools {
             return "Invalid argument: " + e.getMessage();
         }
     }
+
+    @McpTool(description = "Return a compact plain-text synopsis of a schema for LLM SQL authoring. " +
+            "Summarizes hub tables, fact/detail tables, lookup/reference tables, key relationships, " +
+            "enum-like CHECK columns, suspicious implicit joins, and brief per-table notes. " +
+            "Use this when a full JSON schema overview would be too verbose.")
+    public String schemaBrief(
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Optional focus term to narrow table discovery; falls back to whole schema if no table matches.", required = false) String focus,
+            @McpToolParam(description = "Maximum tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
+            @McpToolParam(description = "Include inferred relationships based on *_id naming. Default true.", required = false) Boolean includeInferred
+    ) {
+        try {
+            return schemaContext.schemaBrief(schema, focus, maxTables, includeInferred);
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Invalid argument: " + e.getMessage();
+        }
+    }
 }
