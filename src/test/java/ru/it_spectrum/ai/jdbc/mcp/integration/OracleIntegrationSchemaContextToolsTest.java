@@ -95,6 +95,29 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
         assertThat(brief).contains("EVENTS.status in [OK, FAIL]");
     }
 
+    @Test
+    void returnsRelationshipGraphMetrics() {
+        ObjectNode graph = object(schemaContextTools().schemaGraph(
+                schema(), 100, true, "LINE_ITEMS", "CUSTOMERS", 4));
+
+        assertThat(field(graph, "nodeCount").asInt()).isGreaterThanOrEqualTo(5);
+        assertThat(field(graph, "declaredEdgeCount").asInt()).isEqualTo(2);
+        assertThat(field(graph, "inferredEdgeCount").asInt()).isGreaterThanOrEqualTo(1);
+
+        ArrayNode central = (ArrayNode) field(graph, "centralTables");
+        assertThat(findByField(central, "table", "CUSTOMERS")).isNotNull();
+
+        ArrayNode isolated = (ArrayNode) field(graph, "isolatedTables");
+        assertThat(findByField(isolated, "table", "EVENTS")).isNotNull();
+
+        ArrayNode edges = (ArrayNode) field(graph, "edges");
+        assertThat(relationship(edges, "CUSTOMER_NOTES", "CUSTOMERS")).isNotNull();
+
+        ObjectNode shortestPath = (ObjectNode) field(graph, "shortestPath");
+        assertThat(field(shortestPath, "found").asBoolean()).isTrue();
+        assertThat((ArrayNode) field(shortestPath, "edges")).hasSize(2);
+    }
+
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {
         for (JsonNode edge : relationships) {
             if (fromTable.equals(field(edge, "fromTable").asText())

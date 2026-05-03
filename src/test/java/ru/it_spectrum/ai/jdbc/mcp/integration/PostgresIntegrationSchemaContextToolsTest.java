@@ -95,6 +95,29 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
         assertThat(brief).contains("events.status in [OK, FAIL]");
     }
 
+    @Test
+    void returnsRelationshipGraphMetrics() {
+        ObjectNode graph = object(schemaContextTools().schemaGraph(
+                "public", 100, true, "line_items", "customers", 4));
+
+        assertThat(field(graph, "nodeCount").asInt()).isGreaterThanOrEqualTo(5);
+        assertThat(field(graph, "declaredEdgeCount").asInt()).isEqualTo(2);
+        assertThat(field(graph, "inferredEdgeCount").asInt()).isGreaterThanOrEqualTo(1);
+
+        ArrayNode central = (ArrayNode) field(graph, "centralTables");
+        assertThat(findByField(central, "table", "customers")).isNotNull();
+
+        ArrayNode isolated = (ArrayNode) field(graph, "isolatedTables");
+        assertThat(findByField(isolated, "table", "events")).isNotNull();
+
+        ArrayNode edges = (ArrayNode) field(graph, "edges");
+        assertThat(relationship(edges, "customer_notes", "customers")).isNotNull();
+
+        ObjectNode shortestPath = (ObjectNode) field(graph, "shortestPath");
+        assertThat(field(shortestPath, "found").asBoolean()).isTrue();
+        assertThat((ArrayNode) field(shortestPath, "edges")).hasSize(2);
+    }
+
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {
         for (JsonNode edge : relationships) {
             if (fromTable.equals(field(edge, "fromTable").asText())

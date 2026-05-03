@@ -333,6 +333,52 @@ public class SchemaContextService {
         return sb.toString().trim();
     }
 
+    public Map<String, Object> schemaGraph(String schema, Integer maxTables,
+                                           Boolean includeInferred,
+                                           String fromTable, String toTable,
+                                           Integer maxDepth) throws SQLException {
+        int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
+        boolean inferred = includeInferred == null || includeInferred;
+        int depthLimit = clamp(maxDepth, MAX_DEPTH, 1, MAX_DEPTH);
+
+        Map<String, Map<String, Object>> tables = loadSchemaTables(schema, tableLimit);
+        List<Map<String, Object>> declaredEdges = new ArrayList<>();
+        for (Map<String, Object> info : tables.values()) declaredEdges.addAll(outgoingEdges(info));
+        List<Map<String, Object>> inferredEdges = inferred
+                ? inferRelationshipEdges(new ArrayList<>(tables.values()))
+                : List.of();
+        List<Map<String, Object>> allEdges = new ArrayList<>(declaredEdges);
+        allEdges.addAll(inferredEdges);
+
+        Map<String, TableDegree> degrees = tableDegrees(tables, declaredEdges, inferredEdges);
+        Map<String, List<String>> adjacency = undirectedAdjacency(tables, allEdges);
+        List<Map<String, Object>> nodes = graphNodes(tables, degrees);
+        List<Map<String, Object>> components = connectedComponents(tables, adjacency);
+        List<Map<String, Object>> cycles = cycleHints(tables, allEdges, 25);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("schema", schema);
+        out.put("includeInferred", inferred);
+        out.put("tablesScanned", tables.size());
+        out.put("nodeCount", nodes.size());
+        out.put("edgeCount", allEdges.size());
+        out.put("declaredEdgeCount", declaredEdges.size());
+        out.put("inferredEdgeCount", inferredEdges.size());
+        out.put("centralTables", centralTables(nodes, 10));
+        out.put("isolatedTables", isolatedTables(nodes));
+        out.put("connectedComponents", components);
+        out.put("cycles", cycles);
+        out.put("nodes", nodes);
+        out.put("edges", graphEdges(allEdges));
+
+        if (fromTable != null && !fromTable.isBlank() && toTable != null && !toTable.isBlank()) {
+            String fromKey = resolveTableKey(tables, schema, fromTable);
+            String toKey = resolveTableKey(tables, schema, toTable);
+            out.put("shortestPath", shortestGraphPath(fromKey, toKey, allEdges, depthLimit));
+        }
+        return out;
+    }
+
     private Map<String, Map<String, Object>> loadSchemaTables(String schema, int limit) throws SQLException {
         List<Map<String, Object>> listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
@@ -634,6 +680,192 @@ public class SchemaContextService {
             }
             sb.append('\n');
         }
+    }
+
+    private List<Map<String, Object>> graphNodes(Map<String, Map<String, Object>> tables,
+                                                 Map<String, TableDegree> degrees) {
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        for (Map<String, Object> table : tables.values()) {
+            String schema = str(table.get("schema"));
+            String name = str(table.get("name"));
+            TableDegree degree = degrees.getOrDefault(key(schema, name), TableDegree.ZERO);
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", key(schema, name));
+            node.put("schema", schema);
+            node.put("table", name);
+            node.put("classification", classifyTable(table, degrees));
+            node.put("incomingDegree", degree.in);
+            node.put("outgoingDegree", degree.out);
+            node.put("totalDegree", degree.total());
+            node.put("columnCount", columnCount(table));
+            node.put("primaryKey", stringList(mapValue(table.get("primaryKey")), "columns"));
+            nodes.add(node);
+        }
+        nodes.sort((a, b) -> Integer.compare(
+                ((Number) b.get("totalDegree")).intValue(),
+                ((Number) a.get("totalDegree")).intValue()));
+        return nodes;
+    }
+
+    private List<Map<String, Object>> graphEdges(List<Map<String, Object>> edges) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> edge : edges) {
+            Map<String, Object> graphEdge = new LinkedHashMap<>();
+            graphEdge.put("relationshipType", edge.get("relationshipType"));
+            graphEdge.put("name", edge.get("fkName"));
+            graphEdge.put("from", key(str(edge.get("fromSchema")), str(edge.get("fromTable"))));
+            graphEdge.put("to", key(str(edge.get("toSchema")), str(edge.get("toTable"))));
+            graphEdge.put("fromTable", edge.get("fromTable"));
+            graphEdge.put("fromColumns", edge.get("fromColumns"));
+            graphEdge.put("toTable", edge.get("toTable"));
+            graphEdge.put("toColumns", edge.get("toColumns"));
+            if (edge.get("confidence") != null) graphEdge.put("confidence", edge.get("confidence"));
+            out.add(graphEdge);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> centralTables(List<Map<String, Object>> nodes, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> node : nodes) {
+            if (out.size() >= limit) break;
+            if (((Number) node.get("totalDegree")).intValue() <= 0) continue;
+            Map<String, Object> central = new LinkedHashMap<>();
+            central.put("schema", node.get("schema"));
+            central.put("table", node.get("table"));
+            central.put("classification", node.get("classification"));
+            central.put("incomingDegree", node.get("incomingDegree"));
+            central.put("outgoingDegree", node.get("outgoingDegree"));
+            central.put("totalDegree", node.get("totalDegree"));
+            out.add(central);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> isolatedTables(List<Map<String, Object>> nodes) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> node : nodes) {
+            if (((Number) node.get("totalDegree")).intValue() != 0) continue;
+            Map<String, Object> isolated = new LinkedHashMap<>();
+            isolated.put("schema", node.get("schema"));
+            isolated.put("table", node.get("table"));
+            isolated.put("classification", node.get("classification"));
+            out.add(isolated);
+        }
+        return out;
+    }
+
+    private Map<String, List<String>> undirectedAdjacency(Map<String, Map<String, Object>> tables,
+                                                         List<Map<String, Object>> edges) {
+        Map<String, List<String>> adjacency = new LinkedHashMap<>();
+        for (String tableKey : tables.keySet()) adjacency.put(tableKey, new ArrayList<>());
+        for (Map<String, Object> edge : edges) {
+            String from = key(str(edge.get("fromSchema")), str(edge.get("fromTable")));
+            String to = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+            if (adjacency.containsKey(from) && adjacency.containsKey(to)) {
+                adjacency.get(from).add(to);
+                adjacency.get(to).add(from);
+            }
+        }
+        return adjacency;
+    }
+
+    private List<Map<String, Object>> connectedComponents(Map<String, Map<String, Object>> tables,
+                                                          Map<String, List<String>> adjacency) {
+        List<Map<String, Object>> components = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        for (String start : tables.keySet()) {
+            if (!visited.add(start)) continue;
+            List<String> members = new ArrayList<>();
+            Queue<String> queue = new ArrayDeque<>();
+            queue.add(start);
+            while (!queue.isEmpty()) {
+                String current = queue.remove();
+                members.add(current);
+                for (String next : adjacency.getOrDefault(current, List.of())) {
+                    if (visited.add(next)) queue.add(next);
+                }
+            }
+            members.sort(String::compareToIgnoreCase);
+            Map<String, Object> component = new LinkedHashMap<>();
+            component.put("size", members.size());
+            component.put("tables", members);
+            components.add(component);
+        }
+        components.sort((a, b) -> Integer.compare(
+                ((Number) b.get("size")).intValue(),
+                ((Number) a.get("size")).intValue()));
+        return components;
+    }
+
+    private List<Map<String, Object>> cycleHints(Map<String, Map<String, Object>> tables,
+                                                 List<Map<String, Object>> edges, int limit) {
+        List<Map<String, Object>> cycles = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        Map<String, List<Map<String, Object>>> byFrom = new HashMap<>();
+        for (Map<String, Object> edge : edges) {
+            byFrom.computeIfAbsent(key(str(edge.get("fromSchema")), str(edge.get("fromTable"))),
+                    ignored -> new ArrayList<>()).add(edge);
+        }
+        for (Map<String, Object> edge : edges) {
+            if (cycles.size() >= limit) break;
+            String from = key(str(edge.get("fromSchema")), str(edge.get("fromTable")));
+            String to = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+            if (!tables.containsKey(from) || !tables.containsKey(to)) continue;
+            if (!hasDirectedPath(to, from, byFrom, 4, Set.of(to))) continue;
+            List<String> pair = new ArrayList<>(List.of(from, to));
+            pair.sort(String::compareToIgnoreCase);
+            String cycleKey = String.join("->", pair);
+            if (!seen.add(cycleKey)) continue;
+            Map<String, Object> cycle = new LinkedHashMap<>();
+            cycle.put("tables", pair);
+            cycle.put("note", "Directed relationship cycle detected or implied within 4 hops");
+            cycles.add(cycle);
+        }
+        return cycles;
+    }
+
+    private boolean hasDirectedPath(String current, String target,
+                                    Map<String, List<Map<String, Object>>> byFrom,
+                                    int remainingDepth, Set<String> visited) {
+        if (remainingDepth <= 0) return false;
+        for (Map<String, Object> edge : byFrom.getOrDefault(current, List.of())) {
+            String next = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+            if (next.equals(target)) return true;
+            if (visited.contains(next)) continue;
+            Set<String> nextVisited = new HashSet<>(visited);
+            nextVisited.add(next);
+            if (hasDirectedPath(next, target, byFrom, remainingDepth - 1, nextVisited)) return true;
+        }
+        return false;
+    }
+
+    private Map<String, Object> shortestGraphPath(String fromKey, String toKey,
+                                                  List<Map<String, Object>> edges, int maxDepth) {
+        Map<String, List<GraphEdge>> byFrom = new HashMap<>();
+        for (Map<String, Object> edge : edges) {
+            byFrom.computeIfAbsent(key(str(edge.get("fromSchema")), str(edge.get("fromTable"))),
+                    ignored -> new ArrayList<>()).add(GraphEdge.forward(edge));
+            byFrom.computeIfAbsent(key(str(edge.get("toSchema")), str(edge.get("toTable"))),
+                    ignored -> new ArrayList<>()).add(GraphEdge.reverse(edge));
+        }
+        List<List<Map<String, Object>>> paths = searchPaths(fromKey, toKey, byFrom, maxDepth, 1);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("from", fromKey);
+        out.put("to", toKey);
+        out.put("found", !paths.isEmpty());
+        out.put("edges", paths.isEmpty() ? List.of() : paths.get(0));
+        return out;
+    }
+
+    private String resolveTableKey(Map<String, Map<String, Object>> tables, String schema, String table) {
+        String exact = key(schema, table);
+        if (tables.containsKey(exact)) return exact;
+        String normalizedTable = table == null ? "" : table.toLowerCase(Locale.ROOT);
+        for (String tableKey : tables.keySet()) {
+            if (tableKey.endsWith("." + normalizedTable)) return tableKey;
+        }
+        return exact;
     }
 
     private String classifyTable(Map<String, Object> table, Map<String, TableDegree> degrees) {

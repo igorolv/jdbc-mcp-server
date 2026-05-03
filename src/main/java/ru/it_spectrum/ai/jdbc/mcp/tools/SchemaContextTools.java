@@ -134,4 +134,26 @@ public class SchemaContextTools {
             return "Invalid argument: " + e.getMessage();
         }
     }
+
+    @McpTool(description = "Return relationship graph metrics for a schema: nodes with incoming/outgoing degree " +
+            "and classification, edges, central tables, isolated tables, connected components, cycle hints, " +
+            "and optionally the shortest path between two tables. Include inferred *_id relationships by default.")
+    public String schemaGraph(
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Maximum tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
+            @McpToolParam(description = "Include inferred relationships based on *_id naming. Default true.", required = false) Boolean includeInferred,
+            @McpToolParam(description = "Optional start table for shortestPath.", required = false) String fromTable,
+            @McpToolParam(description = "Optional target table for shortestPath.", required = false) String toTable,
+            @McpToolParam(description = "Maximum hops for shortestPath. Default 4, capped at 4.", required = false) Integer maxDepth
+    ) {
+        try {
+            Map<String, Object> result = schemaContext.schemaGraph(
+                    schema, maxTables, includeInferred, fromTable, toTable, maxDepth);
+            return MetadataTools.JsonWriter.write(result);
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Invalid argument: " + e.getMessage();
+        }
+    }
 }
