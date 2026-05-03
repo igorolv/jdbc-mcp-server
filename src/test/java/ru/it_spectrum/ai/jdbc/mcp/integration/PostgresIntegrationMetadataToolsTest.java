@@ -37,21 +37,24 @@ class PostgresIntegrationMetadataToolsTest extends AbstractPostgresToolsIntegrat
     }
 
     @Test
-    void listsConstraintsAndTriggers() {
-        ArrayNode constraints = array(metadataTools().listTableConstraints("public", "orders"));
+    void exposesConstraintsAndTriggersViaDescribeTable() {
+        ObjectNode orders = object(metadataTools().describeTable("public", "orders"));
+        ArrayNode constraints = (ArrayNode) field(orders, "constraints");
         ObjectNode check = (ObjectNode) findByField(constraints, "name", "orders_total_nonnegative");
         assertThat(check).isNotNull();
         assertThat(field(check, "type").asText()).isEqualTo("CHECK");
         assertThat(field(check, "definition").asText()).contains("total >= 0");
 
-        ArrayNode eventConstraints = array(metadataTools().listTableConstraints("public", "events"));
+        ObjectNode events = object(metadataTools().describeTable("public", "events"));
+        ArrayNode eventConstraints = (ArrayNode) field(events, "constraints");
         ObjectNode statusCheck = (ObjectNode) findByField(eventConstraints, "name", "events_status_check");
         assertThat(statusCheck).isNotNull();
         assertThat(field(statusCheck, "allowedValuesColumn").asText()).isEqualTo("status");
         assertThat(textValues((ArrayNode) field(statusCheck, "allowedValues")))
                 .containsExactly("OK", "FAIL");
 
-        ArrayNode triggers = array(metadataTools().listTriggers("public", "customer_notes", false));
+        ObjectNode customerNotes = object(metadataTools().describeTable("public", "customer_notes"));
+        ArrayNode triggers = (ArrayNode) field(customerNotes, "triggers");
         ObjectNode trigger = (ObjectNode) findByField(triggers, "name", "customer_notes_touch_trg");
         assertThat(trigger).isNotNull();
         assertThat(field(trigger, "timing").asText()).isEqualTo("BEFORE");

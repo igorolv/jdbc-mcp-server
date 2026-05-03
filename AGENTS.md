@@ -1,7 +1,7 @@
 # JDBC MCP Server — Setup Guide for AI Agents
 
 This is a local MCP server that provides read-only access to PostgreSQL and Oracle databases.
-It exposes 40 read-only tools across eight groups:
+It exposes 38 read-only tools across eight groups:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarised plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
@@ -112,7 +112,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **40 read-only MCP tools**.
+The server exposes **38 read-only MCP tools**.
 
 ### Query tools
 
@@ -136,10 +136,8 @@ The server exposes **40 read-only MCP tools**.
 |---|---|
 | `listSchemas` | List all schemas. System schemas (`pg_catalog`, `information_schema`, `SYS`, ...) are hidden unless `includeSystem=true` |
 | `listTables` | List tables and views in a schema. Params: `schema`, `namePattern` (JDBC wildcards `%` / `_`), `types` (comma-separated, e.g. `TABLE,VIEW,MATERIALIZED VIEW`) |
-| `describeTable` | Full table/view description in a single call: columns (name, type, size, nullable, default, remarks), primary key, unique constraints, indexes, outgoing foreign keys, tables referencing this one, constraints, allowed-values map (parsed from CHECK), triggers (compact). Params: `schema`, `table` |
-| `listTableConstraints` | Unified constraint list for a table — primary key, unique, foreign keys, check (with `definition` so allowed values and business invariants are visible without sampling). Params: `schema`, `table` |
-| `listTriggers` | Triggers on a table (name, timing, events, enabled). `includeDefinition=true` adds the trigger body. Params: `schema`, `table`, `includeDefinition` |
-| `getTriggerDefinition` | Trigger body for one named trigger. Params: `schema`, `table`, `trigger` |
+| `describeTable` | Full table/view description in a single call: columns (name, type, size, nullable, default, remarks), primary key, unique constraints, indexes, outgoing foreign keys, tables referencing this one, constraints (with CHECK `definition`), allowed-values map (parsed from CHECK), triggers (compact: name, timing, events, enabled). Params: `schema`, `table` |
+| `getTriggerDefinition` | Trigger body for one named trigger (the only piece not already returned by `describeTable`). Params: `schema`, `table`, `trigger` |
 | `getViewDefinition` | Return the SQL definition of a view / materialized view. Params: `schema`, `name` |
 | `listRoutines` | List functions, procedures, packages. Params: `schema`, `namePattern` |
 | `getRoutineDefinition` | Return the source code of a routine. On Oracle this concatenates lines from `ALL_SOURCE`. Params: `schema`, `name` |

@@ -450,21 +450,6 @@ public class MetadataService {
                 Arrays.asList(pattern, pattern), 200);
     }
 
-    public List<Map<String, Object>> listTableConstraints(String schema, String table) throws SQLException {
-        if (table == null || table.isBlank()) {
-            throw new IllegalArgumentException("table must be provided");
-        }
-        return fetchConstraints(resolveSchema(schema), table);
-    }
-
-    public List<Map<String, Object>> listTriggers(String schema, String table, boolean includeDefinition)
-            throws SQLException {
-        if (table == null || table.isBlank()) {
-            throw new IllegalArgumentException("table must be provided");
-        }
-        return fetchTriggers(resolveSchema(schema), table, includeDefinition);
-    }
-
     public String triggerDefinition(String schema, String table, String trigger) throws SQLException {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("table must be provided");
