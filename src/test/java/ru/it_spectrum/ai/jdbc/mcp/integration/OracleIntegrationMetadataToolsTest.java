@@ -30,6 +30,10 @@ class OracleIntegrationMetadataToolsTest extends AbstractOracleToolsIntegrationT
 
         String viewDefinition = metadataTools().getViewDefinition(schema(), "V_CUSTOMER_TOTALS");
         assertThat(viewDefinition).containsIgnoringCase("FROM customers");
+
+        ObjectNode events = object(metadataTools().describeTable(schema(), "EVENTS"));
+        assertThat(textValues((ArrayNode) field(field(events, "allowedValues"), "status")))
+                .containsExactly("OK", "FAIL");
     }
 
     @Test
@@ -39,6 +43,13 @@ class OracleIntegrationMetadataToolsTest extends AbstractOracleToolsIntegrationT
         assertThat(check).isNotNull();
         assertThat(field(check, "type").asText()).isEqualTo("CHECK");
         assertThat(field(check, "definition").asText()).containsIgnoringCase("total");
+
+        ArrayNode eventConstraints = array(metadataTools().listTableConstraints(schema(), "EVENTS"));
+        ObjectNode statusCheck = (ObjectNode) findByField(eventConstraints, "name", "EVENTS_STATUS_CHECK");
+        assertThat(statusCheck).isNotNull();
+        assertThat(field(statusCheck, "allowedValuesColumn").asText()).isEqualTo("status");
+        assertThat(textValues((ArrayNode) field(statusCheck, "allowedValues")))
+                .containsExactly("OK", "FAIL");
 
         ArrayNode triggers = array(metadataTools().listTriggers(schema(), "CUSTOMER_NOTES", false));
         ObjectNode trigger = (ObjectNode) findByField(triggers, "name", "CUSTOMER_NOTES_TOUCH_TRG");

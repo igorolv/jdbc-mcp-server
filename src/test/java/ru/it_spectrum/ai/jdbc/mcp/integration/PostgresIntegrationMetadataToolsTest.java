@@ -30,6 +30,10 @@ class PostgresIntegrationMetadataToolsTest extends AbstractPostgresToolsIntegrat
 
         String viewDefinition = metadataTools().getViewDefinition("public", "v_customer_totals");
         assertThat(viewDefinition).containsIgnoringCase("FROM customers");
+
+        ObjectNode events = object(metadataTools().describeTable("public", "events"));
+        assertThat(textValues((ArrayNode) field(field(events, "allowedValues"), "status")))
+                .containsExactly("OK", "FAIL");
     }
 
     @Test
@@ -39,6 +43,13 @@ class PostgresIntegrationMetadataToolsTest extends AbstractPostgresToolsIntegrat
         assertThat(check).isNotNull();
         assertThat(field(check, "type").asText()).isEqualTo("CHECK");
         assertThat(field(check, "definition").asText()).contains("total >= 0");
+
+        ArrayNode eventConstraints = array(metadataTools().listTableConstraints("public", "events"));
+        ObjectNode statusCheck = (ObjectNode) findByField(eventConstraints, "name", "events_status_check");
+        assertThat(statusCheck).isNotNull();
+        assertThat(field(statusCheck, "allowedValuesColumn").asText()).isEqualTo("status");
+        assertThat(textValues((ArrayNode) field(statusCheck, "allowedValues")))
+                .containsExactly("OK", "FAIL");
 
         ArrayNode triggers = array(metadataTools().listTriggers("public", "customer_notes", false));
         ObjectNode trigger = (ObjectNode) findByField(triggers, "name", "customer_notes_touch_trg");

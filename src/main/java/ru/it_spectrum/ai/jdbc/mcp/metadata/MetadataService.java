@@ -108,7 +108,9 @@ public class MetadataService {
             result.put("indexes", fetchIndexes(md, effectiveSchema, table));
             result.put("foreignKeys", fetchImportedKeys(md, effectiveSchema, table));
             result.put("referencedBy", fetchExportedKeys(md, effectiveSchema, table));
-            result.put("constraints", fetchConstraints(effectiveSchema, table));
+            List<Map<String, Object>> constraints = fetchConstraints(effectiveSchema, table);
+            result.put("constraints", constraints);
+            result.put("allowedValues", extractAllowedValues(constraints));
             result.put("triggers", fetchTriggers(effectiveSchema, table, false));
             return result;
         });
@@ -476,6 +478,11 @@ public class MetadataService {
             Object definition = getCI(row, "definition");
             if (definition != null && !String.valueOf(definition).isBlank()) {
                 constraint.put("definition", definition);
+                Map.Entry<String, List<String>> allowed = parseAllowedValues(String.valueOf(definition));
+                if (allowed != null) {
+                    constraint.put("allowedValuesColumn", allowed.getKey());
+                    constraint.put("allowedValues", allowed.getValue());
+                }
             }
             Object referencedSchema = getCI(row, "referenced_schema");
             Object referencedTable = getCI(row, "referenced_table");
@@ -488,6 +495,75 @@ public class MetadataService {
             out.add(constraint);
         }
         return out;
+    }
+
+    private Map<String, List<String>> extractAllowedValues(List<Map<String, Object>> constraints) {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map<String, Object> constraint : constraints) {
+            Object column = constraint.get("allowedValuesColumn");
+            Object values = constraint.get("allowedValues");
+            if (column instanceof String c && values instanceof List<?> list && !list.isEmpty()) {
+                List<String> cleaned = new ArrayList<>();
+                for (Object value : list) {
+                    if (value != null) cleaned.add(String.valueOf(value));
+                }
+                if (!cleaned.isEmpty()) out.put(c, cleaned);
+            }
+        }
+        return out;
+    }
+
+    private Map.Entry<String, List<String>> parseAllowedValues(String definition) {
+        try {
+            Map.Entry<String, List<String>> pgArray = parsePostgresArrayAllowedValues(definition);
+            if (pgArray != null) return pgArray;
+            return parseInAllowedValues(definition);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private Map.Entry<String, List<String>> parseInAllowedValues(String definition) {
+        String upper = definition.toUpperCase();
+        int inPos = upper.indexOf(" IN ");
+        if (inPos < 0) return null;
+        int open = definition.indexOf('(', inPos);
+        int close = definition.lastIndexOf(')');
+        if (open < 0 || close < 0 || close <= open) return null;
+        String before = definition.substring(0, inPos)
+                .replace("CHECK", "").replace("(", "").replace("\"", "").trim();
+        String column = before.contains(" ") ? before.substring(before.lastIndexOf(' ') + 1) : before;
+        List<String> values = parseLiteralList(definition.substring(open + 1, close));
+        if (column.isBlank() || values.size() < 2 || values.size() > 100) return null;
+        return Map.entry(column, values);
+    }
+
+    private Map.Entry<String, List<String>> parsePostgresArrayAllowedValues(String definition) {
+        String upper = definition.toUpperCase();
+        int anyPos = upper.indexOf("= ANY");
+        int arrayPos = upper.indexOf("ARRAY[", anyPos);
+        if (anyPos < 0 || arrayPos < 0) return null;
+        String before = definition.substring(0, anyPos)
+                .replace("CHECK", "").replace("(", "").replace("\"", "").trim();
+        String column = before.contains(" ") ? before.substring(before.lastIndexOf(' ') + 1) : before;
+        int open = definition.indexOf('[', arrayPos);
+        int close = definition.indexOf(']', open + 1);
+        if (open < 0 || close < 0 || close <= open) return null;
+        List<String> values = parseLiteralList(definition.substring(open + 1, close));
+        if (column.isBlank() || values.size() < 2 || values.size() > 100) return null;
+        return Map.entry(column, values);
+    }
+
+    private List<String> parseLiteralList(String raw) {
+        List<String> values = new ArrayList<>();
+        for (String part : raw.split(",")) {
+            String value = part.trim();
+            int cast = value.indexOf("::");
+            if (cast >= 0) value = value.substring(0, cast);
+            value = value.replace("'", "").replace("\"", "").trim();
+            if (!value.isEmpty()) values.add(value);
+        }
+        return values;
     }
 
     private List<Map<String, Object>> fetchTriggers(String schema, String table, boolean includeDefinition)

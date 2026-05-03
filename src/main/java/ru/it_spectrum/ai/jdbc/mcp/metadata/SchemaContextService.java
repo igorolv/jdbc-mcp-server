@@ -1036,6 +1036,7 @@ public class SchemaContextService {
         out.put("columns", columns);
         out.put("primaryKey", info.get("primaryKey"));
         out.put("constraints", info.get("constraints"));
+        out.put("allowedValues", info.get("allowedValues"));
         out.put("foreignKeys", info.get("foreignKeys"));
         out.put("indexes", compactIndexes(info.get("indexes")));
         out.put("triggers", info.get("triggers"));
