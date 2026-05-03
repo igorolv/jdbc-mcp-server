@@ -158,6 +158,35 @@ public interface SqlDialect {
         return null;
     }
 
+    /**
+     * SQL that returns table constraints. Expected columns:
+     * {@code name}, {@code type}, {@code columns}, {@code definition},
+     * {@code referenced_schema}, {@code referenced_table}, {@code referenced_columns}.
+     * Column lists may be returned as comma-separated strings; callers normalize them.
+     * Params: {@code (schema, table)}.
+     */
+    default String tableConstraintsQuery() {
+        return null;
+    }
+
+    /**
+     * SQL that returns table triggers. Expected columns:
+     * {@code schema}, {@code table_name}, {@code name}, {@code timing}, {@code events},
+     * {@code enabled}, {@code definition}.
+     * Params: {@code (schema, table)}.
+     */
+    default String tableTriggersQuery() {
+        return null;
+    }
+
+    /**
+     * SQL that returns a single trigger definition. Expected one column: {@code definition}.
+     * Params: {@code (schema, table, trigger)}.
+     */
+    default String triggerDefinitionQuery() {
+        return null;
+    }
+
     /** System schemas that should be hidden from {@code listSchemas} / {@code listTables} by default. */
     List<String> systemSchemas();
 

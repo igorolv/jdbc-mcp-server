@@ -25,9 +25,30 @@ class PostgresIntegrationMetadataToolsTest extends AbstractPostgresToolsIntegrat
         assertThat(field(table, "name").asText()).isEqualTo("orders");
         assertThat(findByField((ArrayNode) field(table, "columns"), "name", "customer_id")).isNotNull();
         assertThat(field(field(table, "primaryKey"), "name").asText()).isEqualTo("orders_pkey");
+        assertThat(findByField((ArrayNode) field(table, "constraints"),
+                "name", "orders_total_nonnegative")).isNotNull();
 
         String viewDefinition = metadataTools().getViewDefinition("public", "v_customer_totals");
         assertThat(viewDefinition).containsIgnoringCase("FROM customers");
+    }
+
+    @Test
+    void listsConstraintsAndTriggers() {
+        ArrayNode constraints = array(metadataTools().listTableConstraints("public", "orders"));
+        ObjectNode check = (ObjectNode) findByField(constraints, "name", "orders_total_nonnegative");
+        assertThat(check).isNotNull();
+        assertThat(field(check, "type").asText()).isEqualTo("CHECK");
+        assertThat(field(check, "definition").asText()).contains("total >= 0");
+
+        ArrayNode triggers = array(metadataTools().listTriggers("public", "customer_notes", false));
+        ObjectNode trigger = (ObjectNode) findByField(triggers, "name", "customer_notes_touch_trg");
+        assertThat(trigger).isNotNull();
+        assertThat(field(trigger, "timing").asText()).isEqualTo("BEFORE");
+        assertThat(textValues((ArrayNode) field(trigger, "events"))).contains("INSERT", "UPDATE");
+
+        String definition = metadataTools().getTriggerDefinition(
+                "public", "customer_notes", "customer_notes_touch_trg");
+        assertThat(definition).contains("customer_notes_touch_trg");
     }
 
     @Test

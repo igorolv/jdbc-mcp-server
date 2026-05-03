@@ -285,6 +285,83 @@ public class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String tableConstraintsQuery() {
+        return """
+                SELECT c.conname AS name,
+                       CASE c.contype
+                           WHEN 'p' THEN 'PRIMARY_KEY'
+                           WHEN 'u' THEN 'UNIQUE'
+                           WHEN 'f' THEN 'FOREIGN_KEY'
+                           WHEN 'c' THEN 'CHECK'
+                           WHEN 'x' THEN 'EXCLUDE'
+                           ELSE c.contype::text
+                       END AS type,
+                       string_agg(a.attname, ',' ORDER BY ck.ord) AS columns,
+                       pg_get_constraintdef(c.oid, true) AS definition,
+                       rn.nspname AS referenced_schema,
+                       rt.relname AS referenced_table,
+                       string_agg(ra.attname, ',' ORDER BY fk.ord) AS referenced_columns
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                LEFT JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
+                LEFT JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ck.attnum
+                LEFT JOIN pg_class rt ON rt.oid = c.confrelid
+                LEFT JOIN pg_namespace rn ON rn.oid = rt.relnamespace
+                LEFT JOIN LATERAL unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
+                LEFT JOIN pg_attribute ra ON ra.attrelid = rt.oid AND ra.attnum = fk.attnum
+                WHERE n.nspname = ?
+                  AND t.relname = ?
+                  AND c.contype IN ('p', 'u', 'f', 'c', 'x')
+                GROUP BY c.oid, c.conname, c.contype, rn.nspname, rt.relname
+                ORDER BY c.conname
+                """;
+    }
+
+    @Override
+    public String tableTriggersQuery() {
+        return """
+                SELECT n.nspname AS schema,
+                       c.relname AS table_name,
+                       t.tgname AS name,
+                       CASE
+                           WHEN (t.tgtype & 2) <> 0 THEN 'BEFORE'
+                           WHEN (t.tgtype & 64) <> 0 THEN 'INSTEAD OF'
+                           ELSE 'AFTER'
+                       END AS timing,
+                       concat_ws(',',
+                           CASE WHEN (t.tgtype & 4) <> 0 THEN 'INSERT' END,
+                           CASE WHEN (t.tgtype & 8) <> 0 THEN 'DELETE' END,
+                           CASE WHEN (t.tgtype & 16) <> 0 THEN 'UPDATE' END,
+                           CASE WHEN (t.tgtype & 32) <> 0 THEN 'TRUNCATE' END
+                       ) AS events,
+                       NOT t.tgenabled = 'D' AS enabled,
+                       pg_get_triggerdef(t.oid, true) AS definition
+                FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ?
+                  AND c.relname = ?
+                  AND NOT t.tgisinternal
+                ORDER BY t.tgname
+                """;
+    }
+
+    @Override
+    public String triggerDefinitionQuery() {
+        return """
+                SELECT pg_get_triggerdef(t.oid, true) AS definition
+                FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ?
+                  AND c.relname = ?
+                  AND t.tgname = ?
+                  AND NOT t.tgisinternal
+                """;
+    }
+
+    @Override
     public String pgStatStatementsAvailabilityQuery() {
         // One-row answer iff the extension is installed in any schema of the current database.
         return "SELECT 1 AS available FROM pg_extension WHERE extname = 'pg_stat_statements'";

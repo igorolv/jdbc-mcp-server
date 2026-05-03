@@ -73,6 +73,54 @@ public class MetadataTools {
         }
     }
 
+    @McpTool(description = "List table constraints in a unified shape: primary key, unique, foreign key, " +
+            "check/exclusion constraints where supported. CHECK constraints include their definition " +
+            "so agents can see allowed values and business invariants without sampling data.")
+    public String listTableConstraints(
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Table or view name") String table
+    ) {
+        try {
+            return JsonWriter.write(metadata.listTableConstraints(schema, table));
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Invalid argument: " + e.getMessage();
+        }
+    }
+
+    @McpTool(description = "List triggers defined on a table. By default returns compact metadata " +
+            "(name, timing, events, enabled). Set includeDefinition=true to include trigger definitions.")
+    public String listTriggers(
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Table or view name") String table,
+            @McpToolParam(description = "Include trigger definition text. Default false.", required = false) Boolean includeDefinition
+    ) {
+        try {
+            return JsonWriter.write(metadata.listTriggers(schema, table, Boolean.TRUE.equals(includeDefinition)));
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Invalid argument: " + e.getMessage();
+        }
+    }
+
+    @McpTool(description = "Get a trigger definition/body for one table trigger.")
+    public String getTriggerDefinition(
+            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Table or view name") String table,
+            @McpToolParam(description = "Trigger name") String trigger
+    ) {
+        try {
+            String def = metadata.triggerDefinition(schema, table, trigger);
+            return def == null || def.isBlank() ? "(not found)" : def;
+        } catch (SQLException e) {
+            return "SQL error: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Invalid argument: " + e.getMessage();
+        }
+    }
+
     @McpTool(description = "Get the SQL definition of a view or materialized view.")
     public String getViewDefinition(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,

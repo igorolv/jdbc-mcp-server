@@ -268,6 +268,83 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
+    public String tableConstraintsQuery() {
+        return """
+                SELECT c.constraint_name AS name,
+                       CASE c.constraint_type
+                           WHEN 'P' THEN 'PRIMARY_KEY'
+                           WHEN 'U' THEN 'UNIQUE'
+                           WHEN 'R' THEN 'FOREIGN_KEY'
+                           WHEN 'C' THEN 'CHECK'
+                           WHEN 'V' THEN 'CHECK_OPTION'
+                           WHEN 'O' THEN 'READ_ONLY_VIEW'
+                           ELSE c.constraint_type
+                       END AS type,
+                       (SELECT LISTAGG(cc.column_name, ',') WITHIN GROUP (ORDER BY cc.position)
+                        FROM all_cons_columns cc
+                        WHERE cc.owner = c.owner
+                          AND cc.constraint_name = c.constraint_name) AS columns,
+                       CASE
+                           WHEN c.constraint_type = 'C' THEN c.search_condition_vc
+                           ELSE NULL
+                       END AS definition,
+                       rc.owner AS referenced_schema,
+                       rc.table_name AS referenced_table,
+                       (SELECT LISTAGG(rcc.column_name, ',') WITHIN GROUP (ORDER BY rcc.position)
+                        FROM all_cons_columns fcc
+                        JOIN all_cons_columns rcc
+                          ON rcc.owner = rc.owner
+                         AND rcc.constraint_name = rc.constraint_name
+                         AND rcc.position = fcc.position
+                        WHERE fcc.owner = c.owner
+                          AND fcc.constraint_name = c.constraint_name) AS referenced_columns
+                FROM all_constraints c
+                LEFT JOIN all_constraints rc
+                  ON rc.owner = c.r_owner
+                 AND rc.constraint_name = c.r_constraint_name
+                WHERE c.owner = UPPER(?)
+                  AND c.table_name = UPPER(?)
+                  AND c.constraint_type IN ('P', 'U', 'R', 'C', 'V', 'O')
+                ORDER BY c.constraint_name
+                """;
+    }
+
+    @Override
+    public String tableTriggersQuery() {
+        return """
+                SELECT owner AS schema,
+                       table_name AS table_name,
+                       trigger_name AS name,
+                       CASE
+                           WHEN trigger_type LIKE 'BEFORE%' THEN 'BEFORE'
+                           WHEN trigger_type LIKE 'AFTER%' THEN 'AFTER'
+                           WHEN trigger_type LIKE 'INSTEAD OF%' THEN 'INSTEAD OF'
+                           ELSE trigger_type
+                       END AS timing,
+                       triggering_event AS events,
+                       CASE WHEN status = 'ENABLED' THEN 'true' ELSE 'false' END AS enabled,
+                       description AS definition
+                FROM all_triggers
+                WHERE owner = UPPER(?)
+                  AND table_name = UPPER(?)
+                ORDER BY trigger_name
+                """;
+    }
+
+    @Override
+    public String triggerDefinitionQuery() {
+        return """
+                SELECT text AS definition
+                FROM all_source
+                WHERE owner = UPPER(?)
+                  AND (? IS NULL OR 1 = 1)
+                  AND name = UPPER(?)
+                  AND type = 'TRIGGER'
+                ORDER BY line
+                """;
+    }
+
+    @Override
     public List<String> systemSchemas() {
         return List.of("SYS", "SYSTEM", "CTXSYS", "MDSYS", "XDB", "GSMADMIN_INTERNAL",
                 "DBSNMP", "OUTLN", "APPQOSSYS", "AUDSYS", "ORDSYS", "OJVMSYS", "DVSYS",

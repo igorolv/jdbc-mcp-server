@@ -331,8 +331,10 @@ public class SchemaContextService {
         out.put("remarks", info.get("remarks"));
         out.put("columns", columns);
         out.put("primaryKey", info.get("primaryKey"));
+        out.put("constraints", info.get("constraints"));
         out.put("foreignKeys", info.get("foreignKeys"));
         out.put("indexes", compactIndexes(info.get("indexes")));
+        out.put("triggers", info.get("triggers"));
         if (includeStats && table != null && !isView(info)) {
             try {
                 out.put("stats", stats.tableStats(schema, table));

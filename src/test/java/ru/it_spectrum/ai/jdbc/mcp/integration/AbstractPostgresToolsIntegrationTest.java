@@ -82,7 +82,11 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
              var statement = connection.createStatement()) {
             statement.execute("CREATE TABLE customers (id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)");
             statement.execute("CREATE INDEX idx_customers_name ON customers(name)");
-            statement.execute("CREATE TABLE orders (id SERIAL PRIMARY KEY, customer_id INT REFERENCES customers(id), total NUMERIC(10,2))");
+            statement.execute("CREATE TABLE orders (" +
+                    "id SERIAL PRIMARY KEY, " +
+                    "customer_id INT REFERENCES customers(id), " +
+                    "total NUMERIC(10,2), " +
+                    "CONSTRAINT orders_total_nonnegative CHECK (total >= 0))");
             statement.execute("CREATE TABLE line_items (id SERIAL PRIMARY KEY, order_id INT REFERENCES orders(id), sku TEXT, qty INT)");
             statement.execute("CREATE INDEX idx_li_order_sku ON line_items(order_id, sku)");
             statement.execute("CREATE INDEX idx_li_order ON line_items(order_id)");
@@ -103,6 +107,20 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
                     SELECT COUNT(*)::integer FROM customers
                     $$
                     """);
+            statement.execute("""
+                    CREATE OR REPLACE FUNCTION customer_notes_touch_fn()
+                    RETURNS trigger
+                    LANGUAGE plpgsql
+                    AS $$
+                    BEGIN
+                      NEW.note := COALESCE(NEW.note, '');
+                      RETURN NEW;
+                    END;
+                    $$
+                    """);
+            statement.execute("CREATE TRIGGER customer_notes_touch_trg " +
+                    "BEFORE INSERT OR UPDATE ON customer_notes " +
+                    "FOR EACH ROW EXECUTE FUNCTION customer_notes_touch_fn()");
             statement.execute("INSERT INTO customers(name, email) VALUES ('Alice', 'a@example.com'), ('Bob', 'b@example.com')");
             statement.execute("INSERT INTO orders(customer_id, total) VALUES (1, 10.5), (1, 20.0), (2, 5.0)");
             statement.execute("INSERT INTO line_items(order_id, sku, qty) VALUES (1, 'a', 1), (1, 'b', 2), (2, 'a', 3)");

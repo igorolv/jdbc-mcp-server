@@ -25,9 +25,30 @@ class OracleIntegrationMetadataToolsTest extends AbstractOracleToolsIntegrationT
         assertThat(field(table, "name").asText()).isEqualTo("ORDERS");
         assertThat(findByField((ArrayNode) field(table, "columns"), "name", "CUSTOMER_ID")).isNotNull();
         assertThat(field(field(table, "primaryKey"), "name").asText()).isNotBlank();
+        assertThat(findByField((ArrayNode) field(table, "constraints"),
+                "name", "ORDERS_TOTAL_NONNEGATIVE")).isNotNull();
 
         String viewDefinition = metadataTools().getViewDefinition(schema(), "V_CUSTOMER_TOTALS");
         assertThat(viewDefinition).containsIgnoringCase("FROM customers");
+    }
+
+    @Test
+    void listsConstraintsAndTriggers() {
+        ArrayNode constraints = array(metadataTools().listTableConstraints(schema(), "ORDERS"));
+        ObjectNode check = (ObjectNode) findByField(constraints, "name", "ORDERS_TOTAL_NONNEGATIVE");
+        assertThat(check).isNotNull();
+        assertThat(field(check, "type").asText()).isEqualTo("CHECK");
+        assertThat(field(check, "definition").asText()).containsIgnoringCase("total");
+
+        ArrayNode triggers = array(metadataTools().listTriggers(schema(), "CUSTOMER_NOTES", false));
+        ObjectNode trigger = (ObjectNode) findByField(triggers, "name", "CUSTOMER_NOTES_TOUCH_TRG");
+        assertThat(trigger).isNotNull();
+        assertThat(field(trigger, "timing").asText()).isEqualTo("BEFORE");
+        assertThat(textValues((ArrayNode) field(trigger, "events"))).contains("INSERT", "UPDATE");
+
+        String definition = metadataTools().getTriggerDefinition(
+                schema(), "CUSTOMER_NOTES", "CUSTOMER_NOTES_TOUCH_TRG");
+        assertThat(definition).containsIgnoringCase("customer_notes_touch_trg");
     }
 
     @Test

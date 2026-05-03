@@ -108,6 +108,8 @@ public class MetadataService {
             result.put("indexes", fetchIndexes(md, effectiveSchema, table));
             result.put("foreignKeys", fetchImportedKeys(md, effectiveSchema, table));
             result.put("referencedBy", fetchExportedKeys(md, effectiveSchema, table));
+            result.put("constraints", fetchConstraints(effectiveSchema, table));
+            result.put("triggers", fetchTriggers(effectiveSchema, table, false));
             return result;
         });
     }
@@ -424,7 +426,125 @@ public class MetadataService {
                 Arrays.asList(pattern, pattern), 200);
     }
 
+    public List<Map<String, Object>> listTableConstraints(String schema, String table) throws SQLException {
+        if (table == null || table.isBlank()) {
+            throw new IllegalArgumentException("table must be provided");
+        }
+        return fetchConstraints(resolveSchema(schema), table);
+    }
+
+    public List<Map<String, Object>> listTriggers(String schema, String table, boolean includeDefinition)
+            throws SQLException {
+        if (table == null || table.isBlank()) {
+            throw new IllegalArgumentException("table must be provided");
+        }
+        return fetchTriggers(resolveSchema(schema), table, includeDefinition);
+    }
+
+    public String triggerDefinition(String schema, String table, String trigger) throws SQLException {
+        if (table == null || table.isBlank()) {
+            throw new IllegalArgumentException("table must be provided");
+        }
+        if (trigger == null || trigger.isBlank()) {
+            throw new IllegalArgumentException("trigger must be provided");
+        }
+        String sql = dialect.triggerDefinitionQuery();
+        if (sql == null) return null;
+        QueryResult r = executor.queryInternal(sql, List.of(resolveSchema(schema), table, trigger), 10_000);
+        if (r.rows().isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        String key = r.columns().get(0);
+        for (Map<String, Object> row : r.rows()) {
+            Object value = row.get(key);
+            if (value != null) sb.append(value);
+        }
+        return sb.toString();
+    }
+
     // ---------- helpers ----------
+
+    private List<Map<String, Object>> fetchConstraints(String schema, String table) throws SQLException {
+        String sql = dialect.tableConstraintsQuery();
+        if (sql == null) return List.of();
+        QueryResult r = executor.queryInternal(sql, List.of(schema == null ? "" : schema, table), 1_000);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : r.rows()) {
+            Map<String, Object> constraint = new LinkedHashMap<>();
+            constraint.put("name", getCI(row, "name"));
+            constraint.put("type", getCI(row, "type"));
+            constraint.put("columns", splitCsv(getCI(row, "columns")));
+            Object definition = getCI(row, "definition");
+            if (definition != null && !String.valueOf(definition).isBlank()) {
+                constraint.put("definition", definition);
+            }
+            Object referencedSchema = getCI(row, "referenced_schema");
+            Object referencedTable = getCI(row, "referenced_table");
+            List<String> referencedColumns = splitCsv(getCI(row, "referenced_columns"));
+            if (referencedTable != null && !String.valueOf(referencedTable).isBlank()) {
+                constraint.put("referencedSchema", referencedSchema);
+                constraint.put("referencedTable", referencedTable);
+                constraint.put("referencedColumns", referencedColumns);
+            }
+            out.add(constraint);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> fetchTriggers(String schema, String table, boolean includeDefinition)
+            throws SQLException {
+        String sql = dialect.tableTriggersQuery();
+        if (sql == null) return List.of();
+        QueryResult r = executor.queryInternal(sql, List.of(schema == null ? "" : schema, table), 1_000);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : r.rows()) {
+            Map<String, Object> trigger = new LinkedHashMap<>();
+            trigger.put("schema", getCI(row, "schema"));
+            trigger.put("table", getCI(row, "table_name"));
+            trigger.put("name", getCI(row, "name"));
+            trigger.put("timing", getCI(row, "timing"));
+            trigger.put("events", splitEvents(getCI(row, "events")));
+            trigger.put("enabled", toBool(getCI(row, "enabled")));
+            Object definition = getCI(row, "definition");
+            if (includeDefinition && definition != null && !String.valueOf(definition).isBlank()) {
+                trigger.put("definition", definition);
+            }
+            out.add(trigger);
+        }
+        return out;
+    }
+
+    private static Object getCI(Map<String, Object> row, String key) {
+        Object v = row.get(key);
+        if (v != null) return v;
+        for (Map.Entry<String, Object> e : row.entrySet()) {
+            if (e.getKey() != null && e.getKey().equalsIgnoreCase(key)) return e.getValue();
+        }
+        return null;
+    }
+
+    private static List<String> splitCsv(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String part : String.valueOf(value).split(",")) {
+            String item = part.trim();
+            if (!item.isEmpty()) out.add(item);
+        }
+        return out;
+    }
+
+    private static List<String> splitEvents(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) return List.of();
+        String normalized = String.valueOf(value).replace(" OR ", ",");
+        return splitCsv(normalized);
+    }
+
+    private static boolean toBool(Object value) {
+        if (value == null) return false;
+        if (value instanceof Boolean b) return b;
+        String s = String.valueOf(value).trim();
+        return "true".equalsIgnoreCase(s) || "yes".equalsIgnoreCase(s)
+                || "y".equalsIgnoreCase(s) || "1".equals(s);
+    }
 
     private String resolveSchema(String schema) throws SQLException {
         if (schema != null && !schema.isBlank()) return schema;
