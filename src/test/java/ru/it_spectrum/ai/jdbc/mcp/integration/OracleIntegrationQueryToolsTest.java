@@ -38,12 +38,12 @@ class OracleIntegrationQueryToolsTest extends AbstractOracleToolsIntegrationTest
         assertThat(field(summary, "engine").asText()).isEqualTo("oracle");
         assertThat(field(summary, "node_count").asInt()).isGreaterThan(0);
 
-        String valid = queryTools().validateQuery("SELECT * FROM customers", null, null);
-        assertThat(valid).startsWith("VALID.");
-        String validNamed = queryTools().validateQuery(
+        ObjectNode valid = object(queryTools().validateQuery("SELECT * FROM customers", null, null));
+        assertThat(field(valid, "valid").asBoolean()).isTrue();
+        ObjectNode validNamed = object(queryTools().validateQuery(
                 "SELECT COUNT(*) FROM events WHERE status = :status",
-                null, Map.of("status", "PAID"));
-        assertThat(validNamed).startsWith("VALID.");
+                null, Map.of("status", "PAID")));
+        assertThat(field(validNamed, "valid").asBoolean()).isTrue();
 
         assertInvalidArgument(
                 queryTools().executeQuery(
@@ -56,8 +56,9 @@ class OracleIntegrationQueryToolsTest extends AbstractOracleToolsIntegrationTest
                         java.util.List.of(1), null, 5, 5, null),
                 "'namedParams'");
 
-        assertThat(queryTools().validateQuery("DELETE FROM customers", null, null))
-                .startsWith("INVALID (guard):");
+        ObjectNode invalid = object(queryTools().validateQuery("DELETE FROM customers", null, null));
+        assertThat(field(invalid, "valid").asBoolean()).isFalse();
+        assertThat(field(invalid, "stage").asText()).isEqualTo("guard");
     }
 
     @Test

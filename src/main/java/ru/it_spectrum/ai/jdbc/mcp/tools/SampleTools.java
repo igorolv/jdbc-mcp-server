@@ -34,7 +34,7 @@ public class SampleTools {
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Number of rows to return (default 10, max 100)", required = false) Integer limit
     ) {
-        if (table == null || table.isBlank()) return "Invalid argument: table must be provided";
+        if (table == null || table.isBlank()) return ToolErrors.argument("table must be provided");
         int n = limit == null ? 10 : Math.max(1, Math.min(limit, 100));
         String qualified = qualify(schema, table);
         String sql = dialect.limitQuery("SELECT * FROM " + qualified, n);
@@ -42,7 +42,7 @@ public class SampleTools {
             QueryResult r = executor.queryInternal(sql, Collections.emptyList(), n);
             return ResultFormatter.format(r, OutputFormat.JSON);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -55,7 +55,7 @@ public class SampleTools {
             @McpToolParam(description = "Column name") String column
     ) {
         if (table == null || table.isBlank() || column == null || column.isBlank()) {
-            return "Invalid argument: table and column must be provided";
+            return ToolErrors.argument("table and column must be provided");
         }
         String qTable = qualify(schema, table);
         String qCol = quoteIdent(column);
@@ -71,7 +71,7 @@ public class SampleTools {
             QueryResult r = executor.queryInternal(sql, Collections.emptyList(), 1);
             return ResultFormatter.format(r, OutputFormat.JSON);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 

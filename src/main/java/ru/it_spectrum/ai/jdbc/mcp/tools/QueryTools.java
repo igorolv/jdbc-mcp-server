@@ -81,11 +81,11 @@ public class QueryTools {
             QueryResult result = query(normalizedSql, params, namedParams, limit, timeoutSeconds);
             return ResultFormatter.format(result, fmt);
         } catch (SqlNotAllowedException e) {
-            return "Rejected: " + e.getMessage();
+            return ToolErrors.rejected(e);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -134,11 +134,11 @@ public class QueryTools {
                 return rowsAsText(planRows);
             }, displaySql == null);
         } catch (SqlNotAllowedException e) {
-            return "Rejected: " + e.getMessage();
+            return ToolErrors.rejected(e);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (Exception e) {
-            return "Unexpected error: " + e.getMessage();
+            return ToolErrors.unexpected(e);
         }
     }
 
@@ -190,15 +190,15 @@ public class QueryTools {
                 }
                 return planParser.parse(planRows, doAnalyze);
             }, displaySql == null);
-            return MetadataTools.JsonWriter.write(PlanAnalyzer.summarize(parsed));
+            return JsonWriter.write(PlanAnalyzer.summarize(parsed));
         } catch (SqlNotAllowedException e) {
-            return "Rejected: " + e.getMessage();
+            return ToolErrors.rejected(e);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Plan parse error: " + e.getMessage();
+            return ToolErrors.planParse(e);
         } catch (Exception e) {
-            return "Unexpected error: " + e.getMessage();
+            return ToolErrors.unexpected(e);
         }
     }
 
@@ -216,7 +216,7 @@ public class QueryTools {
         try {
             guard.check(normalizedSql);
         } catch (SqlNotAllowedException e) {
-            return "INVALID (guard): " + e.getMessage();
+            return validationFailure("guard", e.getMessage());
         }
         try {
             SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
@@ -240,16 +240,26 @@ public class QueryTools {
                     } catch (SQLException ignore) {
                         // some drivers can't describe a prepared SELECT without execution
                     }
-                    return "VALID. Parameters: " + paramCount + ", columns: " + colCount;
+                    java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+                    body.put("valid", true);
+                    body.put("parameters", paramCount);
+                    body.put("columns", colCount);
+                    return JsonWriter.write(body);
                 }
             });
-        } catch (IllegalArgumentException e) {
-            return "INVALID (params): " + e.getMessage();
         } catch (RuntimeException e) {
-            return "INVALID (params): " + e.getMessage();
+            return validationFailure("params", e.getMessage());
         } catch (SQLException e) {
-            return "INVALID (driver): " + e.getMessage();
+            return validationFailure("driver", e.getMessage());
         }
+    }
+
+    private static String validationFailure(String stage, String message) {
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("valid", false);
+        body.put("stage", stage);
+        body.put("error", message);
+        return JsonWriter.write(body);
     }
 
     // ---------------- helpers ----------------

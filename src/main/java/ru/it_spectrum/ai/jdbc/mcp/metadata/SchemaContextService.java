@@ -117,7 +117,7 @@ public class SchemaContextService {
 
     public Map<String, Object> tableContext(String schema, String table, Integer depth,
                                             Boolean includeIncoming, Boolean includeStats,
-                                            Boolean includeInferred, Integer maxTables)
+                                            Boolean includeInferred, Integer inferredScanLimit)
             throws SQLException {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("table must be provided");
@@ -131,7 +131,7 @@ public class SchemaContextService {
         String rootTable = str(root.get("name"));
 
         Map<String, Map<String, Object>> schemaTables = inferred
-                ? loadSchemaTables(rootSchema, clamp(maxTables, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT))
+                ? loadSchemaTables(rootSchema, clamp(inferredScanLimit, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT))
                 : Map.of();
         List<Map<String, Object>> inferredEdges = inferred
                 ? inferRelationshipEdges(new ArrayList<>(schemaTables.values()))
@@ -206,7 +206,7 @@ public class SchemaContextService {
     public Map<String, Object> findJoinPaths(String fromSchema, String fromTable,
                                              String toSchema, String toTable,
                                              Integer maxDepth, Integer maxPaths,
-                                             Integer maxTables, Boolean includeInferred) throws SQLException {
+                                             Integer scanLimit, Boolean includeInferred) throws SQLException {
         if (fromTable == null || fromTable.isBlank()) {
             throw new IllegalArgumentException("fromTable must be provided");
         }
@@ -215,7 +215,7 @@ public class SchemaContextService {
         }
         int depthLimit = clamp(maxDepth, MAX_DEPTH, 1, MAX_DEPTH);
         int pathLimit = clamp(maxPaths, DEFAULT_MAX_PATHS, 1, MAX_PATHS_LIMIT);
-        int tableLimit = clamp(maxTables, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT);
+        int tableLimit = clamp(scanLimit, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT);
         boolean inferred = includeInferred == null || includeInferred;
 
         Map<String, Object> fromInfo = metadata.describeTable(fromSchema, fromTable);

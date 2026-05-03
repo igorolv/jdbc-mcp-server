@@ -184,12 +184,12 @@ keep the response compact; raise the caps when needed.
 | Tool | Description |
 |---|---|
 | `schemaOverview` | Compact schema snapshot: tables/views, columns, PK/FK, indexes, relationship edges. Params: `schema`, `namePattern`, `includeViews`, `includeStats`, `includeInferred` (`*_id` heuristic), `maxTables` (default 50, cap 300) |
-| `tableContext` | Neighbourhood around one table: the table, FK parents, optionally child tables and edges. Params: `schema`, `table`, `depth` (default 1, cap 4), `includeIncoming`, `includeStats`, `includeInferred` |
-| `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `maxTables`, `includeInferred` |
-| `schemaBrief` | Plain-text synopsis: hub tables, fact/detail, lookup/reference, key relationships, enum-like CHECK columns, suspicious implicit joins. Use when full JSON would be too verbose. Params: `schema`, `focus`, `maxTables`, `includeInferred` |
-| `schemaGraph` | Relationship-graph metrics: nodes with in/out degree, central tables, isolated tables, components, cycle hints; optional shortest path. Params: `schema`, `maxTables`, `includeInferred`, `fromTable`, `toTable`, `maxDepth` |
-| `schemaLint` | Lint audit: missing PK, FK without index, FK type mismatch, inferred-but-undeclared relationships, nullable unique, status/type without CHECK, orphan `*_id`, missing remarks, isolated and wide tables. Params: `schema`, `table`, `checks` (allow-list), `maxTables`, `maxFindings`, `includeInferred` |
-| `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables`, `includeInferred` |
+| `tableContext` | Neighbourhood around one table: the table, FK parents, optionally child tables and edges. Params: `schema`, `table`, `depth` (default 1, cap 4), `includeIncoming`, `includeStats`, `includeInferred`, `inferredScanLimit` (default 300, cap 300 — only used when `includeInferred=true`, controls how many schema tables are scanned for `*_id` matches) |
+| `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, cap 300), `includeInferred` |
+| `schemaBrief` | Plain-text synopsis: hub tables, fact/detail, lookup/reference, key relationships, enum-like CHECK columns, suspicious implicit joins. Use when full JSON would be too verbose. Params: `schema`, `focus`, `maxTables` (default 50, cap 300), `includeInferred` |
+| `schemaGraph` | Relationship-graph metrics: nodes with in/out degree, central tables, isolated tables, components, cycle hints; optional shortest path. Params: `schema`, `maxTables` (default 50, cap 300), `includeInferred`, `fromTable`, `toTable`, `maxDepth` |
+| `schemaLint` | Lint audit: missing PK, FK without index, FK type mismatch, inferred-but-undeclared relationships, nullable unique, status/type without CHECK, orphan `*_id`, missing remarks, isolated and wide tables. Params: `schema`, `table`, `checks` (allow-list), `maxTables` (default 50, cap 300), `maxFindings`, `includeInferred` |
+| `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables` (default 12, cap 50 — narrower than the other context tools to keep responses concise), `includeInferred` |
 | `schemaGraphDot` | DOT/Graphviz ERD: nodes are tables with all columns and types (PK marked 🔑, FK with →); declared FK edges are solid, inferred `*_id` edges are dashed grey. Params: `schema`, `tables` (optional filter), `includeInferred` |
 
 ### Snapshot / metadata cache tools
@@ -208,6 +208,29 @@ All tools are **read-only**. Any attempt to run a non-SELECT statement is reject
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
 read-only, PostgreSQL uses `default_transaction_read_only=on`, and Oracle uses
 `SET TRANSACTION READ ONLY`.
+
+## Error responses
+
+All tools share one error shape — a JSON object with at minimum `error` and `kind`:
+
+```json
+{"error": "Only SELECT / WITH / EXPLAIN statements are allowed", "kind": "rejected"}
+```
+
+| `kind` | When |
+|---|---|
+| `sql` | The database returned a `SQLException` (syntax, missing object, permission, ...). |
+| `argument` | Tool argument was missing or malformed (raised by the tool/service). |
+| `rejected` | The read-only guard blocked the SQL before sending it to the database. |
+| `not_found` | A `getViewDefinition` / `getRoutineDefinition` / `getTriggerDefinition` lookup matched nothing. The body adds `missing` and `name`. |
+| `driver` / `unexpected` / `plan_parse` | Internal driver / unhandled / plan-parser failure. |
+
+`validateQuery` returns its own JSON shape (no `kind` — instead `valid` is the discriminator):
+
+```json
+{"valid": true,  "parameters": 1, "columns": 3}
+{"valid": false, "stage": "guard|params|driver", "error": "..."}
+```
 
 ## How an agent should use these tools
 
@@ -268,10 +291,10 @@ Notes on the metadata snapshot cache:
   running `./gradlew`.
 - **Connection refused / authentication failed** — verify URL/user/password with the native CLI
   (`psql "$JDBC_URL"` for PostgreSQL, `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...` for Oracle).
-- **`Rejected: Only SELECT / WITH / EXPLAIN statements are allowed`** — guard triggered. This
-  is expected for any write statement. For edge cases where a read-only operation is wrapped in
-  something the guard does not recognise, set `JDBC_READONLY_GUARD=off`. The connection-level
-  read-only enforcement stays on.
+- **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** — guard
+  triggered. This is expected for any write statement. For edge cases where a read-only
+  operation is wrapped in something the guard does not recognise, set `JDBC_READONLY_GUARD=off`.
+  The connection-level read-only enforcement stays on.
 - **Oracle: empty `describeTable` / `listTables`** — Oracle stores unquoted identifiers in upper
   case. Pass `CUSTOMERS` rather than `customers`.
 - **Oracle: `ORA-01456: may not perform insert/delete/update operation inside a READ ONLY transaction`** —

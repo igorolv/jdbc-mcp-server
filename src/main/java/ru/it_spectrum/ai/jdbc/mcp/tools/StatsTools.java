@@ -36,11 +36,11 @@ public class StatsTools {
     ) {
         try {
             Map<String, Object> info = stats.tableStats(schema, table);
-            return MetadataTools.JsonWriter.write(info);
+            return JsonWriter.write(info);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -57,7 +57,7 @@ public class StatsTools {
             QueryResult r = stats.indexStats(schema, table);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -73,9 +73,9 @@ public class StatsTools {
     ) {
         try {
             Map<String, Object> result = stats.unusedIndexes(schema, minSizeBytes);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -89,9 +89,9 @@ public class StatsTools {
     ) {
         try {
             Map<String, Object> result = stats.redundantIndexes(schema, table);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -106,9 +106,9 @@ public class StatsTools {
     ) {
         try {
             Map<String, Object> result = stats.fkIndexCoverage(schema, table);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 }

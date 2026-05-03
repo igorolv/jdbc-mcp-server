@@ -58,19 +58,19 @@ public class BenchmarkTools {
             @McpToolParam(description = "Number of cold runs (default 1). Executed first.", required = false) Integer coldRuns,
             @McpToolParam(description = "Number of warm runs (default 3). Aggregated into min/median/max.", required = false) Integer warmRuns
     ) {
-        if (limit == null) return "Invalid argument: limit is required";
-        if (timeoutSeconds == null) return "Invalid argument: timeoutSeconds is required";
+        if (limit == null) return ToolErrors.argument("limit is required");
+        if (timeoutSeconds == null) return ToolErrors.argument("timeoutSeconds is required");
         int cold = coldRuns == null ? 1 : coldRuns;
         int warm = warmRuns == null ? 3 : warmRuns;
         try {
             Map<String, Object> result = benchmarks.benchmark(sql, params, namedParams, limit, timeoutSeconds, cold, warm);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SqlNotAllowedException e) {
-            return "Rejected: " + e.getMessage();
+            return ToolErrors.rejected(e);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -91,13 +91,13 @@ public class BenchmarkTools {
     ) {
         try {
             Map<String, Object> result = benchmarks.timed(sql, params, namedParams, limit, timeoutSeconds);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SqlNotAllowedException e) {
-            return "Rejected: " + e.getMessage();
+            return ToolErrors.rejected(e);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 }

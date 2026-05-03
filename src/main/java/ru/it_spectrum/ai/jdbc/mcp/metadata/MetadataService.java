@@ -32,17 +32,26 @@ public class MetadataService {
     private final SqlDialect dialect;
     private final JdbcProperties properties;
     private final SchemaSnapshotCache cache;
+    private final SchemaResolver schemaResolver;
 
     public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties) {
-        this(executor, dialect, properties, new SchemaSnapshotCache(properties));
+        this(executor, dialect, properties, new SchemaSnapshotCache(properties),
+                new SchemaResolver(properties, executor, dialect));
     }
 
     public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties,
                            SchemaSnapshotCache cache) {
+        this(executor, dialect, properties, cache,
+                new SchemaResolver(properties, executor, dialect));
+    }
+
+    public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties,
+                           SchemaSnapshotCache cache, SchemaResolver schemaResolver) {
         this.executor = executor;
         this.dialect = dialect;
         this.properties = properties;
         this.cache = cache;
+        this.schemaResolver = schemaResolver;
     }
 
     public SchemaSnapshotCache cache() {
@@ -630,11 +639,7 @@ public class MetadataService {
     }
 
     private String resolveSchema(String schema) throws SQLException {
-        if (schema != null && !schema.isBlank()) return schema;
-        if (properties.defaultSchema() != null && !properties.defaultSchema().isBlank()) {
-            return properties.defaultSchema();
-        }
-        return executor.withConnection(dialect::fallbackSchema);
+        return schemaResolver.resolve(schema);
     }
 
     private boolean isSystemSchema(String schema) {

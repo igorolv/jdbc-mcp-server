@@ -115,13 +115,19 @@ abstract class AbstractToolsIntegrationTest {
     }
 
     protected final void assertRejected(String response, String expectedFragment) {
-        assertThat(response).startsWith("Rejected:");
+        assertErrorKind(response, "rejected");
         assertThat(response).contains(expectedFragment);
     }
 
     protected final void assertInvalidArgument(String response, String expectedFragment) {
-        assertThat(response).startsWith("Invalid argument:");
+        assertErrorKind(response, "argument");
         assertThat(response).contains(expectedFragment);
+    }
+
+    protected final void assertErrorKind(String response, String expectedKind) {
+        ObjectNode body = object(response);
+        assertThat(field(body, "kind").asText()).isEqualTo(expectedKind);
+        assertThat(field(body, "error").asText()).isNotBlank();
     }
 
     private JsonNode parse(String json) {

@@ -34,7 +34,7 @@ public class MetadataTools {
             List<String> schemas = metadata.listSchemas(Boolean.TRUE.equals(includeSystem));
             return toJsonArray(schemas);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -52,7 +52,7 @@ public class MetadataTools {
             List<Map<String, Object>> rows = metadata.listTables(schema, namePattern, typeArr);
             return ResultFormatter.toJson(toResult(List.of("schema", "name", "type", "remarks"), rows));
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -67,9 +67,9 @@ public class MetadataTools {
             Map<String, Object> info = metadata.describeTable(schema, table);
             return JsonWriter.write(info);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -81,11 +81,11 @@ public class MetadataTools {
     ) {
         try {
             String def = metadata.triggerDefinition(schema, table, trigger);
-            return def == null || def.isBlank() ? "(not found)" : def;
+            return def == null || def.isBlank() ? ToolErrors.notFound("trigger", trigger) : def;
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -96,9 +96,9 @@ public class MetadataTools {
     ) {
         try {
             String def = metadata.viewDefinition(schema, name);
-            return def == null ? "(not found)" : def;
+            return def == null ? ToolErrors.notFound("view", name) : def;
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -112,7 +112,7 @@ public class MetadataTools {
             QueryResult r = metadata.listRoutines(schema, namePattern);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -124,9 +124,9 @@ public class MetadataTools {
     ) {
         try {
             String source = metadata.routineSource(schema, name);
-            return source == null || source.isEmpty() ? "(not found)" : source;
+            return source == null || source.isEmpty() ? ToolErrors.notFound("routine", name) : source;
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -138,7 +138,7 @@ public class MetadataTools {
             QueryResult r = metadata.listSequences(schema);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -153,7 +153,7 @@ public class MetadataTools {
             QueryResult r = metadata.searchObjects(pattern);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         }
     }
 
@@ -184,70 +184,5 @@ public class MetadataTools {
         List<String> types = new ArrayList<>();
         for (int i = 0; i < columns.size(); i++) types.add("text");
         return new QueryResult(columns, types, rows, false, rows.size());
-    }
-
-    // Uses ResultFormatter's JSON writer indirectly through QueryResult for consistency,
-    // but describeTable has nested structures — we need a tiny recursive JSON writer here.
-    static final class JsonWriter {
-        static String write(Object value) {
-            StringBuilder sb = new StringBuilder();
-            append(sb, value, 0);
-            return sb.toString();
-        }
-
-        private static void append(StringBuilder sb, Object v, int depth) {
-            if (v == null) {
-                sb.append("null");
-                return;
-            }
-            if (v instanceof Map<?, ?> m) {
-                sb.append('{');
-                boolean first = true;
-                for (Map.Entry<?, ?> e : m.entrySet()) {
-                    if (!first) sb.append(',');
-                    first = false;
-                    sb.append('\n').append("  ".repeat(depth + 1));
-                    appendString(sb, String.valueOf(e.getKey()));
-                    sb.append(": ");
-                    append(sb, e.getValue(), depth + 1);
-                }
-                if (!first) sb.append('\n').append("  ".repeat(depth));
-                sb.append('}');
-                return;
-            }
-            if (v instanceof List<?> list) {
-                sb.append('[');
-                for (int i = 0; i < list.size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    append(sb, list.get(i), depth + 1);
-                }
-                sb.append(']');
-                return;
-            }
-            if (v instanceof Boolean || v instanceof Number) {
-                sb.append(v);
-                return;
-            }
-            appendString(sb, v.toString());
-        }
-
-        private static void appendString(StringBuilder sb, String s) {
-            sb.append('"');
-            for (int i = 0; i < s.length(); i++) {
-                char c = s.charAt(i);
-                switch (c) {
-                    case '\\' -> sb.append("\\\\");
-                    case '"' -> sb.append("\\\"");
-                    case '\n' -> sb.append("\\n");
-                    case '\r' -> sb.append("\\r");
-                    case '\t' -> sb.append("\\t");
-                    default -> {
-                        if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
-                        else sb.append(c);
-                    }
-                }
-            }
-            sb.append('"');
-        }
     }
 }

@@ -37,7 +37,7 @@ public class SnapshotTools {
     public String getSchemaSnapshot(
             @McpToolParam(description = "Schema name (optional — omit to see all cached schemas)", required = false) String schema
     ) {
-        return MetadataTools.JsonWriter.write(cache.snapshotInfo(schema));
+        return JsonWriter.write(cache.snapshotInfo(schema));
     }
 
     @McpTool(description = "Invalidate cached metadata and (by default) eagerly rebuild it. " +
@@ -91,14 +91,14 @@ public class SnapshotTools {
                 result.put("clearedAll", true);
             }
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
         result.put("durationMs", System.currentTimeMillis() - startedAt);
         result.put("ttlSeconds", cache.ttlMs() / 1000L);
         result.put("enabled", cache.enabled());
-        return MetadataTools.JsonWriter.write(result);
+        return JsonWriter.write(result);
     }
 
     @McpTool(description = "Invalidate cached metadata without re-warming. " +
@@ -108,20 +108,20 @@ public class SnapshotTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Single table to invalidate (optional)", required = false) String table
     ) {
+        Map<String, Object> result = new LinkedHashMap<>();
         if (table != null && !table.isBlank()) {
             cache.invalidateTable(schema, table);
-            return "{\"invalidated\":\"table\",\"schema\":" + json(schema) + ",\"table\":" + json(table) + "}";
-        }
-        if (schema != null && !schema.isBlank()) {
+            result.put("invalidated", "table");
+            result.put("schema", schema);
+            result.put("table", table);
+        } else if (schema != null && !schema.isBlank()) {
             cache.invalidateSchema(schema);
-            return "{\"invalidated\":\"schema\",\"schema\":" + json(schema) + "}";
+            result.put("invalidated", "schema");
+            result.put("schema", schema);
+        } else {
+            cache.invalidateAll();
+            result.put("invalidated", "all");
         }
-        cache.invalidateAll();
-        return "{\"invalidated\":\"all\"}";
-    }
-
-    private static String json(String value) {
-        if (value == null) return "null";
-        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        return JsonWriter.write(result);
     }
 }

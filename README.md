@@ -79,8 +79,8 @@
 | Tool | Описание |
 |---|---|
 | `schemaOverview` | Компактный снимок схемы для написания SQL: таблицы/вью, колонки, PK, FK, индексы и рёбра связей. Параметры: `schema`, `namePattern` (с `%` / `_`), `includeViews`, `includeStats`, `includeInferred` (связи по `*_id`), `maxTables` (по умолчанию 50, макс 300) |
-| `tableContext` | Контекст вокруг одной таблицы: сама таблица, FK-родители, опционально — дочерние таблицы и рёбра связей. Обход FK на заданную глубину (по умолчанию 1, макс 4). Параметры: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeInferred` |
-| `findJoinPaths` | Поиск путей JOIN между двумя таблицами по FK. Граф обходится в обоих направлениях, каждое ребро содержит `joinCondition`. Параметры: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (по умолчанию 4), `maxPaths` (по умолчанию 5), `includeInferred` |
+| `tableContext` | Контекст вокруг одной таблицы: сама таблица, FK-родители, опционально — дочерние таблицы и рёбра связей. Обход FK на заданную глубину (по умолчанию 1, макс 4). Параметры: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeInferred`, `inferredScanLimit` (по умолчанию 300, макс 300 — сколько таблиц схемы сканировать для inferred-связей; нужен только при `includeInferred=true`) |
+| `findJoinPaths` | Поиск путей JOIN между двумя таблицами по FK. Граф обходится в обоих направлениях, каждое ребро содержит `joinCondition`. Параметры: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (по умолчанию 4), `maxPaths` (по умолчанию 5), `scanLimit` (по умолчанию 300, макс 300), `includeInferred` |
 | `schemaBrief` | Компактная текстовая сводка схемы: hub-таблицы, fact/detail, lookup/reference, ключевые связи, enum-like CHECK-колонки, подозрительные неявные JOIN и краткие заметки по таблицам. Удобно, когда полный JSON был бы слишком объёмным |
 | `schemaGraph` | Метрики графа связей схемы: узлы с входящей/исходящей степенью и классификацией, рёбра, центральные таблицы, изолированные таблицы, компоненты связности, намёки на циклы. Опционально — кратчайший путь между двумя таблицами |
 | `schemaLint` | Линт-аудит схемы: отсутствующие PK, FK без индексов, несоответствие типов FK, inferred-но-не-declared связи, nullable unique, status/type без CHECK, сиротские `*_id`, отсутствующие remarks, изолированные таблицы, широкие таблицы. Набор проверок настраивается через `checks` |
@@ -140,6 +140,29 @@
 | `fkIndexCoverage` | Внешние ключи на дочерней стороне без поддерживающего индекса — классическая причина медленных `DELETE`/`UPDATE CASCADE` и медленных JOIN. В результате — готовый `suggested_index_columns` под `CREATE INDEX` |
 
 Все инструменты **read-only** — данные не изменяются.
+
+## Формат ошибок
+
+Все tool-ы возвращают ошибки одной формой — JSON с полями `error` и `kind`:
+
+```json
+{"error": "Only SELECT / WITH / EXPLAIN statements are allowed", "kind": "rejected"}
+```
+
+| `kind` | Когда |
+|---|---|
+| `sql` | БД вернула `SQLException` (синтаксис, нет объекта, прав, ...). |
+| `argument` | Неверный аргумент tool-а. |
+| `rejected` | Read-only guard заблокировал запрос до отправки в БД. |
+| `not_found` | `getViewDefinition` / `getRoutineDefinition` / `getTriggerDefinition` ничего не нашёл. В теле также `missing` и `name`. |
+| `driver` / `unexpected` / `plan_parse` | Внутренние сбои драйвера / необработанные / парсинг плана. |
+
+`validateQuery` использует свою форму (без `kind` — дискриминатор `valid`):
+
+```json
+{"valid": true,  "parameters": 1, "columns": 3}
+{"valid": false, "stage": "guard|params|driver", "error": "..."}
+```
 
 ## Защита от записи (read-only)
 
@@ -379,7 +402,7 @@ JDBC_PASSWORD=secret \
 - **Connection refused / ORA-01017 / FATAL: password authentication failed** — проверьте
   `JDBC_URL`, `JDBC_USERNAME`, `JDBC_PASSWORD`. Для PG можно потестить
   `psql "$JDBC_URL"`, для Oracle — `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...`.
-- **`Rejected: Only SELECT / WITH / EXPLAIN statements are allowed`** — guard сработал.
+- **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** — guard сработал.
   Это ожидаемое поведение для любых write-операций. Если запрос действительно read-only
   (например, вызов read-only функции через `SELECT func(...)`) — он пройдёт. Для полностью
   нетривиальных случаев можно выключить guard через `JDBC_READONLY_GUARD=off`.

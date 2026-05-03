@@ -36,11 +36,11 @@ public class DistributionTools {
     ) {
         try {
             Map<String, Object> r = distribution.columnDistribution(schema, table, column, topN);
-            return MetadataTools.JsonWriter.write(r);
+            return JsonWriter.write(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -56,11 +56,11 @@ public class DistributionTools {
     ) {
         try {
             Map<String, Object> r = distribution.columnHistogram(schema, table, column);
-            return MetadataTools.JsonWriter.write(r);
+            return JsonWriter.write(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -74,11 +74,11 @@ public class DistributionTools {
     ) {
         try {
             Map<String, Object> r = distribution.nullRatio(schema, table);
-            return MetadataTools.JsonWriter.write(r);
+            return JsonWriter.write(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -96,11 +96,11 @@ public class DistributionTools {
     ) {
         try {
             Map<String, Object> r = distribution.estimateSelectivity(schema, table, predicate);
-            return MetadataTools.JsonWriter.write(r);
+            return JsonWriter.write(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -121,11 +121,11 @@ public class DistributionTools {
         try {
             Map<String, Object> r = distribution.joinCardinality(leftSchema, leftTable, leftColumn,
                     rightSchema, rightTable, rightColumn, joinType);
-            return MetadataTools.JsonWriter.write(r);
+            return JsonWriter.write(r);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 }

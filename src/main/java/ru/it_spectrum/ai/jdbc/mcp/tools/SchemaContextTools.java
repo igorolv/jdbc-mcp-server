@@ -35,11 +35,11 @@ public class SchemaContextTools {
         try {
             Map<String, Object> result = schemaContext.schemaOverview(
                     schema, namePattern, includeViews, includeStats, includeInferred, maxTables);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -54,16 +54,16 @@ public class SchemaContextTools {
             @McpToolParam(description = "Include incoming references from child tables. Default true.", required = false) Boolean includeIncoming,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
             @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred,
-            @McpToolParam(description = "Maximum schema tables to scan for inferred relationships. Default 300, capped at 300.", required = false) Integer maxTables
+            @McpToolParam(description = "Maximum schema tables to scan for inferred relationships (only used when includeInferred=true). Default 300, capped at 300.", required = false) Integer inferredScanLimit
     ) {
         try {
             Map<String, Object> result = schemaContext.tableContext(
-                    schema, table, depth, includeIncoming, includeStats, includeInferred, maxTables);
-            return MetadataTools.JsonWriter.write(result);
+                    schema, table, depth, includeIncoming, includeStats, includeInferred, inferredScanLimit);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -78,17 +78,17 @@ public class SchemaContextTools {
             @McpToolParam(description = "Target table name") String toTable,
             @McpToolParam(description = "Maximum FK hops. Default 4, capped at 4.", required = false) Integer maxDepth,
             @McpToolParam(description = "Maximum paths to return. Default 5, capped at 25.", required = false) Integer maxPaths,
-            @McpToolParam(description = "Maximum schema tables to scan. Default 300, capped at 300.", required = false) Integer maxTables,
+            @McpToolParam(description = "Maximum schema tables to scan when building the graph. Default 300, capped at 300.", required = false) Integer scanLimit,
             @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred
     ) {
         try {
             Map<String, Object> result = schemaContext.findJoinPaths(
-                    fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, maxTables, includeInferred);
-            return MetadataTools.JsonWriter.write(result);
+                    fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, scanLimit, includeInferred);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -108,11 +108,11 @@ public class SchemaContextTools {
         try {
             Map<String, Object> result = schemaContext.schemaLint(
                     schema, table, checks, maxTables, maxFindings, includeInferred);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -129,9 +129,9 @@ public class SchemaContextTools {
         try {
             return schemaContext.schemaBrief(schema, focus, maxTables, includeInferred);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -149,11 +149,11 @@ public class SchemaContextTools {
         try {
             Map<String, Object> result = schemaContext.schemaGraph(
                     schema, maxTables, includeInferred, fromTable, toTable, maxDepth);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -171,11 +171,11 @@ public class SchemaContextTools {
         try {
             Map<String, Object> result = schemaContext.queryContext(
                     schema, terms, tables, includeSamples, maxTables, includeInferred);
-            return MetadataTools.JsonWriter.write(result);
+            return JsonWriter.write(result);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 
@@ -191,9 +191,9 @@ public class SchemaContextTools {
         try {
             return schemaContext.schemaGraphDot(schema, tables, includeInferred);
         } catch (SQLException e) {
-            return "SQL error: " + e.getMessage();
+            return ToolErrors.sql(e);
         } catch (IllegalArgumentException e) {
-            return "Invalid argument: " + e.getMessage();
+            return ToolErrors.argument(e);
         }
     }
 }

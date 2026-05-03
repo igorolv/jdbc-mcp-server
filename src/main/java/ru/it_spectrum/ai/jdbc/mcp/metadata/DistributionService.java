@@ -54,13 +54,22 @@ public class DistributionService {
     private final SqlDialect dialect;
     private final JdbcProperties properties;
     private final PlanParser planParser;
+    private final SchemaResolver schemaResolver;
 
     public DistributionService(SqlExecutor executor, SqlDialect dialect,
                                JdbcProperties properties, PlanParser planParser) {
+        this(executor, dialect, properties, planParser,
+                new SchemaResolver(properties, executor, dialect));
+    }
+
+    public DistributionService(SqlExecutor executor, SqlDialect dialect,
+                               JdbcProperties properties, PlanParser planParser,
+                               SchemaResolver schemaResolver) {
         this.executor = executor;
         this.dialect = dialect;
         this.properties = properties;
         this.planParser = planParser;
+        this.schemaResolver = schemaResolver;
     }
 
     // ---------------- columnDistribution ----------------
@@ -480,11 +489,7 @@ public class DistributionService {
     }
 
     private String resolveSchema(String schema) throws SQLException {
-        if (schema != null && !schema.isBlank()) return schema;
-        if (properties.defaultSchema() != null && !properties.defaultSchema().isBlank()) {
-            return properties.defaultSchema();
-        }
-        return executor.withConnection(dialect::fallbackSchema);
+        return schemaResolver.resolve(schema);
     }
 
     private static Double ratio(long num, long denom) {

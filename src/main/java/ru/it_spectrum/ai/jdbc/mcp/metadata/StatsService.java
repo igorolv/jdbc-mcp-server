@@ -39,11 +39,18 @@ public class StatsService {
     private final SqlExecutor executor;
     private final SqlDialect dialect;
     private final JdbcProperties properties;
+    private final SchemaResolver schemaResolver;
 
     public StatsService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties) {
+        this(executor, dialect, properties, new SchemaResolver(properties, executor, dialect));
+    }
+
+    public StatsService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties,
+                        SchemaResolver schemaResolver) {
         this.executor = executor;
         this.dialect = dialect;
         this.properties = properties;
+        this.schemaResolver = schemaResolver;
     }
 
     // ---------------- tableStats ----------------
@@ -323,11 +330,7 @@ public class StatsService {
     }
 
     private String resolveSchema(String schema) throws SQLException {
-        if (schema != null && !schema.isBlank()) return schema;
-        if (properties.defaultSchema() != null && !properties.defaultSchema().isBlank()) {
-            return properties.defaultSchema();
-        }
-        return executor.withConnection(dialect::fallbackSchema);
+        return schemaResolver.resolve(schema);
     }
 
     /**
