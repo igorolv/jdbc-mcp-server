@@ -17,6 +17,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -157,11 +158,11 @@ public class DistributionService {
     /**
      * Computes min/max plus P25/P50/P75/P90/P95/P99 for the given column.
      *
-     * <p>Uses standard SQL:2003 {@code WITHIN GROUP (ORDER BY ...)} aggregates — supported by
-     * both PostgreSQL and Oracle. For numeric types we use {@code percentile_cont}
-     * (interpolated); for any other orderable type (dates, timestamps, text) we use
-     * {@code percentile_disc}, which returns an actual existing value and tolerates non-numeric
-     * sorts that {@code percentile_cont} rejects on PostgreSQL.
+     * <p>Uses {@code WITHIN GROUP (ORDER BY ...)} percentile functions. PostgreSQL and Oracle
+     * expose these as aggregates; SQL Server exposes them as window functions, so the query shape
+     * is dialect-specific. For numeric types we use {@code percentile_cont} (interpolated); for
+     * any other orderable type we use {@code percentile_disc}, which returns an actual existing
+     * value and tolerates non-numeric sorts on engines that support them.
      */
     public Map<String, Object> columnHistogram(String schema, String table, String column) throws SQLException {
         requireIdent("table", table);
@@ -173,17 +174,19 @@ public class DistributionService {
         String qCol   = quoteIdent(column);
         String pct = type.numeric ? "percentile_cont" : "percentile_disc";
 
-        String sql = "SELECT COUNT(*) AS total_rows, " +
-                "COUNT(" + qCol + ") AS non_null_rows, " +
-                "MIN(" + qCol + ") AS min_value, " +
-                "MAX(" + qCol + ") AS max_value, " +
-                pct + "(0.25) WITHIN GROUP (ORDER BY " + qCol + ") AS p25, " +
-                pct + "(0.5)  WITHIN GROUP (ORDER BY " + qCol + ") AS p50, " +
-                pct + "(0.75) WITHIN GROUP (ORDER BY " + qCol + ") AS p75, " +
-                pct + "(0.9)  WITHIN GROUP (ORDER BY " + qCol + ") AS p90, " +
-                pct + "(0.95) WITHIN GROUP (ORDER BY " + qCol + ") AS p95, " +
-                pct + "(0.99) WITHIN GROUP (ORDER BY " + qCol + ") AS p99 " +
-                "FROM " + qTable;
+        String sql = dialect.kind() == DatabaseKind.MSSQL
+                ? sqlServerHistogramSql(qTable, qCol, pct)
+                : "SELECT COUNT(*) AS total_rows, " +
+                    "COUNT(" + qCol + ") AS non_null_rows, " +
+                    "MIN(" + qCol + ") AS min_value, " +
+                    "MAX(" + qCol + ") AS max_value, " +
+                    pct + "(0.25) WITHIN GROUP (ORDER BY " + qCol + ") AS p25, " +
+                    pct + "(0.5)  WITHIN GROUP (ORDER BY " + qCol + ") AS p50, " +
+                    pct + "(0.75) WITHIN GROUP (ORDER BY " + qCol + ") AS p75, " +
+                    pct + "(0.9)  WITHIN GROUP (ORDER BY " + qCol + ") AS p90, " +
+                    pct + "(0.95) WITHIN GROUP (ORDER BY " + qCol + ") AS p95, " +
+                    pct + "(0.99) WITHIN GROUP (ORDER BY " + qCol + ") AS p99 " +
+                    "FROM " + qTable;
 
         QueryResult r = executor.queryInternal(sql, Collections.emptyList(), 1);
 
@@ -214,6 +217,45 @@ public class DistributionService {
         out.put("p95", getCI(row, "p95"));
         out.put("p99", getCI(row, "p99"));
         return out;
+    }
+
+    private String sqlServerHistogramSql(String qTable, String qCol, String pct) {
+        return """
+                WITH base AS (
+                    SELECT %1$s AS v
+                    FROM %2$s
+                ),
+                stats AS (
+                    SELECT COUNT(*) AS total_rows,
+                           COUNT(v) AS non_null_rows,
+                           MIN(v) AS min_value,
+                           MAX(v) AS max_value
+                    FROM base
+                ),
+                pct_values AS (
+                    SELECT DISTINCT
+                           %3$s(0.25) WITHIN GROUP (ORDER BY v) OVER () AS p25,
+                           %3$s(0.5)  WITHIN GROUP (ORDER BY v) OVER () AS p50,
+                           %3$s(0.75) WITHIN GROUP (ORDER BY v) OVER () AS p75,
+                           %3$s(0.9)  WITHIN GROUP (ORDER BY v) OVER () AS p90,
+                           %3$s(0.95) WITHIN GROUP (ORDER BY v) OVER () AS p95,
+                           %3$s(0.99) WITHIN GROUP (ORDER BY v) OVER () AS p99
+                    FROM base
+                    WHERE v IS NOT NULL
+                )
+                SELECT stats.total_rows,
+                       stats.non_null_rows,
+                       stats.min_value,
+                       stats.max_value,
+                       pct.p25,
+                       pct.p50,
+                       pct.p75,
+                       pct.p90,
+                       pct.p95,
+                       pct.p99
+                FROM stats
+                OUTER APPLY (SELECT TOP (1) * FROM pct_values) pct
+                """.formatted(qCol, qTable, pct);
     }
 
     // ---------------- nullRatio ----------------
@@ -384,6 +426,19 @@ public class DistributionService {
      * single-step PostgreSQL flow (JSON EXPLAIN is its own query).
      */
     private Long explainRootRows(String sql) throws SQLException {
+        if (dialect.kind() == DatabaseKind.MSSQL) {
+            ParsedPlan parsed = executor.withConnection(conn -> {
+                runStatement(conn, "SET SHOWPLAN_XML ON");
+                try {
+                    QueryResult planRows = queryNoParamsWithStatement(conn, sql);
+                    return planParser.parse(planRows, false);
+                } finally {
+                    runStatement(conn, "SET SHOWPLAN_XML OFF");
+                }
+            });
+            PlanNode root = parsed.root();
+            return root == null ? null : root.estimatedRows();
+        }
         String statementId = newExplainStatementId();
         String explainSql = dialect.buildStructuredExplain(sql, false, statementId);
         String displaySql = dialect.structuredPlanQuery(statementId);
@@ -411,6 +466,15 @@ public class DistributionService {
         return queryWithParams(conn, sql, List.of());
     }
 
+    private QueryResult queryNoParamsWithStatement(Connection conn, String sql) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            if (properties.queryTimeoutSeconds() > 0) st.setQueryTimeout(properties.queryTimeoutSeconds());
+            try (ResultSet rs = st.executeQuery(sql)) {
+                return readAll(rs);
+            }
+        }
+    }
+
     private QueryResult queryWithParams(Connection conn, String sql, List<Object> params) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             if (properties.queryTimeoutSeconds() > 0) ps.setQueryTimeout(properties.queryTimeoutSeconds());
@@ -427,6 +491,13 @@ public class DistributionService {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             if (properties.queryTimeoutSeconds() > 0) ps.setQueryTimeout(properties.queryTimeoutSeconds());
             ps.execute();
+        }
+    }
+
+    private void runStatement(Connection conn, String sql) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            if (properties.queryTimeoutSeconds() > 0) st.setQueryTimeout(properties.queryTimeoutSeconds());
+            st.execute(sql);
         }
     }
 
@@ -516,6 +587,9 @@ public class DistributionService {
             // Oracle stores unquoted identifiers in upper case — pass as-is so existing
             // tables resolve without quoting.
             return id;
+        }
+        if (dialect.kind() == DatabaseKind.MSSQL) {
+            return "[" + id + "]";
         }
         return "\"" + id + "\"";
     }

@@ -19,8 +19,8 @@ import javax.sql.DataSource;
  *   <li>For PostgreSQL, we append {@code options=-c default_transaction_read_only=on} to the URL
  *       (unless the user already specified {@code options=} themselves) so that every transaction
  *       in the session is read-only on the server side — this blocks even DDL.</li>
- *   <li>For Oracle, the upstream {@code ReadOnlyGuard} is the primary defence; pooled connections
- *       are still marked read-only as a best-effort JDBC hint.</li>
+ *   <li>For Oracle and SQL Server, the upstream {@code ReadOnlyGuard} is the primary defence;
+ *       pooled connections are still marked read-only as a best-effort JDBC hint.</li>
  * </ul>
  */
 @Configuration

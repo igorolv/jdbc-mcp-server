@@ -1,6 +1,6 @@
 # JDBC MCP Server — Setup Guide for AI Agents
 
-This is a local MCP server that provides read-only access to PostgreSQL and Oracle databases.
+This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
 It exposes 40 read-only tools across eight groups:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarised plans.
@@ -12,14 +12,14 @@ It exposes 40 read-only tools across eight groups:
 - **Schema context** — high-level snapshots, table neighbourhoods, FK join paths, schema lint, ERD/DOT export.
 - **Snapshot / cache** — in-memory metadata snapshot with TTL plus refresh / inspect / invalidate tools.
 
-The server communicates over stdio (stdin/stdout). Both PostgreSQL and Oracle JDBC drivers
+The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, and SQL Server JDBC drivers
 are bundled inside the fat jar.
 
 ## Prerequisites
 
 - JDK 21+ installed (check with `java -version`)
 - A database account. A **read-only** database user is strongly recommended — see the README
-  for SQL snippets to create one in PostgreSQL or Oracle.
+  for SQL snippets to create one in PostgreSQL, Oracle, or SQL Server.
 
 ## Step 1: Get database credentials from the user
 
@@ -28,6 +28,7 @@ Before building, ask the user for:
 1. **JDBC URL** — e.g.
    - PostgreSQL: `jdbc:postgresql://<host>:5432/<database>`
    - Oracle: `jdbc:oracle:thin:@//<host>:1521/<service>`
+   - SQL Server: `jdbc:sqlserver://<host>:1433;databaseName=<database>`
 2. **Username** (preferably a read-only user)
 3. **Password**
 
@@ -35,9 +36,10 @@ Optionally:
 
 - **Default schema** for metadata tools (`JDBC_DEFAULT_SCHEMA`). If omitted, the server uses the
   connection's current schema. On Oracle, this defaults to the connecting user's schema (UPPER CASE).
+  On SQL Server, this is normally the login user's default schema (often `dbo`).
 - **Per-statement timeout** — `JDBC_QUERY_TIMEOUT_SECONDS` (default 30, `0` disables).
 - **Row cap** — `JDBC_MAX_ROWS` (default 1000); responses include `truncated: true` when hit.
-- **Read-only guard** — `JDBC_READONLY_GUARD` (`strict` default, `off` disables the client-side check; connection-level read-only flags stay on, with Oracle treating them as best-effort).
+- **Read-only guard** — `JDBC_READONLY_GUARD` (`strict` default, `off` disables the client-side check; connection-level read-only flags stay on, with Oracle and SQL Server treating them as best-effort).
 - **JDBC pool settings** — `JDBC_POOL_MAX_SIZE` (default 40), `JDBC_POOL_MIN_IDLE` (default 1),
   `JDBC_CONNECTION_TIMEOUT_MS` (default 10000), and `JDBC_VALIDATION_TIMEOUT_MS` (default 5000).
 - **Metadata snapshot cache** — `JDBC_METADATA_CACHE_TTL_SECONDS` (default 300, `0` disables) and
@@ -53,7 +55,7 @@ cd <path-to-this-project>
 ./gradlew build
 ```
 
-The resulting jar: `build/libs/jdbc-mcp-server.jar` (~32 MB, both JDBC drivers bundled).
+The resulting jar: `build/libs/jdbc-mcp-server.jar` (all supported JDBC drivers bundled).
 
 ## Step 3: Verify the server starts
 
@@ -121,8 +123,8 @@ The server exposes **40 read-only MCP tools**.
 | Tool | Description |
 |---|---|
 | `executeQuery` | Run a SELECT / WITH / EXPLAIN statement. Params: `sql`, `params` (array of values for `?` placeholders) or `namedParams` (object for `:name` placeholders), `limit`, `timeoutSeconds`, `format` (`json` default, `markdown`, `csv`). Result includes `truncated` flag if the row limit was hit |
-| `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. `analyze=true` enables `EXPLAIN ANALYZE` on PostgreSQL (actually runs the query). Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
-| `analyzePlan` | Compact, LLM-friendly summary of the execution plan: top-cost nodes, full scans on large relations, estimation errors (planner vs. reality — requires `analyze=true` on PG), risky nested loops with large outer input, disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (static only, `analyze` ignored). Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
+| `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. SQL Server: `SET SHOWPLAN_TEXT ON` on the same session. `analyze=true` enables `EXPLAIN ANALYZE` on PostgreSQL (actually runs the query); Oracle and SQL Server return static/estimated plans. Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
+| `analyzePlan` | Compact, LLM-friendly summary of the execution plan: top-cost nodes, full scans on large relations, estimation errors (planner vs. reality — requires `analyze=true` on PG), risky nested loops with large outer input, disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (static only, `analyze` ignored). SQL Server: `SET SHOWPLAN_XML ON` estimated plan. Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
 | `validateQuery` | Validate a statement without running it — read-only guard + driver-side `prepareStatement` plus a JSqlParser-derived `inspection` summary when possible. Params: `sql`, `params` (`?`) or `namedParams` (`:name`) |
 | `inspectQuery` | Parse SQL with JSqlParser and return an AST-derived authoring summary without touching the database: tables, aliases, CTEs, select items, joins, predicates, order-by, referenced columns, parameters, features and parser-level warnings. Params: `sql` |
 | `queryLint` | Parse SQL and combine the AST with metadata/index/FK checks. Returns advisory warnings such as unknown table/column, `SELECT *`, joins without conditions, missing FK indexes, and predicate/order-by columns that are not leading index columns. Does not execute SQL. Params: `sql`, `schema` |
@@ -166,16 +168,16 @@ add a partial index, or rewrite a join.
 | `columnDistribution` | Top-N most frequent values of a column plus their share of the table. Surfaces skew (e.g. `70 %` of rows have `status='OK'` — a plain index on `status` is nearly useless). Executes `GROUP BY + COUNT` — prefer a small `topN` on very large tables. Params: `schema`, `table`, `column`, `topN` (default 20, max 1000) |
 | `columnHistogram` | Percentile summary for an orderable column: `min`, `max`, `P25`, `P50`, `P75`, `P90`, `P95`, `P99`, plus null counts. Uses SQL:2003 `WITHIN GROUP`: `percentile_cont` for numeric types (interpolated), `percentile_disc` for dates / timestamps / text. Params: `schema`, `table`, `column` |
 | `nullRatio` | Null / non-null ratio for **every column** of a table in one scan. Columns returned sorted by descending `null_ratio`; the `sparse` flag is set when more than 50 % of rows are null (candidate for a partial index with `WHERE col IS NOT NULL`). Params: `schema`, `table` |
-| `estimateSelectivity` | Planner's row estimate for `SELECT 1 FROM t WHERE <predicate>` — **without running the query**. Uses `EXPLAIN (FORMAT JSON)` (PostgreSQL) or `EXPLAIN PLAN` (Oracle). Returns `estimated_rows`, a `baseline_rows` count (no predicate) and the `selectivity` ratio. Reject `;` in the predicate. Params: `schema`, `table`, `predicate` (raw SQL, no `WHERE` keyword) |
+| `estimateSelectivity` | Planner's row estimate for `SELECT 1 FROM t WHERE <predicate>` — **without running the query**. Uses `EXPLAIN (FORMAT JSON)` (PostgreSQL), `EXPLAIN PLAN` (Oracle), or `SHOWPLAN_XML` (SQL Server). Returns `estimated_rows`, a `baseline_rows` count (no predicate) and the `selectivity` ratio. Reject `;` in the predicate. Params: `schema`, `table`, `predicate` (raw SQL, no `WHERE` keyword) |
 | `joinCardinality` | Planner's row estimate for an equi-join between two tables, without executing it. Returns `estimated_rows`, per-side row estimates and `selectivity_vs_cartesian`. Join types: `INNER` (default), `LEFT`, `RIGHT`, `FULL`. Parameter order encodes JOIN direction (matters for `LEFT` / `RIGHT`). Params: `fromSchema`, `fromTable`, `leftColumn`, `toSchema`, `toTable`, `rightColumn`, `joinType` |
 
 ### Object statistics tools (query optimisation)
 
 | Tool | Description |
 |---|---|
-| `tableStats` | Per-table size + row-count estimate + activity counters. PG: `pg_class` + `pg_stat_user_tables` (total/heap/indexes/toast bytes, live/dead tuples, last vacuum/analyze, seq vs idx scans). Oracle: `ALL_TABLES` (NUM_ROWS, BLOCKS, LAST_ANALYZED) plus best-effort `DBA_SEGMENTS` size. Params: `schema`, `table` |
-| `indexStats` | Per-index stats for a table or the whole schema: size, scan counters, column list, unique/primary flags. PG extras: `idx_tup_read`, `idx_tup_fetch`, `pg_get_indexdef`. Oracle extras: `distinct_keys`, `clustering_factor`, `blevel`, `leaf_blocks`, `last_analyzed`. Params: `schema`, `table` (optional) |
-| `unusedIndexes` | Indexes with zero recorded scans — candidates for removal. Skips PK / UNIQUE-backing indexes. Params: `schema`, `minSizeBytes` (optional). PostgreSQL only; on Oracle returns a note pointing to `DBA_INDEX_USAGE` / `V$OBJECT_USAGE` |
+| `tableStats` | Per-table size + row-count estimate + activity counters. PG: `pg_class` + `pg_stat_user_tables` (total/heap/indexes/toast bytes, live/dead tuples, last vacuum/analyze, seq vs idx scans). Oracle: `ALL_TABLES` (NUM_ROWS, BLOCKS, LAST_ANALYZED) plus best-effort `DBA_SEGMENTS` size. SQL Server: `sys.tables` / `sys.partitions` / allocation units. Params: `schema`, `table` |
+| `indexStats` | Per-index stats for a table or the whole schema: size, scan counter when available, column list, unique/primary flags. PG extras: `idx_tup_read`, `idx_tup_fetch`, `pg_get_indexdef`. Oracle extras: `distinct_keys`, `clustering_factor`, `blevel`, `leaf_blocks`, `last_analyzed`. SQL Server uses `sys.indexes` and allocation units; usage counters are omitted for low-privilege safety. Params: `schema`, `table` (optional) |
+| `unusedIndexes` | Indexes with zero recorded scans — candidates for removal. Skips PK / UNIQUE-backing indexes. Params: `schema`, `minSizeBytes` (optional). PostgreSQL only; on Oracle and SQL Server returns a note about engine-specific usage-counter permissions/views |
 | `redundantIndexes` | Indexes whose leading columns are a strict prefix of another index on the same table — the shorter one is redundant. Skips unique indexes; requires matching index type. Params: `schema`, `table` (optional) |
 | `fkIndexCoverage` | Foreign keys on the child side that lack a supporting index. A classic cause of slow DELETE / UPDATE cascades. Returns a `suggested_index_columns` list ready for `CREATE INDEX`. Params: `schema`, `table` (optional — omit to scan the whole schema) |
 
@@ -210,8 +212,8 @@ not cached. Hard cap on entries: `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000
 
 All tools are **read-only**. Any attempt to run a non-SELECT statement is rejected by the
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
-read-only, and PostgreSQL uses `default_transaction_read_only=on`. On Oracle, JDBC read-only mode
-is best-effort; use a dedicated read-only database user for the strongest guarantee.
+read-only, and PostgreSQL uses `default_transaction_read_only=on`. On Oracle and SQL Server,
+JDBC read-only mode is best-effort; use a dedicated read-only database user for the strongest guarantee.
 
 ## Error responses
 
@@ -295,11 +297,12 @@ Notes on the metadata snapshot cache:
 - **"Gradle requires JVM 17 or later" / toolchain error** — set `JAVA_HOME` to a JDK 21+ before
   running `./gradlew`.
 - **Connection refused / authentication failed** — verify URL/user/password with the native CLI
-  (`psql "$JDBC_URL"` for PostgreSQL, `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...` for Oracle).
+  (`psql "$JDBC_URL"` for PostgreSQL, `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...` for Oracle,
+  `sqlcmd -S host,1433 -d database -U user -P password` for SQL Server).
 - **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** — guard
   triggered. This is expected for any write statement. For edge cases where a read-only
   operation is wrapped in something the guard does not recognise, set `JDBC_READONLY_GUARD=off`.
-  Connection-level read-only flags stay on; Oracle treats them as best-effort.
+  Connection-level read-only flags stay on; Oracle and SQL Server treat them as best-effort.
 - **Oracle: empty `describeTable` / `listTables`** — Oracle stores unquoted identifiers in upper
   case. Pass `CUSTOMERS` rather than `customers`.
 - **Oracle write attempt reached the database** — this should normally be blocked by the guard first.

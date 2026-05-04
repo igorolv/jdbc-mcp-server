@@ -10,8 +10,9 @@ import java.util.Map;
 /**
  * Database-specific SQL generation and fix-ups. Each concrete implementation knows how to:
  * <ul>
- *     <li>build an {@code EXPLAIN} statement; PostgreSQL returns rows directly, while Oracle
- *         writes a static plan into {@code PLAN_TABLE} and then reads it back;</li>
+ *     <li>build an {@code EXPLAIN} statement; PostgreSQL returns rows directly, Oracle
+ *         writes a static plan into {@code PLAN_TABLE}, and SQL Server uses session-scoped
+ *         {@code SHOWPLAN} in the tool layer;</li>
  *     <li>fetch view / routine / sequence definitions via engine-specific catalogs;</li>
  *     <li>apply pagination to a user query (for {@code sampleRows} and output truncation);</li>
  *     <li>prepare a connection for read-only usage (typically {@code setReadOnly(true)}).</li>
@@ -38,8 +39,8 @@ public interface SqlDialect {
      * must produce a multi-row result whose textual representation is the query plan.
      *
      * @param analyze if {@code true} and supported (PG), collect actual run-time statistics
-     *                (note: this executes the query!). Oracle ignores this flag and always
-     *                returns a static plan via DBMS_XPLAN.
+     *                (note: this executes the query!). Oracle and SQL Server ignore this flag
+     *                and return static / estimated plans.
      */
     String buildExplain(String sql, boolean analyze);
 
@@ -68,7 +69,8 @@ public interface SqlDialect {
 
     /**
      * Build an EXPLAIN that yields a <b>machine-readable</b> plan — JSON on PostgreSQL,
-     * a prepared {@code PLAN_TABLE} population on Oracle. The output is meant to be parsed by
+     * a prepared {@code PLAN_TABLE} population on Oracle, or a SQL Server query to be run
+     * under session-scoped {@code SHOWPLAN_XML}. The output is meant to be parsed by
      * {@link ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser}, not displayed as-is.
      *
      * @param analyze PG only — run {@code EXPLAIN ANALYZE} for actual row/timing stats

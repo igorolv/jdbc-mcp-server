@@ -28,7 +28,7 @@ public class SampleTools {
     }
 
     @McpTool(description = "Return a small sample of rows from a table or view. " +
-            "Shortcut for 'SELECT * FROM <table> LIMIT N'. Safe and read-only.")
+            "Shortcut for a dialect-limited 'SELECT * FROM <table>'. Safe and read-only.")
     public String sampleRows(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
@@ -68,6 +68,9 @@ public class SampleTools {
             // Oracle stores unquoted identifiers in upper case; use the name as-is unquoted
             // so existing tables (created without quotes) resolve normally.
             return id;
+        }
+        if (dialect.kind() == DatabaseKind.MSSQL) {
+            return "[" + id + "]";
         }
         return "\"" + id + "\"";
     }

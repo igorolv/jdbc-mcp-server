@@ -5,8 +5,9 @@ import java.util.Map;
 
 /**
  * A fully parsed execution plan plus top-level metadata (planning / execution time on PG,
- * cost totals on Oracle). {@code engine} is the logical database-kind tag so downstream
- * tooling can branch on "pg" / "oracle" without importing the dialect layer.
+ * cost totals on Oracle / SQL Server). {@code engine} is the logical database-kind tag so
+ * downstream tooling can branch on "postgresql" / "oracle" / "mssql" without importing the
+ * dialect layer.
  */
 public final class ParsedPlan {
 
@@ -30,7 +31,7 @@ public final class ParsedPlan {
 
     public String engine()              { return engine; }
     public PlanNode root()              { return root; }
-    /** {@code true} iff the plan has measured (ANALYZE) rows/times attached. Always false on Oracle. */
+    /** {@code true} iff the plan has measured (ANALYZE) rows/times attached. */
     public boolean analyzed()           { return analyzed; }
     public Double planningTimeMs()      { return planningTimeMs; }
     public Double executionTimeMs()     { return executionTimeMs; }

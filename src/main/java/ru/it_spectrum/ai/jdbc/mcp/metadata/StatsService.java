@@ -123,6 +123,14 @@ public class StatsService {
             out.put("indexes", List.of());
             return out;
         }
+        if (dialect.kind() == DatabaseKind.MSSQL) {
+            out.put("supported", false);
+            out.put("note", "SQL Server index usage counters come from sys.dm_db_index_usage_stats " +
+                    "and require server/database state permissions. This tool does not report " +
+                    "unused indexes for SQL Server from low-privilege metadata.");
+            out.put("indexes", List.of());
+            return out;
+        }
         QueryResult idx = indexStats(schema, null);
         List<Map<String, Object>> unused = new ArrayList<>();
         for (Map<String, Object> row : idx.rows()) {

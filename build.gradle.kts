@@ -27,11 +27,13 @@ dependencies {
     runtimeOnly(libs.postgresql)
     runtimeOnly(libs.ojdbc11)
     runtimeOnly(libs.orai18n)
+    runtimeOnly(libs.mssql.jdbc)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.oracle.free)
+    testImplementation(libs.testcontainers.mssqlserver)
     testImplementation(libs.commons.lang3)
     testImplementation("com.fasterxml.jackson.core:jackson-databind")
 

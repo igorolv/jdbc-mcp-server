@@ -20,6 +20,14 @@ class DatabaseKindTest {
     }
 
     @Test
+    void detectsSqlServer() {
+        assertThat(DatabaseKind.fromUrl("jdbc:sqlserver://host:1433;databaseName=db"))
+                .isEqualTo(DatabaseKind.MSSQL);
+        assertThat(DatabaseKind.fromUrl("JDBC:SQLSERVER://host;databaseName=db"))
+                .isEqualTo(DatabaseKind.MSSQL);
+    }
+
+    @Test
     void rejectsUnsupportedUrls() {
         assertThatThrownBy(() -> DatabaseKind.fromUrl(null))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -46,5 +54,7 @@ class DatabaseKindTest {
     void applyDialectUrlTweaksSkipsNonPostgres() {
         String url = "jdbc:oracle:thin:@//host/svc";
         assertThat(DataSourceConfig.applyDialectUrlTweaks(url, DatabaseKind.ORACLE)).isEqualTo(url);
+        String sqlServer = "jdbc:sqlserver://host:1433;databaseName=db";
+        assertThat(DataSourceConfig.applyDialectUrlTweaks(sqlServer, DatabaseKind.MSSQL)).isEqualTo(sqlServer);
     }
 }

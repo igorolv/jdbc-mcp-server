@@ -242,6 +242,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
             throw new IllegalArgumentException("Illegal identifier: '" + id + "'");
         }
         if (dialect.kind() == DatabaseKind.ORACLE) return id;
+        if (dialect.kind() == DatabaseKind.MSSQL) return "[" + id + "]";
         return "\"" + id + "\"";
     }
 }

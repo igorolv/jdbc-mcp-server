@@ -11,9 +11,8 @@ import java.util.Map;
  * accessors; everything else (buffer counters, predicate strings, partition info, …) lives
  * in {@link #raw()} for faithful pass-through to the caller.
  *
- * <p>Fields that do not apply to the engine — for instance, Oracle plans have no
- * {@code actualRows}/{@code actualTotalTime} because Oracle's EXPLAIN is static — are left
- * as {@code null}.
+ * <p>Fields that do not apply to the engine — for instance, Oracle and SQL Server estimated
+ * plans have no {@code actualRows}/{@code actualTotalTime} — are left as {@code null}.
  */
 public final class PlanNode {
 

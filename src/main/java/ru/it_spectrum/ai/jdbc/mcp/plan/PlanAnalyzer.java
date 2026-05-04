@@ -124,7 +124,8 @@ public final class PlanAnalyzer {
         List<Map<String, Object>> out = new ArrayList<>();
         for (PlanNode p : nodes) {
             if (!"Nested Loop".equalsIgnoreCase(p.nodeType())
-                    && !"NESTED LOOPS".equalsIgnoreCase(p.nodeType())) continue;
+                    && !"NESTED LOOPS".equalsIgnoreCase(p.nodeType())
+                    && !"Nested Loops".equalsIgnoreCase(p.nodeType())) continue;
             if (p.children().isEmpty()) continue;
             PlanNode outer = p.children().get(0);
             long outerRows = orZero(outer.actualRowsTotal() != null
@@ -173,10 +174,15 @@ public final class PlanAnalyzer {
         if (t == null) return false;
         String u = t.toUpperCase(Locale.ROOT);
         // PostgreSQL: "Seq Scan"; Oracle: "TABLE ACCESS FULL" (full unpartitioned) or
-        // "TABLE ACCESS STORAGE FULL" (Exadata). Exclude partition-pruned variants.
+        // "TABLE ACCESS STORAGE FULL" (Exadata). SQL Server: table/index scan operators.
+        // Exclude partition-pruned variants.
         return "SEQ SCAN".equals(u)
                 || u.equals("TABLE ACCESS FULL")
                 || u.equals("TABLE ACCESS STORAGE FULL")
+                || u.equals("TABLE SCAN")
+                || u.equals("CLUSTERED INDEX SCAN")
+                || u.equals("INDEX SCAN")
+                || u.equals("COLUMNSTORE INDEX SCAN")
                 || u.startsWith("PARTITION RANGE")
                     && u.contains("FULL");
     }

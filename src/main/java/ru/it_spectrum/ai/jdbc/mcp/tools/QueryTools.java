@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.tools;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.format.OutputFormat;
@@ -22,6 +23,8 @@ import ru.it_spectrum.ai.jdbc.mcp.sql.SqlNotAllowedException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.temporal.TemporalAccessor;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -101,6 +104,7 @@ public class QueryTools {
     @McpTool(description = "Return the execution plan for a SQL SELECT / WITH statement. " +
             "PostgreSQL: uses EXPLAIN (FORMAT TEXT); with analyze=true runs EXPLAIN ANALYZE (note: this actually executes the query!). " +
             "Oracle: uses EXPLAIN PLAN + DBMS_XPLAN.DISPLAY; analyze flag is ignored (Oracle returns a static plan). " +
+            "SQL Server: uses SET SHOWPLAN_TEXT ON for an estimated plan; analyze flag is ignored. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
             "The statement is still read-only-validated before execution.")
@@ -115,6 +119,9 @@ public class QueryTools {
             String normalizedSql = normalizeSql(sql);
             guard.check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
+            if (dialect.kind() == DatabaseKind.MSSQL) {
+                return explainSqlServer(normalizedSql, params, namedParams);
+            }
             String statementId = newExplainStatementId();
             String explainSql = dialect.buildExplain(normalizedSql, doAnalyze, statementId);
             String displaySql = dialect.explainDisplayQuery(statementId);
@@ -159,6 +166,7 @@ public class QueryTools {
             "nested loops with large outer inputs, and disk-sort spills. " +
             "PostgreSQL: uses EXPLAIN (FORMAT JSON); analyze=true switches to EXPLAIN ANALYZE (the query is executed!). " +
             "Oracle: uses EXPLAIN PLAN + PLAN_TABLE; analyze flag is ignored (static plan only, no actual rows / times). " +
+            "SQL Server: uses SET SHOWPLAN_XML ON; analyze flag is ignored (estimated plan only). " +
             BINDING_RULES +
             BINDING_EXAMPLES +
             "Use this to decide whether to add an index, refresh statistics, or rewrite a JOIN.")
@@ -173,6 +181,10 @@ public class QueryTools {
             String normalizedSql = normalizeSql(sql);
             guard.check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
+            if (dialect.kind() == DatabaseKind.MSSQL) {
+                ParsedPlan parsed = structuredSqlServerPlan(normalizedSql, params, namedParams);
+                return JsonWriter.write(PlanAnalyzer.summarize(parsed));
+            }
             String statementId = newExplainStatementId();
             String explainSql = dialect.buildStructuredExplain(normalizedSql, doAnalyze, statementId);
             String displaySql = dialect.structuredPlanQuery(statementId);
@@ -395,6 +407,156 @@ public class QueryTools {
             if (v != null) sb.append(v).append('\n');
         }
         return sb.toString();
+    }
+
+    private String explainSqlServer(String sql, List<Object> params, Map<String, Object> namedParams)
+            throws SQLException {
+        return executor.withConnection(conn -> {
+            String planSql = sqlServerPlanSql(sql, params, namedParams);
+            runStatement(conn, "SET SHOWPLAN_TEXT ON");
+            try {
+                QueryResult planRows = queryWithStatement(conn, planSql);
+                return rowsAsText(planRows);
+            } finally {
+                runStatement(conn, "SET SHOWPLAN_TEXT OFF");
+            }
+        });
+    }
+
+    private ParsedPlan structuredSqlServerPlan(String sql, List<Object> params, Map<String, Object> namedParams)
+            throws SQLException {
+        return executor.withConnection(conn -> {
+            String planSql = sqlServerPlanSql(sql, params, namedParams);
+            runStatement(conn, "SET SHOWPLAN_XML ON");
+            try {
+                QueryResult planRows = queryWithStatement(conn, planSql);
+                return planParser.parse(planRows, false);
+            } finally {
+                runStatement(conn, "SET SHOWPLAN_XML OFF");
+            }
+        });
+    }
+
+    private String sqlServerPlanSql(String sql, List<Object> params, Map<String, Object> namedParams) {
+        SqlParameterBindingResolver.Binding binding = resolveBinding(sql, params, namedParams);
+        if (binding.namedParams() != null) {
+            NamedParameterRewriter.PreparedSql prep =
+                    NamedParameterRewriter.rewrite(sql, binding.namedParams());
+            return inlinePositionalParams(prep.sql(), prep.params());
+        }
+        return inlinePositionalParams(sql, binding.params());
+    }
+
+    private QueryResult queryWithStatement(Connection conn, String sql) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            if (properties.queryTimeoutSeconds() > 0) st.setQueryTimeout(properties.queryTimeoutSeconds());
+            try (var rs = st.executeQuery(sql)) {
+                return readAll(rs);
+            }
+        }
+    }
+
+    private void runStatement(Connection conn, String sql) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            if (properties.queryTimeoutSeconds() > 0) st.setQueryTimeout(properties.queryTimeoutSeconds());
+            st.execute(sql);
+        }
+    }
+
+    private String inlinePositionalParams(String sql, List<Object> params) {
+        if (params == null || params.isEmpty()) {
+            return sql;
+        }
+        StringBuilder out = new StringBuilder(sql.length() + params.size() * 8);
+        int param = 0;
+        boolean inSingle = false;
+        boolean inDouble = false;
+        boolean inBracket = false;
+        for (int i = 0; i < sql.length(); i++) {
+            char c = sql.charAt(i);
+            if (inSingle) {
+                out.append(c);
+                if (c == '\'' && i + 1 < sql.length() && sql.charAt(i + 1) == '\'') {
+                    out.append(sql.charAt(++i));
+                } else if (c == '\'') {
+                    inSingle = false;
+                }
+                continue;
+            }
+            if (inDouble) {
+                out.append(c);
+                if (c == '"' && i + 1 < sql.length() && sql.charAt(i + 1) == '"') {
+                    out.append(sql.charAt(++i));
+                } else if (c == '"') {
+                    inDouble = false;
+                }
+                continue;
+            }
+            if (inBracket) {
+                out.append(c);
+                if (c == ']' && i + 1 < sql.length() && sql.charAt(i + 1) == ']') {
+                    out.append(sql.charAt(++i));
+                } else if (c == ']') {
+                    inBracket = false;
+                }
+                continue;
+            }
+            if (c == '-' && i + 1 < sql.length() && sql.charAt(i + 1) == '-') {
+                int end = sql.indexOf('\n', i + 2);
+                if (end < 0) end = sql.length();
+                out.append(sql, i, end);
+                i = end - 1;
+                continue;
+            }
+            if (c == '/' && i + 1 < sql.length() && sql.charAt(i + 1) == '*') {
+                int end = sql.indexOf("*/", i + 2);
+                if (end < 0) end = sql.length() - 2;
+                out.append(sql, i, Math.min(sql.length(), end + 2));
+                i = Math.min(sql.length() - 1, end + 1);
+                continue;
+            }
+            if (c == '\'') {
+                inSingle = true;
+                out.append(c);
+            } else if (c == '"') {
+                inDouble = true;
+                out.append(c);
+            } else if (c == '[') {
+                inBracket = true;
+                out.append(c);
+            } else if (c == '?') {
+                if (param >= params.size()) {
+                    throw new IllegalArgumentException("Not enough params for SQL Server SHOWPLAN query");
+                }
+                out.append(sqlLiteral(params.get(param++)));
+            } else {
+                out.append(c);
+            }
+        }
+        if (param != params.size()) {
+            throw new IllegalArgumentException("Too many params for SQL Server SHOWPLAN query");
+        }
+        return out.toString();
+    }
+
+    private String sqlLiteral(Object value) {
+        if (value == null) return "NULL";
+        if (value instanceof Number n) return n.toString();
+        if (value instanceof Boolean b) return b ? "1" : "0";
+        if (value instanceof byte[] bytes) {
+            StringBuilder hex = new StringBuilder("0x");
+            for (byte b : bytes) hex.append(String.format("%02X", b));
+            return hex.toString();
+        }
+        if (value instanceof java.sql.Date || value instanceof java.sql.Time
+                || value instanceof java.sql.Timestamp || value instanceof TemporalAccessor) {
+            return "N'" + escapeSqlLiteral(value.toString()) + "'";
+        }
+        return "N'" + escapeSqlLiteral(value.toString()) + "'";
+    }
+
+    private String escapeSqlLiteral(String value) {
+        return value.replace("'", "''");
     }
 
     private String newExplainStatementId() {

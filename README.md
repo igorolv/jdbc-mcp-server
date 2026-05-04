@@ -1,12 +1,12 @@
 # JDBC MCP Server
 
-A local MCP server for read-only access to PostgreSQL and Oracle databases.
+A local MCP server for read-only access to PostgreSQL, Oracle, and Microsoft SQL Server databases.
 It lets AI agents such as Claude Code, Cursor, VS Code Copilot, and others write SQL queries,
 inspect execution plans, and explore database structure: tables, columns, indexes, foreign keys,
 views, functions, and sequences.
 
-PostgreSQL and Oracle JDBC drivers are bundled into the fat jar, so no extra driver installation
-is required.
+PostgreSQL, Oracle, and Microsoft SQL Server JDBC drivers are bundled into the fat jar, so no
+extra driver installation is required.
 
 ## Why This Exists
 
@@ -32,9 +32,9 @@ Any non-SELECT query is blocked before it reaches the database.
 
 ```text
 +-------------+     stdio      +------------------+      JDBC      +----------+
-|  AI agent   | <------------> |  jdbc-mcp-       | -------------> | PG / OCI |
-| (Claude Code|   stdin/stdout |  server (Java)   |  read-only     | database |
-|  Cursor...) |                |                  |  connection    |          |
+|  AI agent   | <------------> |  jdbc-mcp-       | -------------> | database |
+| (Claude Code|   stdin/stdout |  server (Java)   |  read-only     | PG/OCI/  |
+|  Cursor...) |                |                  |  connection    | SQLServer|
 +-------------+                +------------------+                +----------+
 ```
 
@@ -47,8 +47,8 @@ The protocol is `stdio` only. The client starts the server as a child process.
 | Tool | Description |
 |---|---|
 | `executeQuery` | Execute a `SELECT`, `WITH`, or `EXPLAIN` statement. Parameters: `sql`, `params` (array for `?`) or `namedParams` (object for `:name`), `limit`, `timeoutSeconds`, `format` (`json` by default, `markdown`, `csv`). The result is marked with `truncated: true` if the row limit is hit |
-| `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` plus `DBMS_XPLAN.DISPLAY`. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). `analyze=true` on PostgreSQL enables `EXPLAIN ANALYZE`; be careful, because the query is actually executed |
-| `analyzePlan` | Compact LLM-oriented plan summary instead of a large raw plan dump: highest-cost nodes, full scans on large tables, estimate errors (planner vs. reality, requires `analyze=true` on PostgreSQL), risky nested loops with large outer input, and disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` plus `PLAN_TABLE` (`analyze` is ignored because Oracle provides a static plan here). Parameters can be passed as `params` (`?`) or `namedParams` (`:name`) |
+| `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` plus `DBMS_XPLAN.DISPLAY`. SQL Server: `SET SHOWPLAN_TEXT ON` on the same session. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). `analyze=true` on PostgreSQL enables `EXPLAIN ANALYZE`; be careful, because the query is actually executed. SQL Server currently returns estimated plans only |
+| `analyzePlan` | Compact LLM-oriented plan summary instead of a large raw plan dump: highest-cost nodes, full scans on large tables, estimate errors (planner vs. reality, requires `analyze=true` on PostgreSQL), risky nested loops with large outer input, and disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` plus `PLAN_TABLE` (`analyze` is ignored because Oracle provides a static plan here). SQL Server: `SET SHOWPLAN_XML ON` estimated plan. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`) |
 | `validateQuery` | Validate syntax without execution: read-only guard plus driver `prepareStatement`, with a JSqlParser-derived `inspection` summary when parsing succeeds. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). Useful for LLM self-correction |
 | `inspectQuery` | Parse SQL through JSqlParser without touching the database and return an AST summary: tables, aliases, CTEs, select items, joins, predicates, order by, columns, parameters, features, and parser warnings |
 | `queryLint` | Parse SQL and combine the AST with metadata, index, and FK checks. Returns advisory warnings such as unknown tables or columns, `SELECT *`, joins without conditions, FKs without supporting indexes, and predicate/order-by columns that are not leading index columns. SQL is not executed |
@@ -116,7 +116,7 @@ Configuration:
 
 | Tool | Description |
 |---|---|
-| `sampleRows` | Return a few rows from a table or view (`SELECT * FROM t LIMIT N`). Parameters: `schema`, `table`, `limit` (default 10, max 100) |
+| `sampleRows` | Return a few rows from a table or view (`LIMIT` / `FETCH FIRST` / `TOP` depending on database). Parameters: `schema`, `table`, `limit` (default 10, max 100) |
 
 ### Selectivity and Distribution
 
@@ -185,6 +185,7 @@ password.
 2. **`connection.setReadOnly(true)`.** Set by Hikari and again by this server on each checkout.
 3. **PostgreSQL: `default_transaction_read_only=on`.** Added to the JDBC URL automatically unless you already provided your own `options=`. Even server-side DDL is rejected.
 4. **Oracle: JDBC read-only hint.** Oracle JDBC treats `setReadOnly(true)` mostly as an advisory hint. The client-side guard and a dedicated read-only database user are the primary Oracle protections. Oracle `EXPLAIN PLAN` writes a static plan to `PLAN_TABLE`; this server scopes those reads with a generated `STATEMENT_ID`.
+5. **SQL Server: JDBC read-only hint plus SHOWPLAN estimated plans.** SQL Server also treats `setReadOnly(true)` as a hint. Use a least-privilege login/user for strong enforcement. `explainQuery` and `analyzePlan` use `SHOWPLAN_TEXT/XML`, which returns estimated plans without executing the statement.
 
 ### Maximum Protection: Use a Read-only Database User
 
@@ -214,6 +215,16 @@ GRANT SELECT ON app_schema.customers TO ai_readonly;
 -- CREATE ROLE ai_ro_role; GRANT ai_ro_role TO ai_readonly;
 ```
 
+**SQL Server:**
+
+```sql
+CREATE LOGIN ai_readonly WITH PASSWORD = 'strong-password';
+CREATE USER ai_readonly FOR LOGIN ai_readonly;
+GRANT SELECT ON SCHEMA::dbo TO ai_readonly;
+GRANT VIEW DEFINITION TO ai_readonly; -- for object definitions and richer metadata
+GRANT SHOWPLAN TO ai_readonly;        -- for explainQuery/analyzePlan estimated plans
+```
+
 ### Disabling the Guard
 
 If you need to call, for example, a stored procedure with read-only semantics that the guard does
@@ -224,8 +235,8 @@ JDBC_READONLY_GUARD=off
 ```
 
 Connection-level protections (`setReadOnly` and, on PostgreSQL, `default_transaction_read_only`)
-remain enabled. On Oracle, `setReadOnly` is best-effort; use a read-only database user for the
-strongest guarantee.
+remain enabled. On Oracle and SQL Server, `setReadOnly` is best-effort; use a read-only database
+user for the strongest guarantee.
 
 ## Stack
 
@@ -233,6 +244,7 @@ strongest guarantee.
 - HikariCP through Spring Boot `starter-jdbc`
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
+- Microsoft SQL Server JDBC 12.8.1
 - Gradle 9.3.1 with version catalog
 
 ## License
@@ -252,18 +264,24 @@ export JAVA_HOME="$HOME/.jdks/jdk-21.0.6"
 ./gradlew build
 ```
 
-Result: `build/libs/jdbc-mcp-server.jar` (~32 MB, includes both drivers).
+Result: `build/libs/jdbc-mcp-server.jar` (includes PostgreSQL, Oracle, and SQL Server drivers).
 
 ### Integration Tests
 
-Integration tests start real PostgreSQL and Oracle Free instances through Testcontainers, so Docker
-is required. They are excluded from the regular build and run separately:
+Integration tests start real PostgreSQL, Oracle Free, and SQL Server instances through
+Testcontainers, so Docker is required. They are excluded from the regular build and run separately:
 
 ```bash
 ./gradlew integrationTest
 ```
 
-> The first Oracle Free run downloads an image of about 1.5 GB and may take several minutes to start.
+To run only the SQL Server Testcontainers suite:
+
+```bash
+./gradlew integrationTest --tests "*SqlServerIntegration*"
+```
+
+> The first Oracle Free and SQL Server runs download large images and may take several minutes to start.
 
 ### Smoke Tests Against a Real Oracle Database
 
@@ -302,7 +320,7 @@ not parse `.env` itself; variables must already be present in the environment wh
 
 | Variable | Required | Description |
 |---|---|---|
-| `JDBC_URL` | yes | JDBC URL, for example `jdbc:postgresql://host:5432/db` or `jdbc:oracle:thin:@//host:1521/service` |
+| `JDBC_URL` | yes | JDBC URL, for example `jdbc:postgresql://host:5432/db`, `jdbc:oracle:thin:@//host:1521/service`, or `jdbc:sqlserver://host:1433;databaseName=db;encrypt=true;trustServerCertificate=false` |
 | `JDBC_USERNAME` | yes | Database user, preferably read-only |
 | `JDBC_PASSWORD` | yes | Password |
 | `JDBC_DEFAULT_SCHEMA` | no | Default schema for metadata tools. If unset, the current connection schema is used |
@@ -315,8 +333,8 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_CONNECTION_TIMEOUT_MS` | no | Hikari connection checkout timeout in milliseconds, default `10000` |
 | `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
 
-The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL
-and `jdbc:oracle:` for Oracle.
+The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL,
+`jdbc:oracle:` for Oracle, and `jdbc:sqlserver:` for SQL Server.
 
 ### URL Examples
 
@@ -326,6 +344,9 @@ jdbc:postgresql://db.example.com:5432/myapp?currentSchema=public&sslmode=require
 
 jdbc:oracle:thin:@//db.example.com:1521/ORCLPDB1
 jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=...)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=...)))
+
+jdbc:sqlserver://db.example.com:1433;databaseName=myapp;encrypt=true;trustServerCertificate=false
+jdbc:sqlserver://db.example.com;databaseName=myapp;integratedSecurity=false
 ```
 
 ## Running
@@ -368,8 +389,8 @@ Where to configure it:
 For Claude Code, omitting `--scope user` adds the server only to the current project.
 Check the connection with `claude mcp list`. Restart the client after adding the server.
 
-If you use different databases for different projects, add two servers with different keys, such
-as `jdbc-pg` and `jdbc-oracle`, and different environment variable sets.
+If you use different databases for different projects, add multiple servers with different keys,
+such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment variable sets.
 
 ## Project Structure
 
@@ -378,12 +399,13 @@ as `jdbc-pg` and `jdbc-oracle`, and different environment variable sets.
 |   +-- JdbcMcpServerApplication.java   - Spring Boot entry point
 |   +-- config/
 |   |   +-- JdbcProperties.java         - connection settings from env
-|   |   +-- DatabaseKind.java           - PG/Oracle autodetection from URL
+|   |   +-- DatabaseKind.java           - PG/Oracle/SQL Server autodetection from URL
 |   |   +-- DataSourceConfig.java       - Hikari + connection-level read-only mode
 |   +-- dialect/
 |   |   +-- SqlDialect.java             - dialect interface
 |   |   +-- PostgresDialect.java        - EXPLAIN, pg_catalog, pg_get_viewdef
 |   |   +-- OracleDialect.java          - EXPLAIN PLAN, ALL_VIEWS, ALL_SOURCE, Oracle metadata queries
+|   |   +-- SqlServerDialect.java       - SHOWPLAN, sys catalog metadata, SQL Server pagination
 |   |   +-- DialectConfig.java          - implementation selection by DatabaseKind
 |   +-- sql/
 |   |   +-- ReadOnlyGuard.java          - JSqlParser AST guard + lexical fallback
@@ -401,6 +423,7 @@ as `jdbc-pg` and `jdbc-oracle`, and different environment variable sets.
 |   |   +-- PlanParser.java             - parser interface
 |   |   +-- PostgresPlanParser.java     - JSON EXPLAIN -> tree
 |   |   +-- OraclePlanParser.java       - PLAN_TABLE -> tree
+|   |   +-- SqlServerPlanParser.java    - SHOWPLAN_XML -> tree
 |   |   +-- PlanAnalyzer.java           - summary: expensive / full scan / estimate error / nested loop / spill
 |   |   +-- JsonReader.java             - small dependency-free JSON parser
 |   +-- format/
@@ -422,7 +445,9 @@ as `jdbc-pg` and `jdbc-oracle`, and different environment variable sets.
 ## Troubleshooting
 
 - **"Cannot find a Java installation ... matching languageVersion=21"** - install JDK 21+ and set `JAVA_HOME`. Gradle toolchains cannot download it without internet access.
-- **Connection refused / ORA-01017 / FATAL: password authentication failed** - check `JDBC_URL`, `JDBC_USERNAME`, and `JDBC_PASSWORD`. For PostgreSQL, test with `psql "$JDBC_URL"`; for Oracle, use `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...`.
+- **Connection refused / ORA-01017 / FATAL / SQL Server login failed** - check `JDBC_URL`, `JDBC_USERNAME`, and `JDBC_PASSWORD`. For PostgreSQL, test with `psql "$JDBC_URL"`; for Oracle, use `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...`; for SQL Server, test with `sqlcmd -S host,1433 -d database -U user -P password`.
 - **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** - the guard worked. This is expected for any write operation. If the query is truly read-only, for example a read-only function call through `SELECT func(...)`, it will pass. For fully non-trivial cases, you can disable the guard with `JDBC_READONLY_GUARD=off`.
 - **Oracle write attempt reached the database** - this should normally be blocked by the guard first. If `JDBC_READONLY_GUARD=off`, rely on a read-only Oracle user; JDBC `setReadOnly(true)` is only a best-effort hint for Oracle.
 - **Empty `describeTable` / `listTables` result on Oracle** - Oracle stores object names in uppercase. Pass `CUSTOMERS`, not `customers`.
+- **SQL Server certificate errors** - set the JDBC URL encryption options explicitly, for example `encrypt=true;trustServerCertificate=false` with a trusted certificate, or `trustServerCertificate=true` only for local/dev use.
+- **SQL Server `unusedIndexes` unsupported** - this tool intentionally avoids `sys.dm_db_index_usage_stats` because it usually requires elevated state-view permissions. Use `indexStats`, `fkIndexCoverage`, and `redundantIndexes` for low-privilege SQL Server audits.

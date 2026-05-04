@@ -14,8 +14,8 @@ import java.sql.SQLException;
  * <ol>
  *   <li>The argument, if non-blank.</li>
  *   <li>{@link JdbcProperties#defaultSchema()}, if configured.</li>
- *   <li>{@link SqlDialect#fallbackSchema} on a live connection — current schema for PostgreSQL,
- *       connecting user (uppercase) for Oracle.</li>
+ *   <li>{@link SqlDialect#fallbackSchema} on a live connection — current schema for PostgreSQL
+ *       and SQL Server, connecting user (uppercase) for Oracle.</li>
  * </ol>
  *
  * <p>Replaces the three identical private {@code resolveSchema} helpers that used to live in

@@ -6,6 +6,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
+import ru.it_spectrum.ai.jdbc.mcp.plan.SqlServerPlanParser;
 
 @Configuration
 public class DialectConfig {
@@ -15,6 +16,7 @@ public class DialectConfig {
         return switch (kind) {
             case POSTGRESQL -> new PostgresDialect();
             case ORACLE -> new OracleDialect();
+            case MSSQL -> new SqlServerDialect();
         };
     }
 
@@ -23,6 +25,7 @@ public class DialectConfig {
         return switch (kind) {
             case POSTGRESQL -> new PostgresPlanParser();
             case ORACLE -> new OraclePlanParser();
+            case MSSQL -> new SqlServerPlanParser();
         };
     }
 }
