@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
@@ -58,6 +59,7 @@ public class DistributionService {
     private final PlanParser planParser;
     private final SchemaResolver schemaResolver;
 
+    @Autowired
     public DistributionService(SqlExecutor executor, SqlDialect dialect,
                                JdbcProperties properties, PlanParser planParser) {
         this(executor, dialect, properties, planParser,

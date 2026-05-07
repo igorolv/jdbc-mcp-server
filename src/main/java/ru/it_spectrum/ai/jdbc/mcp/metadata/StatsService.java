@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
@@ -45,6 +46,7 @@ public class StatsService {
         this(executor, dialect, properties, new SchemaResolver(properties, executor, dialect));
     }
 
+    @Autowired
     public StatsService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties,
                         SchemaResolver schemaResolver) {
         this.executor = executor;

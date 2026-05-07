@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -13,7 +14,8 @@ import java.util.Map;
 @Service
 class SchemaBriefService extends SchemaContextSupport {
 
-    SchemaBriefService(MetadataService metadata, StatsService stats, SqlExecutor executor, SqlDialect dialect) {
+    @Autowired
+    public SchemaBriefService(MetadataService metadata, StatsService stats, SqlExecutor executor, SqlDialect dialect) {
         super(metadata, stats, executor, dialect);
     }
 

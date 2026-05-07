@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
@@ -45,6 +46,7 @@ public class MetadataService {
                 new SchemaResolver(properties, executor, dialect));
     }
 
+    @Autowired
     public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties,
                            SchemaSnapshotCache cache, SchemaResolver schemaResolver) {
         this.executor = executor;
