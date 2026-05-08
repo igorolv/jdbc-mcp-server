@@ -54,55 +54,50 @@ public class SchemaContextService {
 
     public Map<String, Object> schemaOverview(String schema, String namePattern,
                                               Boolean includeViews, Boolean includeStats,
-                                              Boolean includeInferred, Boolean includeObserved,
+                                              Boolean includeObserved,
                                               Integer maxTables) throws SQLException {
-        return overview.schemaOverview(schema, namePattern, includeViews, includeStats, includeInferred,
+        return overview.schemaOverview(schema, namePattern, includeViews, includeStats,
                 includeObserved, maxTables);
     }
 
     public Map<String, Object> tableContext(String schema, String table, Integer depth,
                                             Boolean includeIncoming, Boolean includeStats,
-                                            Boolean includeInferred, Boolean includeObserved,
-                                            Integer inferredScanLimit)
+                                            Boolean includeObserved)
             throws SQLException {
         return tableContext.tableContext(schema, table, depth, includeIncoming, includeStats,
-                includeInferred, includeObserved, inferredScanLimit);
+                includeObserved);
     }
 
     public Map<String, Object> findJoinPaths(String fromSchema, String fromTable,
                                              String toSchema, String toTable,
                                              Integer maxDepth, Integer maxPaths,
-                                             Integer scanLimit, Boolean includeInferred,
+                                             Integer scanLimit,
                                              Boolean includeObserved) throws SQLException {
         return joinPaths.findJoinPaths(fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths,
-                scanLimit, includeInferred, includeObserved);
+                scanLimit, includeObserved);
     }
 
     public Map<String, Object> schemaLint(String schema, String table, String checks,
-                                          Integer maxTables, Integer maxFindings,
-                                          Boolean includeInferred) throws SQLException {
-        return lint.schemaLint(schema, table, checks, maxTables, maxFindings, includeInferred);
+                                          Integer maxTables, Integer maxFindings) throws SQLException {
+        return lint.schemaLint(schema, table, checks, maxTables, maxFindings);
     }
 
-    public String schemaBrief(String schema, String terms, Integer maxTables,
-                              Boolean includeInferred) throws SQLException {
-        return brief.schemaBrief(schema, terms, maxTables, includeInferred);
+    public String schemaBrief(String schema, String terms, Integer maxTables) throws SQLException {
+        return brief.schemaBrief(schema, terms, maxTables);
     }
 
     public Map<String, Object> schemaGraph(String schema, Integer maxTables,
-                                           Boolean includeInferred,
                                            String fromTable, String toTable,
                                            Integer maxDepth) throws SQLException {
-        return graph.schemaGraph(schema, maxTables, includeInferred, fromTable, toTable, maxDepth);
+        return graph.schemaGraph(schema, maxTables, fromTable, toTable, maxDepth);
     }
 
-    public String schemaGraphDot(String schema, String tables, Boolean includeInferred) throws SQLException {
-        return graph.schemaGraphDot(schema, tables, includeInferred);
+    public String schemaGraphDot(String schema, String tables) throws SQLException {
+        return graph.schemaGraphDot(schema, tables);
     }
 
     public Map<String, Object> queryContext(String schema, String terms, String tables,
-                                            Boolean includeSamples, Integer maxTables,
-                                            Boolean includeInferred) throws SQLException {
-        return queryContext.queryContext(schema, terms, tables, includeSamples, maxTables, includeInferred);
+                                            Boolean includeSamples, Integer maxTables) throws SQLException {
+        return queryContext.queryContext(schema, terms, tables, includeSamples, maxTables);
     }
 }

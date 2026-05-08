@@ -21,20 +21,15 @@ class SchemaBriefService extends SchemaContextSupport {
         super(metadata, stats, executor, dialect, usageCatalog);
     }
 
-    public String schemaBrief(String schema, String terms, Integer maxTables,
-                              Boolean includeInferred) throws SQLException {
+    public String schemaBrief(String schema, String terms, Integer maxTables) throws SQLException {
         int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
-        boolean inferred = includeInferred == null || includeInferred;
         Map<String, Map<String, Object>> tables = loadBriefTables(schema, terms, tableLimit);
         List<Map<String, Object>> fkEdges = new ArrayList<>();
         for (Map<String, Object> info : tables.values()) {
             fkEdges.addAll(outgoingEdges(info));
         }
-        List<Map<String, Object>> inferredEdges = inferred
-                ? inferRelationshipEdges(new ArrayList<>(tables.values()))
-                : List.of();
 
-        Map<String, TableDegree> degrees = tableDegrees(tables, fkEdges, inferredEdges);
+        Map<String, TableDegree> degrees = tableDegrees(tables, fkEdges);
         List<Map<String, Object>> tableList = new ArrayList<>(tables.values());
         tableList.sort((a, b) -> Integer.compare(
                 degrees.getOrDefault(key(str(b.get("schema")), str(b.get("name"))), TableDegree.ZERO).total(),
@@ -47,13 +42,11 @@ class SchemaBriefService extends SchemaContextSupport {
         sb.append('\n');
         sb.append("- Tables scanned: ").append(tables.size()).append('\n');
         sb.append("- Declared relationships: ").append(fkEdges.size()).append('\n');
-        if (inferred) sb.append("- Inferred relationships: ").append(inferredEdges.size()).append('\n');
 
         appendTableSection(sb, "Hub tables", tableList, degrees, "hub", 8);
         appendTableSection(sb, "Fact/detail tables", tableList, degrees, "fact/detail", 10);
         appendTableSection(sb, "Lookup/reference tables", tableList, degrees, "lookup/reference", 10);
         appendRelationshipSection(sb, "Key relationships", fkEdges, 12);
-        if (inferred) appendRelationshipSection(sb, "Suspicious implicit joins", inferredEdges, 10);
         appendEnumSection(sb, tableList, 12);
         appendTableSummarySection(sb, tableList, degrees, 15);
         return sb.toString().trim();
@@ -87,11 +80,6 @@ class SchemaBriefService extends SchemaContextSupport {
                     .append(edge.get("fromTable")).append('.').append(String.join("+", objectList(edge.get("fromColumns"))))
                     .append(" -> ")
                     .append(edge.get("toTable")).append('.').append(String.join("+", objectList(edge.get("toColumns"))));
-            if ("inferred".equals(edge.get("relationshipType"))) {
-                sb.append(" (inferred");
-                if (edge.get("confidence") != null) sb.append(", confidence ").append(edge.get("confidence"));
-                sb.append(')');
-            }
             sb.append('\n');
         }
     }

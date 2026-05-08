@@ -37,15 +37,13 @@ class EdgeDecorationTest {
     }
 
     @Test
-    void decoratesDeclaredFkAndInferredEdgesWithEvidenceLevelEvenWithoutCatalogData() {
+    void decoratesDeclaredFkEdgesWithEvidenceLevelEvenWithoutCatalogData() {
         List<Map<String, Object>> edges = new ArrayList<>();
         edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
-        edges.add(edge("inferred", "PAYMENTS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
 
-        probe.run(edges, Set.of("ORDERS", "CUSTOMERS", "PAYMENTS"), true);
+        probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
 
         assertThat(edges.get(0).get("evidenceLevel")).isEqualTo("declared_fk");
-        assertThat(edges.get(1).get("evidenceLevel")).isEqualTo("inferred_by_name");
         assertThat(edges.get(0).get("observedSupport")).isNull();
     }
 

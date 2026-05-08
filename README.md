@@ -84,14 +84,14 @@ context in one call: tables, columns, relationships, constraints, and sample row
 
 | Tool | Description |
 |---|---|
-| `schemaOverview` | Compact schema snapshot for SQL authoring: tables/views, columns, primary keys, foreign keys, indexes, and relationship edges. Parameters: `schema`, `namePattern` (with `%` / `_`), `includeViews`, `includeStats`, `includeInferred` (`*_id` relationships), `includeObserved` (decorate edges with usage-catalog evidence — see *Edge evidence* below), `maxTables` (default 50, max 300) |
-| `tableContext` | Context around one table: the table itself, FK parents, and optionally child tables and relationship edges. FK traversal uses the requested depth (default 1, max 4). Parameters: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeInferred`, `includeObserved`, `inferredScanLimit` (default 300, max 300; used only when `includeInferred=true`) |
-| `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition` and `evidenceLevel`. Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, max 300), `includeInferred`, `includeObserved` |
-| `schemaBrief` | Compact text summary of a schema: hub tables, fact/detail tables, lookup/reference tables, key relationships, enum-like CHECK columns, suspicious implicit JOINs, and brief table notes. Useful when full JSON would be too verbose. Parameters: `schema`, `terms` (optional substring search), `maxTables`, `includeInferred` |
+| `schemaOverview` | Compact schema snapshot for SQL authoring: tables/views, columns, primary keys, foreign keys, indexes, and relationship edges. Parameters: `schema`, `namePattern` (with `%` / `_`), `includeViews`, `includeStats`, `includeObserved` (decorate edges with usage-catalog evidence — see *Edge evidence* below), `maxTables` (default 50, max 300) |
+| `tableContext` | Context around one table: the table itself, FK parents, and optionally child tables and relationship edges. FK traversal uses the requested depth (default 1, max 4). Parameters: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeObserved` |
+| `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition` and `evidenceLevel`. Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, max 300), `includeObserved` |
+| `schemaBrief` | Compact text summary of a schema: hub tables, fact/detail tables, lookup/reference tables, key relationships, enum-like CHECK columns, and brief table notes. Useful when full JSON would be too verbose. Parameters: `schema`, `terms` (optional substring search), `maxTables` |
 | `schemaGraph` | Schema relationship graph metrics: nodes with in/out degree and classification, edges, central tables, isolated tables, connected components, and cycle hints. Optionally includes the shortest path between two tables |
-| `schemaLint` | Schema lint audit: missing primary keys, FKs without indexes, FK type mismatches, inferred-but-not-declared relationships, nullable unique constraints, status/type columns without CHECK constraints, orphan `*_id` columns, missing remarks, isolated tables, and wide tables. Checks are configurable through `checks` |
+| `schemaLint` | Schema lint audit: missing primary keys, FKs without indexes, FK type mismatches, nullable unique constraints, status/type columns without CHECK constraints, orphan `*_id` columns, missing remarks, isolated tables, and wide tables. Checks are configurable through `checks` |
 | `queryContext` | Build compact SQL-authoring context from search terms and/or explicit tables. Finds relevant tables and columns, includes constraints and allowed values, relationships and JOIN paths between selected tables, and optionally sample rows (up to 3 per table) |
-| `schemaGraphDot` | DOT/Graphviz representation of the schema relationship graph. Nodes are tables with all columns and types (`PK` and `FK` marked inline), edges include JOIN conditions. Declared FK relationships are solid lines; inferred `*_id` relationships are dashed gray. Parameters: `schema`, `tables` (optional comma-separated filter), `includeInferred` |
+| `schemaGraphDot` | DOT/Graphviz representation of the schema relationship graph. Nodes are tables with all columns and types (`PK` and `FK` marked inline), edges include JOIN conditions. Parameters: `schema`, `tables` (optional comma-separated filter) |
 
 #### Edge evidence
 
@@ -100,16 +100,14 @@ it automatically if the local usage catalog is enabled (see *Usage Catalog* belo
 relationship edge then carries an `evidenceLevel` field:
 
 - `declared_fk` — the relationship is a declared foreign key in the database catalog.
-- `inferred_by_name` — the heuristic `*_id` → target rule produced the edge.
 - `observed_in_queries` — the equi-join pair appears in stored application queries (production
-  evidence) but does **not** match any FK or inferred edge. Such edges are appended only between
+  evidence) but does **not** match any declared FK. Such edges are appended only between
   tables already in scope and are flagged `undirected: true`.
 
 Edges that *also* appear in stored queries are decorated with `observedSupport` (number of
-distinct queries) and `observedQueries` (up to 5 contributing uids) regardless of their primary
-evidence level. Composite (multi-column) FKs keep their `declared_fk` stamp without observation
-decoration in this iteration. `schemaBrief`, `schemaGraph`, and `queryContext` do not yet expose
-the `includeObserved` flag — the same edges still flow through them via FK and inferred channels.
+distinct queries) and `observedQueries` (up to 5 contributing uids). Composite (multi-column) FKs
+keep their `declared_fk` stamp without observation decoration in this iteration. `schemaBrief`,
+`schemaGraph`, and `queryContext` only surface declared FK relationships.
 
 ### Usage Catalog
 
@@ -121,9 +119,9 @@ JSqlParser and stores the extracted tables / columns / equi-join pairs as facts;
 provides the semantic layer (business labels, output→column mappings, field-usage locations).
 
 **Why this exists.** The metadata tools answer "what tables and columns exist". The usage catalog
-answers "how are they actually used by applications". With both, an LLM can move from name-based
-guesses (the dashed `*_id` edges in `schemaOverview`) to evidence-based reasoning ("these two
-columns are joined in 17 production reports, here are their uids").
+answers "how are they actually used by applications". With both, an LLM can replace guesses about
+undeclared joins with evidence-based reasoning ("these two columns are joined in 17 production
+reports, here are their uids").
 
 **Identity.** Each query is keyed by a textual `uid` derived from
 `(dataSource, source.path, source.unit)`:

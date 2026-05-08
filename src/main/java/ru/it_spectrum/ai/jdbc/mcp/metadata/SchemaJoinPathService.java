@@ -25,8 +25,7 @@ class SchemaJoinPathService extends SchemaContextSupport {
     public Map<String, Object> findJoinPaths(String fromSchema, String fromTable,
                                              String toSchema, String toTable,
                                              Integer maxDepth, Integer maxPaths,
-                                             Integer scanLimit, Boolean includeInferred,
-                                             Boolean includeObserved) throws SQLException {
+                                             Integer scanLimit, Boolean includeObserved) throws SQLException {
         if (fromTable == null || fromTable.isBlank()) {
             throw new IllegalArgumentException("fromTable must be provided");
         }
@@ -36,7 +35,6 @@ class SchemaJoinPathService extends SchemaContextSupport {
         int depthLimit = clamp(maxDepth, MAX_DEPTH, 1, MAX_DEPTH);
         int pathLimit = clamp(maxPaths, DEFAULT_MAX_PATHS, 1, MAX_PATHS_LIMIT);
         int tableLimit = clamp(scanLimit, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT);
-        boolean inferred = includeInferred == null || includeInferred;
         boolean observed = defaultIncludeObserved(includeObserved);
 
         Map<String, Object> fromInfo = metadata.describeTable(fromSchema, fromTable);
@@ -53,9 +51,6 @@ class SchemaJoinPathService extends SchemaContextSupport {
         List<Map<String, Object>> rawEdges = new ArrayList<>();
         for (Map<String, Object> info : described.values()) {
             rawEdges.addAll(outgoingEdges(info));
-        }
-        if (inferred) {
-            rawEdges.addAll(inferRelationshipEdges(new ArrayList<>(described.values())));
         }
         Set<String> describedNamesUpper = new HashSet<>();
         for (Map<String, Object> info : described.values()) {
@@ -84,7 +79,6 @@ class SchemaJoinPathService extends SchemaContextSupport {
         out.put("toSchema", effectiveToSchema);
         out.put("toTable", effectiveToTable);
         out.put("maxDepth", depthLimit);
-        out.put("includeInferred", inferred);
         out.put("includeObserved", observed);
         out.put("schemaTablesScanned", described.size());
         out.put("pathCount", paths.size());

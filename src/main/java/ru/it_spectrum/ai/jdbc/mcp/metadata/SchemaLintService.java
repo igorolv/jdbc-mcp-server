@@ -24,19 +24,14 @@ class SchemaLintService extends SchemaContextSupport {
     }
 
     public Map<String, Object> schemaLint(String schema, String table, String checks,
-                                          Integer maxTables, Integer maxFindings,
-                                          Boolean includeInferred) throws SQLException {
+                                          Integer maxTables, Integer maxFindings) throws SQLException {
         int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
         int findingLimit = clamp(maxFindings, DEFAULT_MAX_FINDINGS, 1, MAX_FINDINGS_LIMIT);
-        boolean inferred = includeInferred == null || includeInferred;
         Set<String> enabledChecks = parseChecks(checks);
 
         Map<String, Map<String, Object>> tables = table != null && !table.isBlank()
                 ? loadSingleTable(schema, table)
                 : loadSchemaTables(schema, tableLimit);
-        List<Map<String, Object>> inferredEdges = inferred
-                ? inferRelationshipEdges(new ArrayList<>(tables.values()))
-                : List.of();
 
         List<Map<String, Object>> findings = new ArrayList<>();
         for (Map<String, Object> info : tables.values()) {
@@ -44,7 +39,7 @@ class SchemaLintService extends SchemaContextSupport {
             if (findings.size() >= findingLimit) break;
         }
         if (findings.size() < findingLimit) {
-            lintRelationships(tables, inferredEdges, enabledChecks, findings, findingLimit);
+            lintRelationships(tables, enabledChecks, findings, findingLimit);
         }
         if (findings.size() < findingLimit) {
             lintGraph(tables, enabledChecks, findings, findingLimit);
@@ -54,7 +49,6 @@ class SchemaLintService extends SchemaContextSupport {
         out.put("schema", schema);
         out.put("table", table);
         out.put("checks", enabledChecks);
-        out.put("includeInferred", inferred);
         out.put("tablesScanned", tables.size());
         out.put("findingCount", findings.size());
         out.put("truncated", findings.size() >= findingLimit);
@@ -138,12 +132,11 @@ class SchemaLintService extends SchemaContextSupport {
             if (referenceNameFromColumn(columnName) == null || isKnownKeyColumn(info, columnName)) continue;
             addFinding(findings, limit, "LOW", "orphanIdColumn", schema, table, columnName,
                     "Column looks like a foreign key but no declared FK exists",
-                    "Declare the FK or rely on schemaLint inferredRelationship findings if this is intentional.");
+                    "Declare the FK if this relationship is real.");
         }
     }
 
     private void lintRelationships(Map<String, Map<String, Object>> tables,
-                                   List<Map<String, Object>> inferredEdges,
                                    Set<String> checks,
                                    List<Map<String, Object>> findings, int limit) {
         if (checkEnabled(checks, "fkWithoutIndex")) {
@@ -159,17 +152,6 @@ class SchemaLintService extends SchemaContextSupport {
                             "Foreign key has no supporting index on the child side",
                             "Create an index starting with the FK columns to improve joins and parent deletes/updates.");
                 }
-            }
-        }
-
-        if (checkEnabled(checks, "inferredRelationship")) {
-            for (Map<String, Object> edge : inferredEdges) {
-                addFinding(findings, limit, "MEDIUM", "inferredRelationship",
-                        str(edge.get("fromSchema")), str(edge.get("fromTable")),
-                        String.join(",", objectList(edge.get("fromColumns"))),
-                        "Column naming suggests an undeclared relationship to "
-                                + edge.get("toTable") + "." + edge.get("toColumns"),
-                        "Declare a foreign key if this relationship is real.");
             }
         }
 
@@ -229,7 +211,7 @@ class SchemaLintService extends SchemaContextSupport {
 
     private Set<String> parseChecks(String checks) {
         Set<String> defaults = Set.of("missingPrimaryKey", "fkWithoutIndex", "fkTypeMismatch",
-                "inferredRelationship", "nullableUnique", "unconstrainedStatus",
+                "nullableUnique", "unconstrainedStatus",
                 "orphanIdColumn", "missingRemarks", "isolatedTable", "wideTable");
         if (checks == null || checks.isBlank()) return defaults;
         Set<String> out = new HashSet<>();

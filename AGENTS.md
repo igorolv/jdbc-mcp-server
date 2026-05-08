@@ -189,14 +189,14 @@ keep the response compact; raise the caps when needed.
 
 | Tool | Description |
 |---|---|
-| `schemaOverview` | Compact schema snapshot: tables/views, columns, PK/FK, indexes, relationship edges. Params: `schema`, `namePattern`, `includeViews`, `includeStats`, `includeInferred` (`*_id` heuristic), `maxTables` (default 50, cap 300) |
-| `tableContext` | Neighbourhood around one table: the table, FK parents, optionally child tables and edges. Params: `schema`, `table`, `depth` (default 1, cap 4), `includeIncoming`, `includeStats`, `includeInferred`, `inferredScanLimit` (default 300, cap 300 — only used when `includeInferred=true`, controls how many schema tables are scanned for `*_id` matches) |
-| `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, cap 300), `includeInferred` |
-| `schemaBrief` | Plain-text synopsis: hub tables, fact/detail, lookup/reference, key relationships, enum-like CHECK columns, suspicious implicit joins. Use when full JSON would be too verbose. Params: `schema`, `terms` (optional substring narrowing), `maxTables` (default 50, cap 300), `includeInferred` |
-| `schemaGraph` | Relationship-graph metrics: nodes with in/out degree, central tables, isolated tables, components, cycle hints; optional shortest path. Params: `schema`, `maxTables` (default 50, cap 300), `includeInferred`, `fromTable`, `toTable`, `maxDepth` |
-| `schemaLint` | Lint audit: missing PK, FK without index, FK type mismatch, inferred-but-undeclared relationships, nullable unique, status/type without CHECK, orphan `*_id`, missing remarks, isolated and wide tables. Params: `schema`, `table`, `checks` (allow-list), `maxTables` (default 50, cap 300), `maxFindings`, `includeInferred` |
-| `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables` (default 12, cap 50 — narrower than the other context tools to keep responses concise), `includeInferred` |
-| `schemaGraphDot` | DOT/Graphviz ERD: nodes are tables with all columns and types (PK marked 🔑, FK with →); declared FK edges are solid, inferred `*_id` edges are dashed grey. Params: `schema`, `tables` (optional filter), `includeInferred` |
+| `schemaOverview` | Compact schema snapshot: tables/views, columns, PK/FK, indexes, relationship edges. Params: `schema`, `namePattern`, `includeViews`, `includeStats`, `includeObserved`, `maxTables` (default 50, cap 300) |
+| `tableContext` | Neighbourhood around one table: the table, FK parents, optionally child tables and edges. Params: `schema`, `table`, `depth` (default 1, cap 4), `includeIncoming`, `includeStats`, `includeObserved` |
+| `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, cap 300), `includeObserved` |
+| `schemaBrief` | Plain-text synopsis: hub tables, fact/detail, lookup/reference, key relationships, enum-like CHECK columns. Use when full JSON would be too verbose. Params: `schema`, `terms` (optional substring narrowing), `maxTables` (default 50, cap 300) |
+| `schemaGraph` | Relationship-graph metrics: nodes with in/out degree, central tables, isolated tables, components, cycle hints; optional shortest path. Params: `schema`, `maxTables` (default 50, cap 300), `fromTable`, `toTable`, `maxDepth` |
+| `schemaLint` | Lint audit: missing PK, FK without index, FK type mismatch, nullable unique, status/type without CHECK, orphan `*_id`, missing remarks, isolated and wide tables. Params: `schema`, `table`, `checks` (allow-list), `maxTables` (default 50, cap 300), `maxFindings` |
+| `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables` (default 12, cap 50 — narrower than the other context tools to keep responses concise) |
+| `schemaGraphDot` | DOT/Graphviz ERD: nodes are tables with all columns and types (PK marked 🔑, FK with →). Params: `schema`, `tables` (optional filter) |
 
 ### Snapshot / metadata cache tools
 
@@ -268,7 +268,7 @@ Recommended flow when the user asks to optimise / audit queries or schema:
 5. Call `unusedIndexes` (PostgreSQL) — indexes that have had zero scans since the
    last stats reset; treat as a strong hint only if the workload has run long enough.
 6. Call `schemaLint` for a broader audit (missing PK, nullable unique, FK type mismatch,
-   inferred-but-undeclared relationships, isolated and wide tables, etc.).
+   orphan `*_id` columns, isolated and wide tables, etc.).
 7. For a specific slow query, combine `analyzePlan` (compact summary of expensive nodes,
    full scans, estimation errors, nested-loop risks, sort spills) + `indexStats` on the
    relevant tables and propose concrete `CREATE INDEX` / rewrite actions. Fall back to

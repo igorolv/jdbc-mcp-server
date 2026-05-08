@@ -14,7 +14,7 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
     @Test
     void returnsCompactSchemaOverview() {
         ObjectNode overview = object(schemaContextTools().schemaOverview(
-                schema(), "%", true, false, true, false, 20));
+                schema(), "%", true, false, false, 20));
 
         assertThat(field(overview, "truncated").asBoolean()).isFalse();
         ArrayNode tables = (ArrayNode) field(overview, "tables");
@@ -23,15 +23,13 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
         ArrayNode relationships = (ArrayNode) field(overview, "relationships");
         assertThat(relationship(relationships, "ORDERS", "CUSTOMERS")).isNotNull();
-        JsonNode inferred = relationship(relationships, "CUSTOMER_NOTES", "CUSTOMERS");
-        assertThat(inferred).isNotNull();
-        assertThat(field(inferred, "relationshipType").asText()).isEqualTo("inferred");
+        assertThat(relationship(relationships, "CUSTOMER_NOTES", "CUSTOMERS")).isNull();
     }
 
     @Test
     void returnsTableNeighborhood() {
         ObjectNode context = object(schemaContextTools().tableContext(
-                schema(), "ORDERS", 1, true, false, true, false, 100));
+                schema(), "ORDERS", 1, true, false, false));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         assertThat(findByField(tables, "name", "ORDERS")).isNotNull();
@@ -46,7 +44,7 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
     @Test
     void findsFkJoinPath() {
         ObjectNode result = object(schemaContextTools().findJoinPaths(
-                schema(), "LINE_ITEMS", schema(), "CUSTOMERS", 4, 5, 100, true, false));
+                schema(), "LINE_ITEMS", schema(), "CUSTOMERS", 4, 5, 100, false));
 
         assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
         ArrayNode paths = (ArrayNode) field(result, "paths");
@@ -57,40 +55,24 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
     }
 
     @Test
-    void findsInferredJoinPathWithoutDeclaredFk() {
-        ObjectNode result = object(schemaContextTools().findJoinPaths(
-                schema(), "CUSTOMER_NOTES", schema(), "CUSTOMERS", 2, 5, 100, true, false));
-
-        assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
-        ArrayNode paths = (ArrayNode) field(result, "paths");
-        ArrayNode firstPath = (ArrayNode) paths.get(0);
-        assertThat(firstPath).hasSize(1);
-        assertThat(field(firstPath.get(0), "relationshipType").asText()).isEqualTo("inferred");
-        assertThat(field(firstPath.get(0), "joinCondition").asText()).contains("CUSTOMER_NOTES.CUSTOMER_ID");
-    }
-
-    @Test
     void lintsSchemaForSqlAuthoringRisks() {
         ObjectNode result = object(schemaContextTools().schemaLint(
-                schema(), null, null, 100, 200, true));
+                schema(), null, null, 100, 200));
 
         ArrayNode findings = (ArrayNode) field(result, "findings");
         assertThat(finding(findings, "fkWithoutIndex", "ORDERS", "CUSTOMER_ID")).isNotNull();
-        assertThat(finding(findings, "inferredRelationship", "CUSTOMER_NOTES", "CUSTOMER_ID")).isNotNull();
         assertThat(finding(findings, "orphanIdColumn", "CUSTOMER_NOTES", "CUSTOMER_ID")).isNotNull();
         assertThat(finding(findings, "missingTableRemarks", "ORDERS", null)).isNotNull();
     }
 
     @Test
     void returnsCompactSchemaBrief() {
-        String brief = schemaContextTools().schemaBrief(schema(), null, 100, true);
+        String brief = schemaContextTools().schemaBrief(schema(), null, 100);
 
         assertThat(brief).contains("Schema brief");
         assertThat(brief).contains("Hub tables");
         assertThat(brief).contains("Key relationships");
         assertThat(brief).contains("ORDERS.CUSTOMER_ID -> CUSTOMERS.ID");
-        assertThat(brief).contains("Suspicious implicit joins");
-        assertThat(brief).contains("CUSTOMER_NOTES.CUSTOMER_ID -> CUSTOMERS.ID");
         assertThat(brief).contains("Enum-like columns");
         assertThat(brief).contains("EVENTS.status in [OK, FAIL]");
     }
@@ -98,20 +80,16 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
     @Test
     void returnsRelationshipGraphMetrics() {
         ObjectNode graph = object(schemaContextTools().schemaGraph(
-                schema(), 100, true, "LINE_ITEMS", "CUSTOMERS", 4));
+                schema(), 100, "LINE_ITEMS", "CUSTOMERS", 4));
 
         assertThat(field(graph, "nodeCount").asInt()).isGreaterThanOrEqualTo(5);
         assertThat(field(graph, "declaredEdgeCount").asInt()).isEqualTo(2);
-        assertThat(field(graph, "inferredEdgeCount").asInt()).isGreaterThanOrEqualTo(1);
 
         ArrayNode central = (ArrayNode) field(graph, "centralTables");
         assertThat(findByField(central, "table", "CUSTOMERS")).isNotNull();
 
         ArrayNode isolated = (ArrayNode) field(graph, "isolatedTables");
         assertThat(findByField(isolated, "table", "EVENTS")).isNotNull();
-
-        ArrayNode edges = (ArrayNode) field(graph, "edges");
-        assertThat(relationship(edges, "CUSTOMER_NOTES", "CUSTOMERS")).isNotNull();
 
         ObjectNode shortestPath = (ObjectNode) field(graph, "shortestPath");
         assertThat(field(shortestPath, "found").asBoolean()).isTrue();
@@ -121,7 +99,7 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
     @Test
     void returnsQueryAuthoringContext() {
         ObjectNode context = object(schemaContextTools().queryContext(
-                schema(), "customer orders total", "CUSTOMERS,ORDERS", true, 10, true));
+                schema(), "customer orders total", "CUSTOMERS,ORDERS", true, 10));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         ObjectNode customers = (ObjectNode) findByField(tables, "name", "CUSTOMERS");
@@ -141,26 +119,24 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void returnsSchemaGraphDot() {
-        String dot = schemaContextTools().schemaGraphDot(schema(), null, true);
+        String dot = schemaContextTools().schemaGraphDot(schema(), null);
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("CUSTOMERS");
         assertThat(dot).contains("ORDERS");
         assertThat(dot).contains("->");
         assertThat(dot).contains("style=solid");
-        assertThat(dot).contains("style=dashed");
         assertThat(dot).contains("ORDERS.CUSTOMER_ID = CUSTOMERS.ID");
     }
 
     @Test
     void returnsSchemaGraphDotFiltered() {
-        String dot = schemaContextTools().schemaGraphDot(schema(), "CUSTOMERS,ORDERS", false);
+        String dot = schemaContextTools().schemaGraphDot(schema(), "CUSTOMERS,ORDERS");
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("CUSTOMERS");
         assertThat(dot).contains("ORDERS");
         assertThat(dot).doesNotContain("LINE_ITEMS");
-        assertThat(dot).doesNotContain("style=dashed");
     }
 
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {

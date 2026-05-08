@@ -14,7 +14,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void returnsCompactSchemaOverview() {
         ObjectNode overview = object(schemaContextTools().schemaOverview(
-                "public", "%", true, false, true, false, 20));
+                "public", "%", true, false, false, 20));
 
         assertThat(field(overview, "truncated").asBoolean()).isFalse();
         ArrayNode tables = (ArrayNode) field(overview, "tables");
@@ -23,15 +23,13 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
         ArrayNode relationships = (ArrayNode) field(overview, "relationships");
         assertThat(relationship(relationships, "orders", "customers")).isNotNull();
-        JsonNode inferred = relationship(relationships, "customer_notes", "customers");
-        assertThat(inferred).isNotNull();
-        assertThat(field(inferred, "relationshipType").asText()).isEqualTo("inferred");
+        assertThat(relationship(relationships, "customer_notes", "customers")).isNull();
     }
 
     @Test
     void returnsTableNeighborhood() {
         ObjectNode context = object(schemaContextTools().tableContext(
-                "public", "orders", 1, true, false, true, false, 100));
+                "public", "orders", 1, true, false, false));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         assertThat(findByField(tables, "name", "orders")).isNotNull();
@@ -46,7 +44,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void findsFkJoinPath() {
         ObjectNode result = object(schemaContextTools().findJoinPaths(
-                "public", "line_items", "public", "customers", 4, 5, 100, true, false));
+                "public", "line_items", "public", "customers", 4, 5, 100, false));
 
         assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
         ArrayNode paths = (ArrayNode) field(result, "paths");
@@ -57,40 +55,24 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     }
 
     @Test
-    void findsInferredJoinPathWithoutDeclaredFk() {
-        ObjectNode result = object(schemaContextTools().findJoinPaths(
-                "public", "customer_notes", "public", "customers", 2, 5, 100, true, false));
-
-        assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
-        ArrayNode paths = (ArrayNode) field(result, "paths");
-        ArrayNode firstPath = (ArrayNode) paths.get(0);
-        assertThat(firstPath).hasSize(1);
-        assertThat(field(firstPath.get(0), "relationshipType").asText()).isEqualTo("inferred");
-        assertThat(field(firstPath.get(0), "joinCondition").asText()).contains("customer_notes.customer_id");
-    }
-
-    @Test
     void lintsSchemaForSqlAuthoringRisks() {
         ObjectNode result = object(schemaContextTools().schemaLint(
-                "public", null, null, 100, 200, true));
+                "public", null, null, 100, 200));
 
         ArrayNode findings = (ArrayNode) field(result, "findings");
         assertThat(finding(findings, "fkWithoutIndex", "orders", "customer_id")).isNotNull();
-        assertThat(finding(findings, "inferredRelationship", "customer_notes", "customer_id")).isNotNull();
         assertThat(finding(findings, "orphanIdColumn", "customer_notes", "customer_id")).isNotNull();
         assertThat(finding(findings, "missingTableRemarks", "orders", null)).isNotNull();
     }
 
     @Test
     void returnsCompactSchemaBrief() {
-        String brief = schemaContextTools().schemaBrief("public", null, 100, true);
+        String brief = schemaContextTools().schemaBrief("public", null, 100);
 
         assertThat(brief).contains("Schema brief");
         assertThat(brief).contains("Hub tables");
         assertThat(brief).contains("Key relationships");
         assertThat(brief).contains("orders.customer_id -> customers.id");
-        assertThat(brief).contains("Suspicious implicit joins");
-        assertThat(brief).contains("customer_notes.customer_id -> customers.id");
         assertThat(brief).contains("Enum-like columns");
         assertThat(brief).contains("events.status in [OK, FAIL]");
     }
@@ -98,20 +80,16 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void returnsRelationshipGraphMetrics() {
         ObjectNode graph = object(schemaContextTools().schemaGraph(
-                "public", 100, true, "line_items", "customers", 4));
+                "public", 100, "line_items", "customers", 4));
 
         assertThat(field(graph, "nodeCount").asInt()).isGreaterThanOrEqualTo(5);
         assertThat(field(graph, "declaredEdgeCount").asInt()).isEqualTo(2);
-        assertThat(field(graph, "inferredEdgeCount").asInt()).isGreaterThanOrEqualTo(1);
 
         ArrayNode central = (ArrayNode) field(graph, "centralTables");
         assertThat(findByField(central, "table", "customers")).isNotNull();
 
         ArrayNode isolated = (ArrayNode) field(graph, "isolatedTables");
         assertThat(findByField(isolated, "table", "events")).isNotNull();
-
-        ArrayNode edges = (ArrayNode) field(graph, "edges");
-        assertThat(relationship(edges, "customer_notes", "customers")).isNotNull();
 
         ObjectNode shortestPath = (ObjectNode) field(graph, "shortestPath");
         assertThat(field(shortestPath, "found").asBoolean()).isTrue();
@@ -121,7 +99,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void returnsQueryAuthoringContext() {
         ObjectNode context = object(schemaContextTools().queryContext(
-                "public", "customer orders total", "customers,orders", true, 10, true));
+                "public", "customer orders total", "customers,orders", true, 10));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         ObjectNode customers = (ObjectNode) findByField(tables, "name", "customers");
@@ -141,26 +119,24 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsSchemaGraphDot() {
-        String dot = schemaContextTools().schemaGraphDot("public", null, true);
+        String dot = schemaContextTools().schemaGraphDot("public", null);
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("customers");
         assertThat(dot).contains("orders");
         assertThat(dot).contains("->");
         assertThat(dot).contains("style=solid");
-        assertThat(dot).contains("style=dashed");
         assertThat(dot).contains("orders.customer_id = customers.id");
     }
 
     @Test
     void returnsSchemaGraphDotFiltered() {
-        String dot = schemaContextTools().schemaGraphDot("public", "customers,orders", false);
+        String dot = schemaContextTools().schemaGraphDot("public", "customers,orders");
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("customers");
         assertThat(dot).contains("orders");
         assertThat(dot).doesNotContain("line_items");
-        assertThat(dot).doesNotContain("style=dashed");
     }
 
     private JsonNode relationship(ArrayNode relationships, String fromTable, String toTable) {

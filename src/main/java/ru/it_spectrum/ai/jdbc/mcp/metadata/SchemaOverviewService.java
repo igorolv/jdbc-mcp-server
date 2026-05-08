@@ -23,11 +23,10 @@ class SchemaOverviewService extends SchemaContextSupport {
 
     public Map<String, Object> schemaOverview(String schema, String namePattern,
                                               Boolean includeViews, Boolean includeStats,
-                                              Boolean includeInferred, Boolean includeObserved,
+                                              Boolean includeObserved,
                                               Integer maxTables) throws SQLException {
         int limit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
         boolean views = includeViews == null || includeViews;
-        boolean inferred = includeInferred == null || includeInferred;
         boolean observed = defaultIncludeObserved(includeObserved);
         String types = views ? "TABLE,VIEW,MATERIALIZED VIEW" : "TABLE";
 
@@ -36,7 +35,6 @@ class SchemaOverviewService extends SchemaContextSupport {
         List<Map<String, Object>> selected = listed.subList(0, Math.min(limit, listed.size()));
 
         List<Map<String, Object>> tables = new ArrayList<>(selected.size());
-        List<Map<String, Object>> describedTables = new ArrayList<>(selected.size());
         List<Map<String, Object>> relationships = new ArrayList<>();
         Set<String> relationshipKeys = new HashSet<>();
         Set<String> describedNamesUpper = new HashSet<>();
@@ -52,15 +50,9 @@ class SchemaOverviewService extends SchemaContextSupport {
                 tables.add(errorTable(row, e));
                 continue;
             }
-            describedTables.add(described);
             tables.add(compactTable(described, Boolean.TRUE.equals(includeStats)));
             describedNamesUpper.add(upper(tableName));
             for (Map<String, Object> edge : outgoingEdges(described)) {
-                addUnique(relationships, relationshipKeys, edge);
-            }
-        }
-        if (inferred) {
-            for (Map<String, Object> edge : inferRelationshipEdges(describedTables)) {
                 addUnique(relationships, relationshipKeys, edge);
             }
         }
@@ -71,7 +63,6 @@ class SchemaOverviewService extends SchemaContextSupport {
         out.put("namePattern", namePattern);
         out.put("includeViews", views);
         out.put("includeStats", Boolean.TRUE.equals(includeStats));
-        out.put("includeInferred", inferred);
         out.put("includeObserved", observed);
         out.put("tableCount", listed.size());
         out.put("returnedTableCount", tables.size());

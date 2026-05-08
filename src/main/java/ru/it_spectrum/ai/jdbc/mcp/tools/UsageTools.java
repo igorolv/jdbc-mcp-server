@@ -180,7 +180,7 @@ public class UsageTools {
         }
     }
 
-    @McpTool(description = "Aggregate observed equi-join pairs across all stored queries. Each row is a (left_table.left_column = right_table.right_column) pair with its support count and the list of contributing query uids. Useful as evidence-based replacement for name-based '*_id' inferred relationships in schemaOverview / findJoinPaths. Non-equi joins (BETWEEN, function-based) are excluded.")
+    @McpTool(description = "Aggregate observed equi-join pairs across all stored queries. Each row is a (left_table.left_column = right_table.right_column) pair with its support count and the list of contributing query uids. Feeds the evidenceLevel decoration in schemaOverview / tableContext / findJoinPaths. Non-equi joins (BETWEEN, function-based) are excluded.")
     public String observedRelationships(
             @McpToolParam(description = "Optional schema filter (case-insensitive).", required = false) String schema,
             @McpToolParam(description = "Optional table filter — at least one side of the join must reference this table (case-insensitive).", required = false) String table,

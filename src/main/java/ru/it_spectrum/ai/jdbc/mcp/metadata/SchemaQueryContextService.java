@@ -25,11 +25,9 @@ class SchemaQueryContextService extends SchemaContextSupport {
     }
 
     public Map<String, Object> queryContext(String schema, String terms, String tables,
-                                            Boolean includeSamples, Integer maxTables,
-                                            Boolean includeInferred) throws SQLException {
+                                            Boolean includeSamples, Integer maxTables) throws SQLException {
         int tableLimit = clamp(maxTables, 12, 1, 50);
         boolean samples = Boolean.TRUE.equals(includeSamples);
-        boolean inferred = includeInferred == null || includeInferred;
         List<String> requestedTables = splitCsvInput(tables);
         List<String> tokens = queryTokens(terms);
 
@@ -67,11 +65,6 @@ class SchemaQueryContextService extends SchemaContextSupport {
 
         List<Map<String, Object>> declaredEdges = new ArrayList<>();
         for (Map<String, Object> info : selected.values()) declaredEdges.addAll(outgoingEdges(info));
-        List<Map<String, Object>> inferredEdges = inferred
-                ? inferRelationshipEdges(new ArrayList<>(selected.values()))
-                : List.of();
-        List<Map<String, Object>> allEdges = new ArrayList<>(declaredEdges);
-        allEdges.addAll(inferredEdges);
 
         List<Map<String, Object>> tableContexts = new ArrayList<>();
         for (Map<String, Object> info : selected.values()) {
@@ -83,11 +76,10 @@ class SchemaQueryContextService extends SchemaContextSupport {
         out.put("terms", terms);
         out.put("requestedTables", requestedTables);
         out.put("includeSamples", samples);
-        out.put("includeInferred", inferred);
         out.put("tableCount", tableContexts.size());
         out.put("tables", tableContexts);
-        out.put("relationships", graphEdges(allEdges));
-        out.put("joinPaths", pairwiseJoinPaths(new ArrayList<>(selected.keySet()), allEdges));
+        out.put("relationships", graphEdges(declaredEdges));
+        out.put("joinPaths", pairwiseJoinPaths(new ArrayList<>(selected.keySet()), declaredEdges));
         return out;
     }
 

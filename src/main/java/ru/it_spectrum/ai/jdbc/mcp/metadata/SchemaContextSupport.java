@@ -89,12 +89,10 @@ abstract class SchemaContextSupport {
     }
 
     protected Map<String, TableDegree> tableDegrees(Map<String, Map<String, Object>> tables,
-                                                  List<Map<String, Object>> fkEdges,
-                                                  List<Map<String, Object>> inferredEdges) {
+                                                  List<Map<String, Object>> fkEdges) {
         Map<String, TableDegree> degrees = new HashMap<>();
         for (String tableKey : tables.keySet()) degrees.put(tableKey, new TableDegree());
         for (Map<String, Object> edge : fkEdges) incrementDegrees(degrees, edge);
-        for (Map<String, Object> edge : inferredEdges) incrementDegrees(degrees, edge);
         return degrees;
     }
 
@@ -144,7 +142,6 @@ abstract class SchemaContextSupport {
             graphEdge.put("fromColumns", edge.get("fromColumns"));
             graphEdge.put("toTable", edge.get("toTable"));
             graphEdge.put("toColumns", edge.get("toColumns"));
-            if (edge.get("confidence") != null) graphEdge.put("confidence", edge.get("confidence"));
             out.add(graphEdge);
         }
         return out;
@@ -434,25 +431,6 @@ abstract class SchemaContextSupport {
         return out;
     }
 
-    protected List<Neighbor> inferredNeighbors(Map<String, Object> info,
-                                             List<Map<String, Object>> inferredEdges,
-                                             boolean includeIncoming) {
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
-        String currentKey = key(schema, table);
-        List<Neighbor> out = new ArrayList<>();
-        for (Map<String, Object> edge : inferredEdges) {
-            String fromKey = key(str(edge.get("fromSchema")), str(edge.get("fromTable")));
-            String toKey = key(str(edge.get("toSchema")), str(edge.get("toTable")));
-            if (currentKey.equals(fromKey)) {
-                out.add(new Neighbor(str(edge.get("toSchema")), str(edge.get("toTable"))));
-            } else if (includeIncoming && currentKey.equals(toKey)) {
-                out.add(new Neighbor(str(edge.get("fromSchema")), str(edge.get("fromTable"))));
-            }
-        }
-        return out;
-    }
-
     protected List<Map<String, Object>> outgoingEdges(Map<String, Object> info) {
         String schema = str(info.get("schema"));
         String table = str(info.get("name"));
@@ -495,12 +473,11 @@ abstract class SchemaContextSupport {
      * Adds {@code evidenceLevel} to existing edges and, when {@code includeObserved} is true and
      * the local usage catalog is enabled, decorates them with {@code observedSupport} /
      * {@code observedQueries} from real production queries plus appends any observed-only equi-
-     * join pairs that match neither a declared FK nor an inferred name-based edge.
+     * join pairs that don't match a declared FK.
      *
      * <p>{@code evidenceLevel} legend:
      * <ul>
      *   <li>{@code declared_fk} — FK metadata in the database catalog (highest evidence).</li>
-     *   <li>{@code inferred_by_name} — heuristic {@code *_id} → target inferred relationship.</li>
      *   <li>{@code observed_in_queries} — pair appears as an equi-join in stored application
      *       queries; reported with {@code observedSupport} (number of distinct queries) and
      *       {@code observedQueries} (uid list, capped to keep responses small).</li>
@@ -513,9 +490,9 @@ abstract class SchemaContextSupport {
                                              Set<String> describedTableNamesUpper,
                                              boolean includeObserved) {
         for (Map<String, Object> edge : edges) {
-            String type = str(edge.get("relationshipType"));
-            if ("foreignKey".equals(type)) edge.put("evidenceLevel", "declared_fk");
-            else if ("inferred".equals(type)) edge.put("evidenceLevel", "inferred_by_name");
+            if ("foreignKey".equals(str(edge.get("relationshipType")))) {
+                edge.put("evidenceLevel", "declared_fk");
+            }
         }
         if (!includeObserved || usageCatalog == null || !usageCatalog.enabled()) return;
 
@@ -600,80 +577,6 @@ abstract class SchemaContextSupport {
         return usageCatalog != null && usageCatalog.enabled();
     }
 
-    protected List<Map<String, Object>> inferRelationshipEdges(List<Map<String, Object>> tables) {
-        Map<String, ReferencedColumn> referencedColumns = new HashMap<>();
-        Set<String> realRelationshipKeys = new HashSet<>();
-        for (Map<String, Object> table : tables) {
-            for (Map<String, Object> edge : outgoingEdges(table)) {
-                realRelationshipKeys.add(edgeKey(edge));
-            }
-            for (ReferencedColumn column : candidateReferencedColumns(table)) {
-                referencedColumns.merge(column.matchName, column,
-                        (existing, replacement) -> existing.primaryKey ? existing : replacement);
-            }
-        }
-
-        List<Map<String, Object>> inferred = new ArrayList<>();
-        Set<String> inferredKeys = new HashSet<>();
-        for (Map<String, Object> table : tables) {
-            String schema = str(table.get("schema"));
-            String tableName = str(table.get("name"));
-            for (Map<String, Object> column : mapList(table.get("columns"))) {
-                String columnName = str(column.get("name"));
-                if (columnName == null || isKnownKeyColumn(table, columnName)) continue;
-                String referenceName = referenceNameFromColumn(columnName);
-                if (referenceName == null) continue;
-                ReferencedColumn referenced = referencedColumns.get(normalizeIdentifier(referenceName));
-                if (referenced == null) continue;
-                if (key(schema, tableName).equals(key(referenced.schema, referenced.table))) continue;
-                if (!typesCompatible(str(column.get("typeName")), referenced.typeName)) continue;
-
-                Map<String, Object> edge = new LinkedHashMap<>();
-                edge.put("relationshipType", "inferred");
-                edge.put("fkName", "inferred_" + tableName + "_" + columnName + "_to_" + referenced.table);
-                edge.put("fromSchema", schema);
-                edge.put("fromTable", tableName);
-                edge.put("fromColumns", List.of(columnName));
-                edge.put("toSchema", referenced.schema);
-                edge.put("toTable", referenced.table);
-                edge.put("toColumns", List.of(referenced.column));
-                edge.put("confidence", confidence(columnName, referenced));
-                edge.put("reason", "Column name matches target table name plus _id and data types are compatible");
-                if (!realRelationshipKeys.contains(edgeKey(edge)) && inferredKeys.add(edgeKey(edge))) {
-                    inferred.add(edge);
-                }
-            }
-        }
-        return inferred;
-    }
-
-    protected List<ReferencedColumn> candidateReferencedColumns(Map<String, Object> table) {
-        String schema = str(table.get("schema"));
-        String tableName = str(table.get("name"));
-        List<String> primaryKey = stringList(mapValue(table.get("primaryKey")), "columns");
-        List<ReferencedColumn> out = new ArrayList<>();
-        if (primaryKey.size() == 1) {
-            Map<String, Object> column = columnByName(table, primaryKey.get(0));
-            if (!column.isEmpty()) {
-                out.add(new ReferencedColumn(schema, tableName, primaryKey.get(0),
-                        str(column.get("typeName")), normalizeIdentifier(tableName), true));
-                out.add(new ReferencedColumn(schema, tableName, primaryKey.get(0),
-                        str(column.get("typeName")), singular(normalizeIdentifier(tableName)), true));
-            }
-        }
-        for (Map<String, Object> unique : mapList(table.get("uniqueConstraints"))) {
-            List<String> columns = stringList(unique, "columns");
-            if (columns.size() != 1) continue;
-            Map<String, Object> column = columnByName(table, columns.get(0));
-            if (column.isEmpty()) continue;
-            out.add(new ReferencedColumn(schema, tableName, columns.get(0),
-                    str(column.get("typeName")), normalizeIdentifier(tableName), false));
-            out.add(new ReferencedColumn(schema, tableName, columns.get(0),
-                    str(column.get("typeName")), singular(normalizeIdentifier(tableName)), false));
-        }
-        return out;
-    }
-
     protected Map<String, Object> columnByName(Map<String, Object> table, String columnName) {
         for (Map<String, Object> column : mapList(table.get("columns"))) {
             if (columnName.equalsIgnoreCase(str(column.get("name")))) {
@@ -700,14 +603,6 @@ abstract class SchemaContextSupport {
         String normalized = normalizeIdentifier(columnName);
         if (!normalized.endsWith("_id") || normalized.length() <= 3) return null;
         return normalized.substring(0, normalized.length() - 3);
-    }
-
-    protected double confidence(String columnName, ReferencedColumn referenced) {
-        String stem = referenceNameFromColumn(columnName);
-        double score = 0.70;
-        if (referenced.primaryKey) score += 0.15;
-        if (stem != null && stem.equals(singular(normalizeIdentifier(referenced.table)))) score += 0.10;
-        return Math.min(0.95, score);
     }
 
     protected boolean typesCompatible(String leftType, String rightType) {
@@ -868,10 +763,6 @@ abstract class SchemaContextSupport {
     protected record PathState(String node, List<Map<String, Object>> edges, Set<String> visited) {
     }
 
-    protected record ReferencedColumn(String schema, String table, String column, String typeName,
-                                    String matchName, boolean primaryKey) {
-    }
-
     protected static final class TableDegree {
         static final TableDegree ZERO = new TableDegree();
 
@@ -889,7 +780,6 @@ abstract class SchemaContextSupport {
     protected record GraphEdge(String direction, String relationshipType, String fkName,
                                String fromSchema, String fromTable, Object fromColumns,
                                String toSchema, String toTable, Object toColumns,
-                               Object confidence, Object reason,
                                Object evidenceLevel, Object observedSupport, Object observedQueries) {
 
         static GraphEdge forward(Map<String, Object> edge) {
@@ -902,8 +792,6 @@ abstract class SchemaContextSupport {
                     strStatic(edge.get("toSchema")),
                     strStatic(edge.get("toTable")),
                     edge.get("toColumns"),
-                    edge.get("confidence"),
-                    edge.get("reason"),
                     edge.get("evidenceLevel"),
                     edge.get("observedSupport"),
                     edge.get("observedQueries"));
@@ -919,8 +807,6 @@ abstract class SchemaContextSupport {
                     strStatic(edge.get("fromSchema")),
                     strStatic(edge.get("fromTable")),
                     edge.get("fromColumns"),
-                    edge.get("confidence"),
-                    edge.get("reason"),
                     edge.get("evidenceLevel"),
                     edge.get("observedSupport"),
                     edge.get("observedQueries"));
@@ -938,8 +824,6 @@ abstract class SchemaContextSupport {
             out.put("toTable", toTable);
             out.put("toColumns", toColumns);
             out.put("joinCondition", joinCondition());
-            if (confidence != null) out.put("confidence", confidence);
-            if (reason != null) out.put("reason", reason);
             if (evidenceLevel != null) out.put("evidenceLevel", evidenceLevel);
             if (observedSupport != null) out.put("observedSupport", observedSupport);
             if (observedQueries != null) out.put("observedQueries", observedQueries);

@@ -25,27 +25,18 @@ class SchemaTableContextService extends SchemaContextSupport {
 
     public Map<String, Object> tableContext(String schema, String table, Integer depth,
                                             Boolean includeIncoming, Boolean includeStats,
-                                            Boolean includeInferred, Boolean includeObserved,
-                                            Integer inferredScanLimit)
+                                            Boolean includeObserved)
             throws SQLException {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("table must be provided");
         }
         int maxDepth = clamp(depth, DEFAULT_DEPTH, 0, MAX_DEPTH);
         boolean incoming = includeIncoming == null || includeIncoming;
-        boolean inferred = includeInferred == null || includeInferred;
         boolean observed = defaultIncludeObserved(includeObserved);
 
         Map<String, Object> root = metadata.describeTable(schema, table);
         String rootSchema = str(root.get("schema"));
         String rootTable = str(root.get("name"));
-
-        Map<String, Map<String, Object>> schemaTables = inferred
-                ? loadSchemaTables(rootSchema, clamp(inferredScanLimit, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT))
-                : Map.of();
-        List<Map<String, Object>> inferredEdges = inferred
-                ? inferRelationshipEdges(new ArrayList<>(schemaTables.values()))
-                : List.of();
 
         Map<String, Map<String, Object>> described = new LinkedHashMap<>();
         Queue<NodeDepth> queue = new ArrayDeque<>();
@@ -65,16 +56,6 @@ class SchemaTableContextService extends SchemaContextSupport {
                 described.put(neighborKey, neighborInfo);
                 queue.add(new NodeDepth(neighbor.schema(), neighbor.table(), current.depth() + 1));
             }
-            if (inferred) {
-                for (Neighbor neighbor : inferredNeighbors(currentInfo, inferredEdges, incoming)) {
-                    String neighborKey = key(neighbor.schema(), neighbor.table());
-                    if (described.containsKey(neighborKey)) continue;
-                    Map<String, Object> neighborInfo = schemaTables.get(neighborKey);
-                    if (neighborInfo == null) continue;
-                    described.put(neighborKey, neighborInfo);
-                    queue.add(new NodeDepth(neighbor.schema(), neighbor.table(), current.depth() + 1));
-                }
-            }
         }
 
         List<Map<String, Object>> tables = new ArrayList<>();
@@ -91,15 +72,6 @@ class SchemaTableContextService extends SchemaContextSupport {
                 }
             }
         }
-        if (inferred) {
-            Set<String> describedKeys = described.keySet();
-            for (Map<String, Object> edge : inferredEdges) {
-                if (describedKeys.contains(key(str(edge.get("fromSchema")), str(edge.get("fromTable"))))
-                        && describedKeys.contains(key(str(edge.get("toSchema")), str(edge.get("toTable"))))) {
-                    addUnique(relationships, relationshipKeys, edge);
-                }
-            }
-        }
         Set<String> describedNamesUpper = new HashSet<>();
         for (Map<String, Object> info : described.values()) {
             describedNamesUpper.add(upper(str(info.get("name"))));
@@ -112,7 +84,6 @@ class SchemaTableContextService extends SchemaContextSupport {
         out.put("depth", maxDepth);
         out.put("includeIncoming", incoming);
         out.put("includeStats", Boolean.TRUE.equals(includeStats));
-        out.put("includeInferred", inferred);
         out.put("includeObserved", observed);
         out.put("tables", tables);
         out.put("relationships", relationships);
