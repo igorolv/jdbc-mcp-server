@@ -1,5 +1,8 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import ru.it_spectrum.ai.jdbc.mcp.model.JsonKey;
+
+import java.lang.reflect.RecordComponent;
 import java.util.List;
 import java.util.Map;
 
@@ -9,7 +12,8 @@ import java.util.Map;
  * <p>Tabular results from {@code QueryResult} go through {@code ResultFormatter} instead — that path
  * is optimised for row arrays and preserves column order.
  *
- * <p>Supported types: {@code null}, {@link Map}, {@link List}, {@link Boolean}, {@link Number},
+ * <p>Supported types: {@code null}, {@link Record} (via {@code getRecordComponents()} — null fields
+ * are skipped to save tokens), {@link Map}, {@link List}, {@link Boolean}, {@link Number},
  * everything else is serialised via {@code toString()} as a JSON string.
  */
 public final class JsonWriter {
@@ -26,6 +30,10 @@ public final class JsonWriter {
     private static void append(StringBuilder sb, Object v, int depth) {
         if (v == null) {
             sb.append("null");
+            return;
+        }
+        if (v instanceof Record r) {
+            writeRecord(sb, r, depth);
             return;
         }
         if (v instanceof Map<?, ?> m) {
@@ -57,6 +65,31 @@ public final class JsonWriter {
             return;
         }
         appendString(sb, v.toString());
+    }
+
+    private static void writeRecord(StringBuilder sb, Record record, int depth) {
+        sb.append('{');
+        boolean first = true;
+        for (RecordComponent comp : record.getClass().getRecordComponents()) {
+            Object val;
+            try {
+                val = comp.getAccessor().invoke(record);
+            } catch (Exception e) {
+                continue;
+            }
+            if (val == null) continue; // skip null fields — fewer tokens for LLM
+            if (!first) sb.append(',');
+            first = false;
+            sb.append('\n').append("  ".repeat(depth + 1));
+            String key = comp.getName();
+            JsonKey jsonKey = comp.getAnnotation(JsonKey.class);
+            if (jsonKey != null) key = jsonKey.value();
+            appendString(sb, key);
+            sb.append(": ");
+            append(sb, val, depth + 1);
+        }
+        if (!first) sb.append('\n').append("  ".repeat(depth));
+        sb.append('}');
     }
 
     private static void appendString(StringBuilder sb, String s) {

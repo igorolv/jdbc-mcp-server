@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
 
 import java.sql.SQLException;
-import java.util.Map;
 
 /**
  * Higher-level schema context tools for SQL-writing agents.
@@ -33,7 +32,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum tables/views to describe. Default 50, capped at 300.", required = false) Integer maxTables
     ) {
         try {
-            Map<String, Object> result = schemaContext.schemaOverview(
+            var result = schemaContext.schemaOverview(
                     schema, namePattern, includeViews, includeStats, includeObserved, maxTables);
             return JsonWriter.write(result);
         } catch (SQLException e) {
@@ -56,7 +55,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Augment relationships with the three-layer 'evidence' bundle from the local usage catalog (see schemaOverview for the layer breakdown). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         try {
-            Map<String, Object> result = schemaContext.tableContext(
+            var result = schemaContext.tableContext(
                     schema, table, depth, includeIncoming, includeStats, includeObserved);
             return JsonWriter.write(result);
         } catch (SQLException e) {
@@ -81,7 +80,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Include observed equi-join pairs from the local usage catalog as additional edges in the search graph. Each path step then carries an 'evidence' bundle with 'declaredSchema', 'observedQuery' and 'semanticUsage' layers (any of which may be absent). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         try {
-            Map<String, Object> result = schemaContext.findJoinPaths(
+            var result = schemaContext.findJoinPaths(
                     fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, scanLimit,
                     includeObserved);
             return JsonWriter.write(result);
@@ -105,7 +104,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum findings to return. Default 200, capped at 1000.", required = false) Integer maxFindings
     ) {
         try {
-            Map<String, Object> result = schemaContext.schemaLint(
+            var result = schemaContext.schemaLint(
                     schema, table, checks, maxTables, maxFindings);
             return JsonWriter.write(result);
         } catch (SQLException e) {
@@ -144,7 +143,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum hops for shortestPath. Default 4, capped at 4.", required = false) Integer maxDepth
     ) {
         try {
-            Map<String, Object> result = schemaContext.schemaGraph(
+            var result = schemaContext.schemaGraph(
                     schema, maxTables, fromTable, toTable, maxDepth);
             return JsonWriter.write(result);
         } catch (SQLException e) {
@@ -165,7 +164,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum tables to include. Default 12, capped at 50.", required = false) Integer maxTables
     ) {
         try {
-            Map<String, Object> result = schemaContext.queryContext(
+            var result = schemaContext.queryContext(
                     schema, terms, tables, includeSamples, maxTables);
             return JsonWriter.write(result);
         } catch (SQLException e) {

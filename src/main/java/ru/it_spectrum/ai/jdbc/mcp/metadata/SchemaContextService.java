@@ -3,11 +3,16 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.FindJoinPaths;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContext;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaGraph;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaLint;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaOverview;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.TableContext;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
-import java.util.Map;
 
 /**
  * Facade for high-level schema context operations exposed by MCP tools.
@@ -52,7 +57,7 @@ public class SchemaContextService {
                 new SchemaQueryContextService(metadata, stats, executor, dialect, usageCatalog));
     }
 
-    public Map<String, Object> schemaOverview(String schema, String namePattern,
+    public SchemaOverview schemaOverview(String schema, String namePattern,
                                               Boolean includeViews, Boolean includeStats,
                                               Boolean includeObserved,
                                               Integer maxTables) throws SQLException {
@@ -60,7 +65,7 @@ public class SchemaContextService {
                 includeObserved, maxTables);
     }
 
-    public Map<String, Object> tableContext(String schema, String table, Integer depth,
+    public TableContext tableContext(String schema, String table, Integer depth,
                                             Boolean includeIncoming, Boolean includeStats,
                                             Boolean includeObserved)
             throws SQLException {
@@ -68,7 +73,7 @@ public class SchemaContextService {
                 includeObserved);
     }
 
-    public Map<String, Object> findJoinPaths(String fromSchema, String fromTable,
+    public FindJoinPaths findJoinPaths(String fromSchema, String fromTable,
                                              String toSchema, String toTable,
                                              Integer maxDepth, Integer maxPaths,
                                              Integer scanLimit,
@@ -77,7 +82,7 @@ public class SchemaContextService {
                 scanLimit, includeObserved);
     }
 
-    public Map<String, Object> schemaLint(String schema, String table, String checks,
+    public SchemaLint schemaLint(String schema, String table, String checks,
                                           Integer maxTables, Integer maxFindings) throws SQLException {
         return lint.schemaLint(schema, table, checks, maxTables, maxFindings);
     }
@@ -86,7 +91,7 @@ public class SchemaContextService {
         return brief.schemaBrief(schema, terms, maxTables);
     }
 
-    public Map<String, Object> schemaGraph(String schema, Integer maxTables,
+    public SchemaGraph schemaGraph(String schema, Integer maxTables,
                                            String fromTable, String toTable,
                                            Integer maxDepth) throws SQLException {
         return graph.schemaGraph(schema, maxTables, fromTable, toTable, maxDepth);
@@ -96,7 +101,7 @@ public class SchemaContextService {
         return graph.schemaGraphDot(schema, tables);
     }
 
-    public Map<String, Object> queryContext(String schema, String terms, String tables,
+    public QueryContext queryContext(String schema, String terms, String tables,
                                             Boolean includeSamples, Integer maxTables) throws SQLException {
         return queryContext.queryContext(schema, terms, tables, includeSamples, maxTables);
     }

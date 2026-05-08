@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaGraph;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -24,7 +25,7 @@ class SchemaGraphService extends SchemaContextSupport {
         super(metadata, stats, executor, dialect, usageCatalog);
     }
 
-    public Map<String, Object> schemaGraph(String schema, Integer maxTables,
+    public SchemaGraph schemaGraph(String schema, Integer maxTables,
                                            String fromTable, String toTable,
                                            Integer maxDepth) throws SQLException {
         int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
@@ -40,25 +41,17 @@ class SchemaGraphService extends SchemaContextSupport {
         List<Map<String, Object>> components = connectedComponents(tables, adjacency);
         List<Map<String, Object>> cycles = cycleHints(tables, declaredEdges, 25);
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", schema);
-        out.put("tablesScanned", tables.size());
-        out.put("nodeCount", nodes.size());
-        out.put("edgeCount", declaredEdges.size());
-        out.put("declaredEdgeCount", declaredEdges.size());
-        out.put("centralTables", centralTables(nodes, 10));
-        out.put("isolatedTables", isolatedTables(nodes));
-        out.put("connectedComponents", components);
-        out.put("cycles", cycles);
-        out.put("nodes", nodes);
-        out.put("edges", graphEdges(declaredEdges));
-
+        Map<String, Object> shortestPath = null;
         if (fromTable != null && !fromTable.isBlank() && toTable != null && !toTable.isBlank()) {
             String fromKey = resolveTableKey(tables, schema, fromTable);
             String toKey = resolveTableKey(tables, schema, toTable);
-            out.put("shortestPath", shortestGraphPath(fromKey, toKey, declaredEdges, depthLimit));
+            shortestPath = shortestGraphPath(fromKey, toKey, declaredEdges, depthLimit);
         }
-        return out;
+
+        return new SchemaGraph(schema, tables.size(), nodes.size(),
+                declaredEdges.size(), declaredEdges.size(),
+                centralTables(nodes, 10), isolatedTables(nodes),
+                components, cycles, nodes, graphEdges(declaredEdges), shortestPath);
     }
 
     public String schemaGraphDot(String schema, String tables) throws SQLException {

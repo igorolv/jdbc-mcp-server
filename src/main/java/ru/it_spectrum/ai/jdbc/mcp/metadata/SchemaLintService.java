@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaLint;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -30,7 +31,7 @@ class SchemaLintService extends SchemaContextSupport {
         super(metadata, stats, executor, dialect, usageCatalog);
     }
 
-    public Map<String, Object> schemaLint(String schema, String table, String checks,
+    public SchemaLint schemaLint(String schema, String table, String checks,
                                           Integer maxTables, Integer maxFindings) throws SQLException {
         int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
         int findingLimit = clamp(maxFindings, DEFAULT_MAX_FINDINGS, 1, MAX_FINDINGS_LIMIT);
@@ -52,15 +53,9 @@ class SchemaLintService extends SchemaContextSupport {
             lintGraph(tables, enabledChecks, findings, findingLimit);
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", schema);
-        out.put("table", table);
-        out.put("checks", enabledChecks);
-        out.put("tablesScanned", tables.size());
-        out.put("findingCount", findings.size());
-        out.put("truncated", findings.size() >= findingLimit);
-        out.put("findings", findings);
-        return out;
+        return new SchemaLint(schema, table, enabledChecks,
+                tables.size(), findings.size(),
+                findings.size() >= findingLimit, findings);
     }
 
     private void lintTable(TableDescription info, Set<String> checks,

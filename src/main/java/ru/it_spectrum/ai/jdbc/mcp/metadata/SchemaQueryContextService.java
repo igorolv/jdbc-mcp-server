@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContext;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
@@ -31,7 +32,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
         super(metadata, stats, executor, dialect, usageCatalog);
     }
 
-    public Map<String, Object> queryContext(String schema, String terms, String tables,
+    public QueryContext queryContext(String schema, String terms, String tables,
                                             Boolean includeSamples, Integer maxTables) throws SQLException {
         int tableLimit = clamp(maxTables, 12, 1, 50);
         boolean samples = Boolean.TRUE.equals(includeSamples);
@@ -99,19 +100,14 @@ class SchemaQueryContextService extends SchemaContextSupport {
                     semanticMatchesByTable.get(key(info.schema(), info.name()))));
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", schema);
-        out.put("terms", terms);
-        out.put("requestedTables", requestedTables);
-        out.put("includeSamples", samples);
-        out.put("tableCount", tableContexts.size());
-        out.put("semanticMatches", semanticCandidates.stream()
-                .map(SemanticTableCandidate::toMap)
-                .toList());
-        out.put("tables", tableContexts);
-        out.put("relationships", graphEdges(declaredEdges));
-        out.put("joinPaths", pairwiseJoinPaths(new ArrayList<>(selected.keySet()), declaredEdges));
-        return out;
+        return new QueryContext(schema, terms, requestedTables, samples,
+                tableContexts.size(),
+                semanticCandidates.stream()
+                        .map(SemanticTableCandidate::toMap)
+                        .toList(),
+                tableContexts,
+                graphEdges(declaredEdges),
+                pairwiseJoinPaths(new ArrayList<>(selected.keySet()), declaredEdges));
     }
 
     private Map<String, Object> queryTableContext(TableDescription info, List<String> tokens,

@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.TableContext;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -24,7 +25,7 @@ class SchemaTableContextService extends SchemaContextSupport {
         super(metadata, stats, executor, dialect, usageCatalog);
     }
 
-    public Map<String, Object> tableContext(String schema, String table, Integer depth,
+    public TableContext tableContext(String schema, String table, Integer depth,
                                             Boolean includeIncoming, Boolean includeStats,
                                             Boolean includeObserved)
             throws SQLException {
@@ -84,15 +85,7 @@ class SchemaTableContextService extends SchemaContextSupport {
         }
         decorateAndAppendObserved(relationships, describedNamesUpper, observed);
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("rootSchema", rootSchema);
-        out.put("rootTable", rootTable);
-        out.put("depth", maxDepth);
-        out.put("includeIncoming", incoming);
-        out.put("includeStats", Boolean.TRUE.equals(includeStats));
-        out.put("includeObserved", observed);
-        out.put("tables", tables);
-        out.put("relationships", relationships);
-        return out;
+        return new TableContext(rootSchema, rootTable, maxDepth, incoming,
+                Boolean.TRUE.equals(includeStats), observed, tables, relationships);
     }
 }

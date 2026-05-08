@@ -7,6 +7,11 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnDistribution;
+import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnHistogram;
+import ru.it_spectrum.ai.jdbc.mcp.model.distribution.JoinCardinality;
+import ru.it_spectrum.ai.jdbc.mcp.model.distribution.NullRatio;
+import ru.it_spectrum.ai.jdbc.mcp.model.distribution.SelectivityEstimate;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanNode;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
@@ -106,7 +111,7 @@ public class DistributionService {
      * share of the total row count. Lets the caller detect heavy data skew — e.g. "70 % of
      * rows have status='OK'" — which makes a non-partial index on {@code status} nearly useless.
      */
-    public Map<String, Object> columnDistribution(String schema, String table,
+    public ColumnDistribution columnDistribution(String schema, String table,
                                                   String column, Integer topN) throws SQLException {
         requireIdent("table", table);
         requireIdent("column", column);
@@ -121,38 +126,21 @@ public class DistributionService {
 
         QueryResult r = executor.queryInternal(sql, Collections.emptyList(), n);
 
+        long totalRows = fetchTotalRows(qTable);
         long totalFromTop = 0L;
-        List<Map<String, Object>> valueRows = new ArrayList<>(r.rows().size());
+        List<ColumnDistribution.ValueEntry> values = new ArrayList<>(r.rows().size());
         for (Map<String, Object> row : r.rows()) {
             long freq = toLong(getCI(row, "frequency"));
             totalFromTop += freq;
-            Map<String, Object> e = new LinkedHashMap<>();
-            e.put("value", getCI(row, "value"));
-            e.put("frequency", freq);
-            valueRows.add(e);
+            values.add(new ColumnDistribution.ValueEntry(
+                    getCI(row, "value"), freq, ratio(freq, totalRows)));
         }
 
-        long totalRows = fetchTotalRows(qTable);
-        for (Map<String, Object> e : valueRows) {
-            long freq = toLong(e.get("frequency"));
-            e.put("ratio", ratio(freq, totalRows));
-        }
+        long other = Math.max(0L, totalRows - totalFromTop);
 
-        long covered = totalFromTop;
-        long other = Math.max(0L, totalRows - covered);
-
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", resolveSchema(schema));
-        out.put("table", table);
-        out.put("column", column);
-        out.put("top_n", n);
-        out.put("total_rows", totalRows);
-        out.put("top_rows", covered);
-        out.put("top_ratio", ratio(covered, totalRows));
-        out.put("other_rows", other);
-        out.put("other_ratio", ratio(other, totalRows));
-        out.put("values", valueRows);
-        return out;
+        return new ColumnDistribution(resolveSchema(schema), table, column, n,
+                totalRows, totalFromTop, ratio(totalFromTop, totalRows),
+                other, ratio(other, totalRows), values);
     }
 
     // ---------------- columnHistogram ----------------
@@ -166,7 +154,7 @@ public class DistributionService {
      * any other orderable type we use {@code percentile_disc}, which returns an actual existing
      * value and tolerates non-numeric sorts on engines that support them.
      */
-    public Map<String, Object> columnHistogram(String schema, String table, String column) throws SQLException {
+    public ColumnHistogram columnHistogram(String schema, String table, String column) throws SQLException {
         requireIdent("table", table);
         requireIdent("column", column);
         String effectiveSchema = resolveSchema(schema);
@@ -192,33 +180,20 @@ public class DistributionService {
 
         QueryResult r = executor.queryInternal(sql, Collections.emptyList(), 1);
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", effectiveSchema);
-        out.put("table", table);
-        out.put("column", column);
-        out.put("column_type", type.typeName);
-        out.put("percentile_function", pct);
         if (r.rows().isEmpty()) {
-            out.put("total_rows", 0L);
-            out.put("non_null_rows", 0L);
-            return out;
+            return new ColumnHistogram(effectiveSchema, table, column,
+                    type.typeName, pct, 0L, 0L, 0L, 0.0,
+                    null, null, null, null, null, null, null, null);
         }
         Map<String, Object> row = r.rows().get(0);
         long total   = toLong(getCI(row, "total_rows"));
         long nonNull = toLong(getCI(row, "non_null_rows"));
-        out.put("total_rows", total);
-        out.put("non_null_rows", nonNull);
-        out.put("null_rows", total - nonNull);
-        out.put("null_ratio", ratio(total - nonNull, total));
-        out.put("min", getCI(row, "min_value"));
-        out.put("max", getCI(row, "max_value"));
-        out.put("p25", getCI(row, "p25"));
-        out.put("p50", getCI(row, "p50"));
-        out.put("p75", getCI(row, "p75"));
-        out.put("p90", getCI(row, "p90"));
-        out.put("p95", getCI(row, "p95"));
-        out.put("p99", getCI(row, "p99"));
-        return out;
+        long nulls   = total - nonNull;
+        return new ColumnHistogram(effectiveSchema, table, column,
+                type.typeName, pct, total, nonNull, nulls, ratio(nulls, total),
+                getCI(row, "min_value"), getCI(row, "max_value"),
+                getCI(row, "p25"), getCI(row, "p50"), getCI(row, "p75"),
+                getCI(row, "p90"), getCI(row, "p95"), getCI(row, "p99"));
     }
 
     private String sqlServerHistogramSql(String qTable, String qCol, String pct) {
@@ -267,19 +242,14 @@ public class DistributionService {
      * so the LLM can see which columns are sparse (and therefore candidates for a partial index)
      * without issuing N queries.
      */
-    public Map<String, Object> nullRatio(String schema, String table) throws SQLException {
+    public NullRatio nullRatio(String schema, String table) throws SQLException {
         requireIdent("table", table);
         String effectiveSchema = resolveSchema(schema);
 
         List<String> columnNames = fetchColumnNames(effectiveSchema, table);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", effectiveSchema);
-        out.put("table", table);
 
         if (columnNames.isEmpty()) {
-            out.put("total_rows", 0L);
-            out.put("columns", List.of());
-            return out;
+            return new NullRatio(effectiveSchema, table, 0L, List.of());
         }
 
         String qTable = qualify(schema, table);
@@ -295,28 +265,19 @@ public class DistributionService {
         if (!r.rows().isEmpty()) {
             total = toLong(getCI(r.rows().get(0), "total_rows"));
         }
-        List<Map<String, Object>> cols = new ArrayList<>(columnNames.size());
+        List<NullRatio.ColumnEntry> cols = new ArrayList<>(columnNames.size());
         if (!r.rows().isEmpty()) {
             Map<String, Object> row = r.rows().get(0);
             for (int i = 0; i < columnNames.size(); i++) {
                 long nn = toLong(getCI(row, "nn_" + i));
                 long nulls = total - nn;
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("column", columnNames.get(i));
-                entry.put("non_null_rows", nn);
-                entry.put("null_rows", nulls);
-                entry.put("null_ratio", ratio(nulls, total));
-                entry.put("sparse", total > 0 && nulls * 2 > total); // >50 % null → candidate for partial index
-                cols.add(entry);
+                cols.add(new NullRatio.ColumnEntry(columnNames.get(i), nn, nulls,
+                        ratio(nulls, total), total > 0 && nulls * 2 > total));
             }
         }
-        // Sort by descending null_ratio so the LLM sees the sparsest columns first.
-        cols.sort((a, b) -> Double.compare(
-                toDouble(b.get("null_ratio")), toDouble(a.get("null_ratio"))));
+        cols.sort((a, b) -> Double.compare(b.nullRatio(), a.nullRatio()));
 
-        out.put("total_rows", total);
-        out.put("columns", cols);
-        return out;
+        return new NullRatio(effectiveSchema, table, total, cols);
     }
 
     // ---------------- estimateSelectivity ----------------
@@ -329,7 +290,7 @@ public class DistributionService {
      * <p>Useful when comparing two candidate predicates — the one with the lower estimated
      * cardinality is more selective and should usually be tried first.
      */
-    public Map<String, Object> estimateSelectivity(String schema, String table, String predicate)
+    public SelectivityEstimate estimateSelectivity(String schema, String table, String predicate)
             throws SQLException {
         requireIdent("table", table);
         if (predicate == null || predicate.isBlank()) {
@@ -347,20 +308,15 @@ public class DistributionService {
         Long filtered = explainRootRows(filteredSql);
         Long baseline = explainRootRows(baselineSql);
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", effectiveSchema);
-        out.put("table", table);
-        out.put("predicate", predicate);
-        out.put("estimated_rows", filtered);
-        out.put("baseline_rows", baseline);
+        Double selectivity = null;
         if (filtered != null && baseline != null && baseline > 0) {
-            out.put("selectivity", ratio(filtered, baseline));
-        } else {
-            out.put("selectivity", null);
+            selectivity = ratio(filtered, baseline);
         }
-        out.put("note", "Estimates come from the query planner and can be off if statistics are stale. " +
-                "Run ANALYZE (PostgreSQL) or DBMS_STATS.GATHER_TABLE_STATS (Oracle) for fresher numbers.");
-        return out;
+
+        return new SelectivityEstimate(effectiveSchema, table, predicate,
+                filtered, baseline, selectivity,
+                "Estimates come from the query planner and can be off if statistics are stale. " +
+                        "Run ANALYZE (PostgreSQL) or DBMS_STATS.GATHER_TABLE_STATS (Oracle) for fresher numbers.");
     }
 
     // ---------------- joinCardinality ----------------
@@ -373,7 +329,7 @@ public class DistributionService {
      * (matters for {@code LEFT} / {@code RIGHT} joins). Supported join types: {@code INNER}
      * (default), {@code LEFT}, {@code RIGHT}, {@code FULL}.
      */
-    public Map<String, Object> joinCardinality(String fromSchema, String fromTable, String leftColumn,
+    public JoinCardinality joinCardinality(String fromSchema, String fromTable, String leftColumn,
                                                String toSchema, String toTable, String rightColumn,
                                                String joinType) throws SQLException {
         requireIdent("fromTable", fromTable);
@@ -398,26 +354,19 @@ public class DistributionService {
         Long lBase = explainRootRows("SELECT 1 FROM " + lTable);
         Long rBase = explainRootRows("SELECT 1 FROM " + rTable);
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("from_schema", resolveSchema(fromSchema));
-        out.put("from_table", fromTable);
-        out.put("left_column", leftColumn);
-        out.put("from_row_estimate", lBase);
-        out.put("to_schema", resolveSchema(toSchema));
-        out.put("to_table", toTable);
-        out.put("right_column", rightColumn);
-        out.put("to_row_estimate", rBase);
-        out.put("join_type", jt);
-        out.put("estimated_rows", estimated);
+        Long cartesian = null;
+        Double selectivityVsCartesian = null;
         if (estimated != null && lBase != null && rBase != null) {
-            long cartesian = safeMultiply(lBase, rBase);
-            out.put("cartesian_rows", cartesian);
+            cartesian = safeMultiply(lBase, rBase);
             if (cartesian > 0) {
-                out.put("selectivity_vs_cartesian", ratio(estimated, cartesian));
+                selectivityVsCartesian = ratio(estimated, cartesian);
             }
         }
-        out.put("note", "Estimate from the query planner; actual rows may differ if statistics are stale.");
-        return out;
+
+        return new JoinCardinality(resolveSchema(fromSchema), fromTable, leftColumn, lBase,
+                resolveSchema(toSchema), toTable, rightColumn, rBase,
+                jt, estimated, cartesian, selectivityVsCartesian,
+                "Estimate from the query planner; actual rows may differ if statistics are stale.");
     }
 
     // ---------------- internal helpers ----------------
@@ -645,16 +594,6 @@ public class DistributionService {
             } catch (NumberFormatException e2) {
                 return 0L;
             }
-        }
-    }
-
-    private static double toDouble(Object v) {
-        if (v == null) return 0.0;
-        if (v instanceof Number n) return n.doubleValue();
-        try {
-            return Double.parseDouble(v.toString().trim());
-        } catch (NumberFormatException e) {
-            return 0.0;
         }
     }
 

@@ -9,7 +9,6 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 
 import java.sql.SQLException;
-import java.util.Map;
 
 /**
  * MCP tools exposing column-level selectivity and distribution analyses: top-N frequent values,
@@ -56,7 +55,7 @@ public class DistributionTools {
             @McpToolParam(description = "Number of top values to return (default 20, max 1000)", required = false) Integer topN
     ) {
         try {
-            Map<String, Object> r = distribution.columnDistribution(schema, table, column, topN);
+            var r = distribution.columnDistribution(schema, table, column, topN);
             return JsonWriter.write(r);
         } catch (SQLException e) {
             return ToolErrors.sql(e);
@@ -76,7 +75,7 @@ public class DistributionTools {
             @McpToolParam(description = "Column name") String column
     ) {
         try {
-            Map<String, Object> r = distribution.columnHistogram(schema, table, column);
+            var r = distribution.columnHistogram(schema, table, column);
             return JsonWriter.write(r);
         } catch (SQLException e) {
             return ToolErrors.sql(e);
@@ -94,7 +93,7 @@ public class DistributionTools {
             @McpToolParam(description = "Table or view name") String table
     ) {
         try {
-            Map<String, Object> r = distribution.nullRatio(schema, table);
+            var r = distribution.nullRatio(schema, table);
             return JsonWriter.write(r);
         } catch (SQLException e) {
             return ToolErrors.sql(e);
@@ -116,7 +115,7 @@ public class DistributionTools {
             @McpToolParam(description = "Boolean predicate expression — raw SQL, without the WHERE keyword") String predicate
     ) {
         try {
-            Map<String, Object> r = distribution.estimateSelectivity(schema, table, predicate);
+            var r = distribution.estimateSelectivity(schema, table, predicate);
             return JsonWriter.write(r);
         } catch (SQLException e) {
             return ToolErrors.sql(e);
@@ -140,7 +139,7 @@ public class DistributionTools {
             @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType
     ) {
         try {
-            Map<String, Object> r = distribution.joinCardinality(fromSchema, fromTable, leftColumn,
+            var r = distribution.joinCardinality(fromSchema, fromTable, leftColumn,
                     toSchema, toTable, rightColumn, joinType);
             return JsonWriter.write(r);
         } catch (SQLException e) {

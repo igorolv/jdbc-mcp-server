@@ -72,7 +72,7 @@ public class StatsTools {
             @McpToolParam(description = "Minimum index size in bytes to report (optional — filters out tiny indexes)", required = false) Long minSizeBytes
     ) {
         try {
-            Map<String, Object> result = stats.unusedIndexes(schema, minSizeBytes);
+            var result = stats.unusedIndexes(schema, minSizeBytes);
             return JsonWriter.write(result);
         } catch (SQLException e) {
             return ToolErrors.sql(e);
@@ -88,7 +88,7 @@ public class StatsTools {
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
         try {
-            Map<String, Object> result = stats.redundantIndexes(schema, table);
+            var result = stats.redundantIndexes(schema, table);
             return JsonWriter.write(result);
         } catch (SQLException e) {
             return ToolErrors.sql(e);
@@ -105,7 +105,7 @@ public class StatsTools {
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
         try {
-            Map<String, Object> result = stats.fkIndexCoverage(schema, table);
+            var result = stats.fkIndexCoverage(schema, table);
             return JsonWriter.write(result);
         } catch (SQLException e) {
             return ToolErrors.sql(e);

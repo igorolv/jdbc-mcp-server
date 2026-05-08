@@ -4,6 +4,7 @@ import net.sf.jsqlparser.JSQLParserException;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -133,13 +134,12 @@ public class QueryLintService {
         Set<String> scanned = new LinkedHashSet<>();
         for (String tableName : model.physicalTableNames()) {
             if (!scanned.add(norm(tableName))) continue;
-            Map<String, Object> coverage = stats.fkIndexCoverage(schema, tableName);
-            Object uncovered = coverage.get("uncovered");
-            if (!(uncovered instanceof List<?> rows)) continue;
+            var coverage = stats.fkIndexCoverage(schema, tableName);
+            List<?> rows = coverage.uncovered();
             for (Object item : rows) {
-                if (!(item instanceof Map<?, ?> raw)) continue;
-                Object fkName = raw.get("fk_name");
-                Object cols = raw.get("fk_columns");
+                if (!(item instanceof FkIndexCoverage.UncoveredEntry entry)) continue;
+                Object fkName = entry.fkName();
+                Object cols = entry.fkColumns();
                 warnings.add(warning("fk_without_supporting_index",
                         "Foreign key " + fkName + " on table '" + tableName +
                                 "' has no supporting index on child columns " + cols + "."));

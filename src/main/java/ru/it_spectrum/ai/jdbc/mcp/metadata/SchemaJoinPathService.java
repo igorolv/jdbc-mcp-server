@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.FindJoinPaths;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -9,7 +10,6 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,7 +23,7 @@ class SchemaJoinPathService extends SchemaContextSupport {
         super(metadata, stats, executor, dialect, usageCatalog);
     }
 
-    public Map<String, Object> findJoinPaths(String fromSchema, String fromTable,
+    public FindJoinPaths findJoinPaths(String fromSchema, String fromTable,
                                              String toSchema, String toTable,
                                              Integer maxDepth, Integer maxPaths,
                                              Integer scanLimit, Boolean includeObserved) throws SQLException {
@@ -74,16 +74,8 @@ class SchemaJoinPathService extends SchemaContextSupport {
         String target = key(effectiveToSchema, effectiveToTable);
         List<List<Map<String, Object>>> paths = searchPaths(start, target, byFrom, depthLimit, pathLimit);
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("fromSchema", effectiveFromSchema);
-        out.put("fromTable", effectiveFromTable);
-        out.put("toSchema", effectiveToSchema);
-        out.put("toTable", effectiveToTable);
-        out.put("maxDepth", depthLimit);
-        out.put("includeObserved", observed);
-        out.put("schemaTablesScanned", described.size());
-        out.put("pathCount", paths.size());
-        out.put("paths", paths);
-        return out;
+        return new FindJoinPaths(effectiveFromSchema, effectiveFromTable,
+                effectiveToSchema, effectiveToTable,
+                depthLimit, observed, described.size(), paths.size(), paths);
     }
 }

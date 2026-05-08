@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaOverview;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -23,7 +24,7 @@ class SchemaOverviewService extends SchemaContextSupport {
         super(metadata, stats, executor, dialect, usageCatalog);
     }
 
-    public Map<String, Object> schemaOverview(String schema, String namePattern,
+    public SchemaOverview schemaOverview(String schema, String namePattern,
                                               Boolean includeViews, Boolean includeStats,
                                               Boolean includeObserved,
                                               Integer maxTables) throws SQLException {
@@ -60,18 +61,9 @@ class SchemaOverviewService extends SchemaContextSupport {
         }
         decorateAndAppendObserved(relationships, describedNamesUpper, observed);
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", schema);
-        out.put("namePattern", namePattern);
-        out.put("includeViews", views);
-        out.put("includeStats", Boolean.TRUE.equals(includeStats));
-        out.put("includeObserved", observed);
-        out.put("tableCount", listed.size());
-        out.put("returnedTableCount", tables.size());
-        out.put("truncated", truncated);
-        out.put("tables", tables);
-        out.put("relationships", relationships);
-        return out;
+        return new SchemaOverview(schema, namePattern, views,
+                Boolean.TRUE.equals(includeStats), observed,
+                listed.size(), tables.size(), truncated, tables, relationships);
     }
 
     private Map<String, Object> errorTable(TableEntry listedTable, SQLException error) {

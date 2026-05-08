@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.RedundantIndexes;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.UnusedIndexes;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
@@ -115,49 +118,39 @@ public class StatsService {
      * enough. On Oracle the information is not exposed by {@code ALL_INDEXES}, so this tool
      * reports a diagnostic note instead of a list.
      */
-    public Map<String, Object> unusedIndexes(String schema, Long minSizeBytes) throws SQLException {
-        Map<String, Object> out = new LinkedHashMap<>();
+    public UnusedIndexes unusedIndexes(String schema, Long minSizeBytes) throws SQLException {
         if (dialect.kind() == DatabaseKind.ORACLE) {
-            out.put("supported", false);
-            out.put("note", "Oracle does not publish per-index scan counters in ALL_INDEXES. " +
+            return new UnusedIndexes(false, "Oracle does not publish per-index scan counters in ALL_INDEXES. " +
                     "Use DBA_INDEX_USAGE (12.2+) or enable monitoring with " +
-                    "ALTER INDEX ... MONITORING USAGE and query V$OBJECT_USAGE.");
-            out.put("indexes", List.of());
-            return out;
+                    "ALTER INDEX ... MONITORING USAGE and query V$OBJECT_USAGE.",
+                    null, 0, List.of());
         }
         if (dialect.kind() == DatabaseKind.MSSQL) {
-            out.put("supported", false);
-            out.put("note", "SQL Server index usage counters come from sys.dm_db_index_usage_stats " +
+            return new UnusedIndexes(false, "SQL Server index usage counters come from sys.dm_db_index_usage_stats " +
                     "and require server/database state permissions. This tool does not report " +
-                    "unused indexes for SQL Server from low-privilege metadata.");
-            out.put("indexes", List.of());
-            return out;
+                    "unused indexes for SQL Server from low-privilege metadata.",
+                    null, 0, List.of());
         }
         QueryResult idx = indexStats(schema, null);
-        List<Map<String, Object>> unused = new ArrayList<>();
+        List<UnusedIndexes.UnusedIndexEntry> unused = new ArrayList<>();
         for (Map<String, Object> row : idx.rows()) {
             long scans = toLong(getCI(row, "idx_scans"));
             boolean primary = toBool(getCI(row, "is_primary"));
             boolean unique  = toBool(getCI(row, "is_unique"));
             if (scans != 0) continue;
-            if (primary || unique) continue; // cannot be dropped without losing the constraint
+            if (primary || unique) continue;
             long size = toLong(getCI(row, "size_bytes"));
             if (minSizeBytes != null && size < minSizeBytes) continue;
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("schema", getCI(row, "schema"));
-            entry.put("table", getCI(row, "table_name"));
-            entry.put("index", getCI(row, "index_name"));
-            entry.put("columns", getCI(row, "columns"));
-            entry.put("size_bytes", size);
-            entry.put("index_type", getCI(row, "index_type"));
-            unused.add(entry);
+            unused.add(new UnusedIndexes.UnusedIndexEntry(
+                    String.valueOf(getCI(row, "schema")),
+                    String.valueOf(getCI(row, "table_name")),
+                    String.valueOf(getCI(row, "index_name")),
+                    String.valueOf(getCI(row, "columns")),
+                    size,
+                    String.valueOf(getCI(row, "index_type"))));
         }
-        unused.sort((a, b) -> Long.compare(toLong(b.get("size_bytes")), toLong(a.get("size_bytes"))));
-        out.put("supported", true);
-        out.put("schema", resolveSchema(schema));
-        out.put("count", unused.size());
-        out.put("indexes", unused);
-        return out;
+        unused.sort((a, b) -> Long.compare(b.sizeBytes(), a.sizeBytes()));
+        return new UnusedIndexes(true, null, resolveSchema(schema), unused.size(), unused);
     }
 
     // ---------------- redundantIndexes ----------------
@@ -175,7 +168,7 @@ public class StatsService {
      *     <li>prefix match is strict — equal column lists are not reported (caller can pick either).</li>
      * </ul>
      */
-    public Map<String, Object> redundantIndexes(String schema, String table) throws SQLException {
+    public RedundantIndexes redundantIndexes(String schema, String table) throws SQLException {
         QueryResult idx = indexStats(schema, table);
         // Group by (schema, table)
         Map<String, List<Map<String, Object>>> byTable = new TreeMap<>();
@@ -184,7 +177,7 @@ public class StatsService {
                     + String.valueOf(getCI(r, "table_name"));
             byTable.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
-        List<Map<String, Object>> findings = new ArrayList<>();
+        List<RedundantIndexes.Finding> findings = new ArrayList<>();
         for (List<Map<String, Object>> group : byTable.values()) {
             for (Map<String, Object> a : group) {
                 List<String> aCols = splitColumns(getCI(a, "columns"));
@@ -194,30 +187,23 @@ public class StatsService {
                 for (Map<String, Object> b : group) {
                     if (a == b) continue;
                     List<String> bCols = splitColumns(getCI(b, "columns"));
-                    if (bCols.size() <= aCols.size()) continue; // must be strictly longer
+                    if (bCols.size() <= aCols.size()) continue;
                     if (!aType.equals(strLower(getCI(b, "index_type")))) continue;
-                    // aCols must be a prefix of bCols
                     if (!bCols.subList(0, aCols.size()).equals(aCols)) continue;
-                    Map<String, Object> finding = new LinkedHashMap<>();
-                    finding.put("schema", getCI(a, "schema"));
-                    finding.put("table", getCI(a, "table_name"));
-                    finding.put("shadowed_index", getCI(a, "index_name"));
-                    finding.put("shadowed_columns", getCI(a, "columns"));
-                    finding.put("shadowed_size_bytes", getCI(a, "size_bytes"));
-                    finding.put("covered_by_index", getCI(b, "index_name"));
-                    finding.put("covered_by_columns", getCI(b, "columns"));
-                    finding.put("index_type", getCI(a, "index_type"));
-                    findings.add(finding);
-                    break; // one cover is enough
+                    findings.add(new RedundantIndexes.Finding(
+                            String.valueOf(getCI(a, "schema")),
+                            String.valueOf(getCI(a, "table_name")),
+                            String.valueOf(getCI(a, "index_name")),
+                            String.valueOf(getCI(a, "columns")),
+                            toLong(getCI(a, "size_bytes")),
+                            String.valueOf(getCI(b, "index_name")),
+                            String.valueOf(getCI(b, "columns")),
+                            String.valueOf(getCI(a, "index_type"))));
+                    break;
                 }
             }
         }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", resolveSchema(schema));
-        out.put("table", table);
-        out.put("count", findings.size());
-        out.put("findings", findings);
-        return out;
+        return new RedundantIndexes(resolveSchema(schema), table, findings.size(), findings);
     }
 
     // ---------------- fkIndexCoverage ----------------
@@ -230,14 +216,14 @@ public class StatsService {
      * <p>Uses {@code DatabaseMetaData.getImportedKeys} + {@code getIndexInfo} so it works the
      * same way on both engines. If {@code table} is null we scan every table in the schema.
      */
-    public Map<String, Object> fkIndexCoverage(String schema, String table) throws SQLException {
+    public FkIndexCoverage fkIndexCoverage(String schema, String table) throws SQLException {
         String effectiveSchema = resolveSchema(schema);
         return executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
             List<String> tables = table != null && !table.isBlank()
                     ? List.of(table)
                     : listUserTables(md, effectiveSchema);
-            List<Map<String, Object>> uncovered = new ArrayList<>();
+            List<FkIndexCoverage.UncoveredEntry> uncovered = new ArrayList<>();
             int fkTotal = 0;
             for (String t : tables) {
                 List<FkInfo> fks = fetchFks(md, effectiveSchema, t);
@@ -246,26 +232,14 @@ public class StatsService {
                 List<List<String>> indexPrefixes = fetchIndexPrefixes(md, effectiveSchema, t);
                 for (FkInfo fk : fks) {
                     if (isCovered(fk.columns, indexPrefixes)) continue;
-                    Map<String, Object> entry = new LinkedHashMap<>();
-                    entry.put("schema", effectiveSchema);
-                    entry.put("table", t);
-                    entry.put("fk_name", fk.name);
-                    entry.put("fk_columns", fk.columns);
-                    entry.put("referenced_schema", fk.referencedSchema);
-                    entry.put("referenced_table", fk.referencedTable);
-                    entry.put("referenced_columns", fk.referencedColumns);
-                    entry.put("suggested_index_columns", fk.columns);
-                    uncovered.add(entry);
+                    uncovered.add(new FkIndexCoverage.UncoveredEntry(
+                            effectiveSchema, t, fk.name, fk.columns,
+                            fk.referencedSchema, fk.referencedTable, fk.referencedColumns,
+                            fk.columns));
                 }
             }
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("schema", effectiveSchema);
-            out.put("table", table);
-            out.put("tables_scanned", tables.size());
-            out.put("foreign_keys_total", fkTotal);
-            out.put("uncovered_count", uncovered.size());
-            out.put("uncovered", uncovered);
-            return out;
+            return new FkIndexCoverage(effectiveSchema, table, tables.size(), fkTotal,
+                    uncovered.size(), uncovered);
         });
     }
 
