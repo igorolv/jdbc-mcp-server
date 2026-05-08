@@ -2,6 +2,12 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import net.sf.jsqlparser.JSQLParserException;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedColumnUsage;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedTableUsage;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticColumnUsage;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService.QueryModel;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonWriter;
@@ -44,6 +50,9 @@ import java.util.Set;
  */
 @Service
 public class UsageCatalogService {
+
+    private static final int DEFAULT_PROFILE_LIMIT = 10;
+    private static final int QUERY_UID_PREVIEW_LIMIT = 20;
 
     private final UsageProperties properties;
     private final DataSource catalogDs;
@@ -994,6 +1003,188 @@ public class UsageCatalogService {
         return out;
     }
 
+    /**
+     * Builds a typed projection of usage-catalog evidence for one physical table. This is the
+     * bridge from stored application/report queries back into schema-context responses:
+     * {@code observedQuery} describes how the table/columns are referenced, while
+     * {@code semanticUsage} carries business labels, domains, tags and field usages.
+     */
+    public TableEvidenceProfile tableEvidenceProfile(String schema, String table) {
+        if (table == null || table.isBlank()) throw new IllegalArgumentException("table is required");
+        String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
+        String tableUpper = table.toUpperCase(Locale.ROOT);
+        List<String> queryUids = tableQueryUids(schemaUpper, tableUpper);
+        ObservedTableUsage observed = new ObservedTableUsage(
+                queryUids.size(),
+                capStrings(queryUids, QUERY_UID_PREVIEW_LIMIT),
+                observedColumnUsages(schemaUpper, tableUpper));
+        SemanticTableUsage semantic = new SemanticTableUsage(
+                tableQueryTerms(schemaUpper, tableUpper, "q.business_domain", "query_table qt", null),
+                tableQueryTerms(schemaUpper, tableUpper, "tag.tag", "query_table qt JOIN query_tag tag ON tag.query_uid = qt.query_uid", null),
+                tableQueryTerms(schemaUpper, tableUpper, "q.business_label", "query_table qt", null),
+                outputTerms(schemaUpper, tableUpper, "qo.business_label", null),
+                outputTerms(schemaUpper, tableUpper, "qfu.business_object",
+                        "JOIN query_field_usage qfu ON qfu.query_output_id = qoc.query_output_id"),
+                semanticColumnUsages(schemaUpper, tableUpper));
+        return new TableEvidenceProfile(schemaUpper, tableUpper, observed, semantic);
+    }
+
+    private List<String> tableQueryUids(String schemaUpper, String tableUpper) {
+        String sql = """
+                SELECT DISTINCT q.uid
+                FROM query_table qt
+                JOIN query q ON q.uid = qt.query_uid
+                WHERE qt.table_resolved = ?
+                  AND (? IS NULL OR qt.schema_resolved = ? OR qt.schema_resolved IS NULL)
+                ORDER BY q.uid
+                """;
+        return queryList(sql, ps -> {
+            ps.setString(1, tableUpper);
+            ps.setString(2, schemaUpper);
+            ps.setString(3, schemaUpper);
+        }, rs -> rs.getString("uid"));
+    }
+
+    private List<ObservedColumnUsage> observedColumnUsages(String schemaUpper, String tableUpper) {
+        String sql = """
+                SELECT qc.column_name, qc.context,
+                       COUNT(DISTINCT qc.query_uid) AS support,
+                       STRING_AGG(qc.query_uid, '|') AS uids
+                FROM query_column qc
+                WHERE qc.table_resolved = ?
+                  AND (? IS NULL OR qc.schema_resolved = ? OR qc.schema_resolved IS NULL)
+                GROUP BY qc.column_name, qc.context
+                ORDER BY qc.column_name, support DESC, qc.context
+                """;
+        Map<String, ColumnUsageAccumulator> byColumn = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = queryList(sql, ps -> {
+            ps.setString(1, tableUpper);
+            ps.setString(2, schemaUpper);
+            ps.setString(3, schemaUpper);
+        }, rs -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("column", rs.getString("column_name"));
+            row.put("context", rs.getString("context"));
+            row.put("support", rs.getInt("support"));
+            row.put("uids", rs.getString("uids"));
+            return row;
+        });
+        for (Map<String, Object> row : rows) {
+            String column = stringValue(row.get("column"));
+            if (column == null) continue;
+            ColumnUsageAccumulator acc = byColumn.computeIfAbsent(column, ColumnUsageAccumulator::new);
+            List<String> uids = splitUids(stringValue(row.get("uids")));
+            acc.queryUids.addAll(uids);
+            acc.contexts.add(new SemanticTermEvidence(
+                    stringValue(row.get("context")),
+                    ((Number) row.get("support")).intValue(),
+                    capStrings(uids, QUERY_UID_PREVIEW_LIMIT)));
+        }
+        return byColumn.values().stream()
+                .map(acc -> new ObservedColumnUsage(
+                        acc.column,
+                        acc.queryUids.size(),
+                        acc.contexts,
+                        capStrings(new ArrayList<>(acc.queryUids), QUERY_UID_PREVIEW_LIMIT)))
+                .toList();
+    }
+
+    private List<SemanticColumnUsage> semanticColumnUsages(String schemaUpper, String tableUpper) {
+        Map<String, SemanticColumnAccumulator> byColumn = new LinkedHashMap<>();
+        for (ColumnTerm term : outputColumnTerms(schemaUpper, tableUpper, "qo.business_label", null)) {
+            byColumn.computeIfAbsent(term.column(), SemanticColumnAccumulator::new)
+                    .outputLabels.add(term.evidence());
+        }
+        for (ColumnTerm term : outputColumnTerms(schemaUpper, tableUpper, "qfu.business_object",
+                "JOIN query_field_usage qfu ON qfu.query_output_id = qoc.query_output_id")) {
+            byColumn.computeIfAbsent(term.column(), SemanticColumnAccumulator::new)
+                    .businessObjects.add(term.evidence());
+        }
+        return byColumn.values().stream()
+                .map(acc -> new SemanticColumnUsage(acc.column, acc.outputLabels, acc.businessObjects))
+                .toList();
+    }
+
+    private List<SemanticTermEvidence> tableQueryTerms(String schemaUpper, String tableUpper,
+                                                       String valueExpression,
+                                                       String fromExpression,
+                                                       String extraJoin) {
+        String join = extraJoin == null || extraJoin.isBlank() ? "" : "\n" + extraJoin;
+        String sql = """
+                SELECT %s AS term_value,
+                       COUNT(DISTINCT q.uid) AS support,
+                       STRING_AGG(q.uid, '|') AS uids
+                FROM %s
+                JOIN query q ON q.uid = qt.query_uid%s
+                WHERE qt.table_resolved = ?
+                  AND (? IS NULL OR qt.schema_resolved = ? OR qt.schema_resolved IS NULL)
+                  AND %s IS NOT NULL AND %s <> ''
+                GROUP BY %s
+                ORDER BY support DESC, term_value
+                LIMIT ?
+                """.formatted(valueExpression, fromExpression, join, valueExpression,
+                valueExpression, valueExpression);
+        return queryList(sql, ps -> {
+            ps.setString(1, tableUpper);
+            ps.setString(2, schemaUpper);
+            ps.setString(3, schemaUpper);
+            ps.setInt(4, DEFAULT_PROFILE_LIMIT);
+        }, this::termEvidenceRow);
+    }
+
+    private List<SemanticTermEvidence> outputTerms(String schemaUpper, String tableUpper,
+                                                   String valueExpression,
+                                                   String extraJoin) {
+        String join = extraJoin == null || extraJoin.isBlank() ? "" : "\n" + extraJoin;
+        String sql = """
+                SELECT %s AS term_value,
+                       COUNT(DISTINCT qo.query_uid) AS support,
+                       STRING_AGG(qo.query_uid, '|') AS uids
+                FROM query_output_column qoc
+                JOIN query_output qo ON qo.id = qoc.query_output_id%s
+                WHERE qoc.table_resolved = ?
+                  AND (? IS NULL OR qoc.schema_resolved = ? OR qoc.schema_resolved IS NULL)
+                  AND %s IS NOT NULL AND %s <> ''
+                GROUP BY %s
+                ORDER BY support DESC, term_value
+                LIMIT ?
+                """.formatted(valueExpression, join, valueExpression, valueExpression, valueExpression);
+        return queryList(sql, ps -> {
+            ps.setString(1, tableUpper);
+            ps.setString(2, schemaUpper);
+            ps.setString(3, schemaUpper);
+            ps.setInt(4, DEFAULT_PROFILE_LIMIT);
+        }, this::termEvidenceRow);
+    }
+
+    private List<ColumnTerm> outputColumnTerms(String schemaUpper, String tableUpper,
+                                               String valueExpression,
+                                               String extraJoin) {
+        String join = extraJoin == null || extraJoin.isBlank() ? "" : "\n" + extraJoin;
+        String sql = """
+                SELECT qoc.column_name,
+                       %s AS term_value,
+                       COUNT(DISTINCT qo.query_uid) AS support,
+                       STRING_AGG(qo.query_uid, '|') AS uids
+                FROM query_output_column qoc
+                JOIN query_output qo ON qo.id = qoc.query_output_id%s
+                WHERE qoc.table_resolved = ?
+                  AND (? IS NULL OR qoc.schema_resolved = ? OR qoc.schema_resolved IS NULL)
+                  AND %s IS NOT NULL AND %s <> ''
+                GROUP BY qoc.column_name, %s
+                ORDER BY qoc.column_name, support DESC, term_value
+                LIMIT ?
+                """.formatted(valueExpression, join, valueExpression, valueExpression, valueExpression);
+        return queryList(sql, ps -> {
+            ps.setString(1, tableUpper);
+            ps.setString(2, schemaUpper);
+            ps.setString(3, schemaUpper);
+            ps.setInt(4, DEFAULT_PROFILE_LIMIT * 5);
+        }, rs -> new ColumnTerm(
+                rs.getString("column_name"),
+                termEvidenceRow(rs)));
+    }
+
     // ---------------------------------------------------------------------------------------
     //  Row mappers
     // ---------------------------------------------------------------------------------------
@@ -1103,6 +1294,13 @@ public class UsageCatalogService {
         return row;
     }
 
+    private SemanticTermEvidence termEvidenceRow(ResultSet rs) throws SQLException {
+        return new SemanticTermEvidence(
+                rs.getString("term_value"),
+                rs.getInt("support"),
+                capStrings(splitUids(rs.getString("uids")), QUERY_UID_PREVIEW_LIMIT));
+    }
+
     // ---------------------------------------------------------------------------------------
     //  Small helpers
     // ---------------------------------------------------------------------------------------
@@ -1151,6 +1349,24 @@ public class UsageCatalogService {
         return s == null || s.isEmpty() ? null : s;
     }
 
+    private static List<String> splitUids(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        List<String> out = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (String uid : raw.split("\\|")) {
+            if (uid == null || uid.isBlank()) continue;
+            if (seen.add(uid)) out.add(uid);
+        }
+        return out;
+    }
+
+    private static List<String> capStrings(List<String> values, int limit) {
+        if (values == null || values.isEmpty()) return List.of();
+        int safeLimit = Math.max(0, limit);
+        if (values.size() <= safeLimit) return List.copyOf(values);
+        return List.copyOf(values.subList(0, safeLimit));
+    }
+
     private static String rootMessage(Throwable e) {
         Throwable cur = e;
         while (cur.getCause() != null) cur = cur.getCause();
@@ -1195,6 +1411,29 @@ public class UsageCatalogService {
 
     private record TableInsertResult(long id, String rawName, String alias,
                                      String schemaResolved, String tableResolved) {
+    }
+
+    private record ColumnTerm(String column, SemanticTermEvidence evidence) {
+    }
+
+    private static class ColumnUsageAccumulator {
+        final String column;
+        final Set<String> queryUids = new LinkedHashSet<>();
+        final List<SemanticTermEvidence> contexts = new ArrayList<>();
+
+        ColumnUsageAccumulator(String column) {
+            this.column = column;
+        }
+    }
+
+    private static class SemanticColumnAccumulator {
+        final String column;
+        final List<SemanticTermEvidence> outputLabels = new ArrayList<>();
+        final List<SemanticTermEvidence> businessObjects = new ArrayList<>();
+
+        SemanticColumnAccumulator(String column) {
+            this.column = column;
+        }
     }
 
     /**

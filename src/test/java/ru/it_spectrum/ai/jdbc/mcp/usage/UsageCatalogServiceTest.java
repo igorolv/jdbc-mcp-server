@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageConfidence;
@@ -142,6 +143,77 @@ class UsageCatalogServiceTest {
         @SuppressWarnings("unchecked")
         List<String> tags = (List<String>) stored.get("tags");
         assertThat(tags).contains("customer", "card");
+    }
+
+    @Test
+    void tableEvidenceProfileAggregatesObservedAndSemanticUsage() {
+        QueryUsage customerCard = new QueryUsage(
+                "SHOP",
+                new QueryUsageSource("dao", "CustomerDao.java", "findOne"),
+                "Customer card query",
+                "Customers",
+                List.of("customer", "card"),
+                "SELECT c.name AS customer_name FROM customers c WHERE c.status = :status",
+                List.of(new QueryUsageParameter("status", "varchar", "ACTIVE", true,
+                        "Customer status", null)),
+                List.of(new QueryUsageOutput("customer_name", "c.name", "Customer name", null,
+                        List.of(new QueryUsageOutputColumn(null, "customers", "name")))),
+                List.of(new QueryUsageFieldUsage(
+                        "customer_name",
+                        "Customer card",
+                        new QueryUsageTransformation(QueryUsageTransformationKind.IDENTITY, null),
+                        new QueryUsageLocation("ui-label", Map.of("screen", "customer-card")),
+                        List.of("Customer"),
+                        QueryUsageConfidence.HIGH)),
+                null);
+        QueryUsage invoice = new QueryUsage(
+                "SHOP",
+                new QueryUsageSource("report", "InvoiceReport.json", "header"),
+                "Invoice header",
+                "Billing",
+                List.of("invoice"),
+                "SELECT c.name AS payer_name FROM customers c JOIN orders o ON o.customer_id = c.id",
+                null,
+                List.of(new QueryUsageOutput("payer_name", "c.name", "Payer name", null,
+                        List.of(new QueryUsageOutputColumn(null, "customers", "name")))),
+                List.of(new QueryUsageFieldUsage(
+                        "payer_name",
+                        "Invoice payer",
+                        new QueryUsageTransformation(QueryUsageTransformationKind.IDENTITY, null),
+                        new QueryUsageLocation("report-field", Map.of("section", "header")),
+                        List.of("Payer"),
+                        QueryUsageConfidence.MEDIUM)),
+                null);
+
+        service.rebuild(List.of(customerCard, invoice));
+
+        TableEvidenceProfile profile = service.tableEvidenceProfile(null, "customers");
+        Map<String, Object> mapped = profile.toMap();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> observed = (Map<String, Object>) mapped.get("observedQuery");
+        assertThat(observed.get("queryCount")).isEqualTo(2);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> observedColumns = (List<Map<String, Object>>) observed.get("columns");
+        assertThat(observedColumns)
+                .anySatisfy(column -> {
+                    assertThat(column.get("column")).isEqualTo("NAME");
+                    assertThat(column.get("queryCount")).isEqualTo(2);
+                })
+                .anySatisfy(column -> {
+                    assertThat(column.get("column")).isEqualTo("STATUS");
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> contexts =
+                            (List<Map<String, Object>>) column.get("contexts");
+                    assertThat(contexts).extracting(c -> c.get("value")).contains("where");
+                });
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> semantic = (Map<String, Object>) mapped.get("semanticUsage");
+        assertThat(asEvidenceValues(semantic, "businessDomains")).contains("Customers", "Billing");
+        assertThat(asEvidenceValues(semantic, "businessTags")).contains("customer", "invoice");
+        assertThat(asEvidenceValues(semantic, "outputLabels")).contains("Customer name", "Payer name");
+        assertThat(asEvidenceValues(semantic, "businessObjects")).contains("Customer card", "Invoice payer");
     }
 
     @Test
@@ -404,6 +476,13 @@ class UsageCatalogServiceTest {
 
     private static QueryUsage buildSimple(String dataSource, String path, String sql) {
         return baseRequest(dataSource, path, null, sql);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> asEvidenceValues(Map<String, Object> root, String key) {
+        return ((List<Map<String, Object>>) root.get(key)).stream()
+                .map(row -> row.get("value"))
+                .toList();
     }
 
     @SuppressWarnings("unchecked")

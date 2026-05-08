@@ -62,7 +62,12 @@ class SchemaTableContextService extends SchemaContextSupport {
         List<Map<String, Object>> relationships = new ArrayList<>();
         Set<String> relationshipKeys = new HashSet<>();
         for (Map<String, Object> info : described.values()) {
-            tables.add(compactTable(info, Boolean.TRUE.equals(includeStats)));
+            Map<String, Object> tableContext = compactTable(info, Boolean.TRUE.equals(includeStats));
+            if (observed && usageCatalog != null && usageCatalog.enabled()) {
+                tableContext.put("evidence", usageCatalog.tableEvidenceProfile(
+                        str(info.get("schema")), str(info.get("name"))).toMap());
+            }
+            tables.add(tableContext);
             for (Map<String, Object> edge : outgoingEdges(info)) {
                 addUnique(relationships, relationshipKeys, edge);
             }

@@ -119,6 +119,45 @@ distinct queries) and `observedQueries` (up to 5 contributing uids). Composite (
 keep their `declared_fk` stamp without observation decoration in this iteration. `schemaBrief`,
 `schemaGraph`, and `queryContext` only surface declared FK relationships.
 
+#### Evidence model
+
+The schema-context layer keeps three sources of knowledge separate:
+
+- `declared_schema` - live database introspection: tables, columns, PK/FK, indexes, constraints,
+  comments and statistics.
+- `observed_query` - the indexed query catalog: which stored application/report queries reference
+  a table or column, and in which SQL context (`select`, `where`, `join`, `order_by`, `having`).
+- `semantic_usage` - adapter-supplied business meaning: query domains/tags/labels, output labels,
+  parameter descriptions, field usages, rendered business objects and confidence.
+
+In `tableContext`, the existing table fields are the compact `declared_schema` view. When
+`includeObserved` is enabled and the usage catalog is available, each table also gets an
+`evidence` block:
+
+```json
+{
+  "evidence": {
+    "observedQuery": {
+      "queryCount": 12,
+      "queryUids": ["SHOP/reports/customer-card#main"],
+      "columns": [
+        {"column": "STATUS", "queryCount": 5, "contexts": [{"value": "where", "support": 4}]}
+      ]
+    },
+    "semanticUsage": {
+      "businessDomains": [{"value": "Customers", "support": 8}],
+      "businessTags": [{"value": "customer", "support": 6}],
+      "queryLabels": [{"value": "Customer card", "support": 3}],
+      "outputLabels": [{"value": "Customer name", "support": 4}],
+      "businessObjects": [{"value": "Customer card", "support": 3}]
+    }
+  }
+}
+```
+
+The server treats this as evidence, not as a single canonical business model. Different queries
+may legitimately attach different business roles to the same physical table or column.
+
 ### Usage Catalog
 
 A file-backed catalog of *known* SQL queries used by applications and reports against the

@@ -78,6 +78,18 @@ Adapters may add:
 The server treats this semantic layer as best-effort evidence supplied by the adapter. It does not
 require adapters to provide every field.
 
+At runtime this evidence is kept separate from live database metadata:
+
+- `declared_schema` comes from the connected database.
+- `observed_query` comes from parser-derived table, column, parameter and join references in the
+  cataloged SQL.
+- `semantic_usage` comes from the optional business fields in this JSON format.
+
+Schema-context tools may project `observed_query` and `semantic_usage` back onto physical tables
+and columns as an `evidence` block. That projection is intentionally aggregative: the same table
+can have several business roles, labels or domains with separate support counts and contributing
+query UIDs.
+
 ## Free Classifiers
 
 The following fields are intentionally open strings:
