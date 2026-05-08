@@ -4,6 +4,7 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogIndexer;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -140,15 +141,10 @@ public class UsageTools {
         if (!service.enabled()) return disabled("reresolveQueries");
         try {
             return JsonWriter.write(service.reresolve(dataSource, name -> {
-                List<Map<String, Object>> matches = metadata.findTablesByName(name);
+                List<TableEntry> matches = metadata.findTablesByName(name);
                 List<String[]> out = new ArrayList<>(matches.size());
-                for (Map<String, Object> row : matches) {
-                    Object schema = row.get("schema");
-                    Object table = row.get("name");
-                    out.add(new String[]{
-                            schema == null ? null : schema.toString(),
-                            table == null ? null : table.toString()
-                    });
+                for (TableEntry row : matches) {
+                    out.add(new String[]{row.schema(), row.name()});
                 }
                 return out;
             }));

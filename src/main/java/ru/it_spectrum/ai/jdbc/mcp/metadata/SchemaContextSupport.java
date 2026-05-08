@@ -5,6 +5,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.DeclaredSchemaEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedQueryEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -49,13 +50,13 @@ abstract class SchemaContextSupport {
     }
 
     protected Map<String, Map<String, Object>> loadSchemaTables(String schema, int limit) throws SQLException {
-        List<Map<String, Object>> listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
+        List<TableEntry> listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         int count = 0;
-        for (Map<String, Object> row : listed) {
+        for (TableEntry row : listed) {
             if (count >= limit) break;
-            String tableSchema = str(row.get("schema"));
-            String tableName = str(row.get("name"));
+            String tableSchema = row.schema();
+            String tableName = row.name();
             if (tableName == null || tableName.isBlank()) continue;
             Map<String, Object> described = metadata.describeTable(tableSchema, tableName);
             out.put(key(str(described.get("schema")), str(described.get("name"))), described);
@@ -67,16 +68,16 @@ abstract class SchemaContextSupport {
     protected Map<String, Map<String, Object>> loadBriefTables(String schema, String terms, int limit)
             throws SQLException {
         String pattern = terms == null || terms.isBlank() ? "%" : "%" + terms + "%";
-        List<Map<String, Object>> listed = metadata.listTables(schema, pattern, parseTypes("TABLE"));
+        List<TableEntry> listed = metadata.listTables(schema, pattern, parseTypes("TABLE"));
         if (listed.isEmpty() && terms != null && !terms.isBlank()) {
             listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
         }
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         int count = 0;
-        for (Map<String, Object> row : listed) {
+        for (TableEntry row : listed) {
             if (count >= limit) break;
-            String tableSchema = str(row.get("schema"));
-            String tableName = str(row.get("name"));
+            String tableSchema = row.schema();
+            String tableName = row.name();
             if (tableName == null || tableName.isBlank()) continue;
             Map<String, Object> described = metadata.describeTable(tableSchema, tableName);
             out.put(key(str(described.get("schema")), str(described.get("name"))), described);

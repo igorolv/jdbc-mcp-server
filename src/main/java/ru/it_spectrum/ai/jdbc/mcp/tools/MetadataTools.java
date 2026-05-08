@@ -5,10 +5,12 @@ import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,7 +51,16 @@ public class MetadataTools {
     ) {
         try {
             String[] typeArr = parseTypes(types);
-            List<Map<String, Object>> rows = metadata.listTables(schema, namePattern, typeArr);
+            List<TableEntry> entries = metadata.listTables(schema, namePattern, typeArr);
+            List<Map<String, Object>> rows = new ArrayList<>(entries.size());
+            for (TableEntry e : entries) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("schema", e.schema());
+                row.put("name", e.name());
+                row.put("type", e.type());
+                row.put("remarks", e.remarks());
+                rows.add(row);
+            }
             return ResultFormatter.toJson(toResult(List.of("schema", "name", "type", "remarks"), rows));
         } catch (SQLException e) {
             return ToolErrors.sql(e);

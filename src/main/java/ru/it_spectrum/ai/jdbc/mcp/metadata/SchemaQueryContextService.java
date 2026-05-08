@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -59,11 +60,11 @@ class SchemaQueryContextService extends SchemaContextSupport {
         }
 
         if (selected.size() < tableLimit) {
-            List<Map<String, Object>> listed = metadata.listTables(schema, "%", parseTypes("TABLE,VIEW,MATERIALIZED VIEW"));
+            List<TableEntry> listed = metadata.listTables(schema, "%", parseTypes("TABLE,VIEW,MATERIALIZED VIEW"));
             List<TableScore> scored = new ArrayList<>();
-            for (Map<String, Object> row : listed) {
-                String tableSchema = str(row.get("schema"));
-                String tableName = str(row.get("name"));
+            for (TableEntry row : listed) {
+                String tableSchema = row.schema();
+                String tableName = row.name();
                 if (tableName == null || tableName.isBlank()) continue;
                 if (selected.containsKey(key(tableSchema, tableName))) continue;
                 Map<String, Object> described;

@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -30,18 +31,18 @@ class SchemaOverviewService extends SchemaContextSupport {
         boolean observed = defaultIncludeObserved(includeObserved);
         String types = views ? "TABLE,VIEW,MATERIALIZED VIEW" : "TABLE";
 
-        List<Map<String, Object>> listed = metadata.listTables(schema, namePattern, parseTypes(types));
+        List<TableEntry> listed = metadata.listTables(schema, namePattern, parseTypes(types));
         boolean truncated = listed.size() > limit;
-        List<Map<String, Object>> selected = listed.subList(0, Math.min(limit, listed.size()));
+        List<TableEntry> selected = listed.subList(0, Math.min(limit, listed.size()));
 
         List<Map<String, Object>> tables = new ArrayList<>(selected.size());
         List<Map<String, Object>> relationships = new ArrayList<>();
         Set<String> relationshipKeys = new HashSet<>();
         Set<String> describedNamesUpper = new HashSet<>();
 
-        for (Map<String, Object> row : selected) {
-            String tableSchema = str(row.get("schema"));
-            String tableName = str(row.get("name"));
+        for (TableEntry row : selected) {
+            String tableSchema = row.schema();
+            String tableName = row.name();
             if (tableName == null || tableName.isBlank()) continue;
             Map<String, Object> described;
             try {
@@ -72,12 +73,12 @@ class SchemaOverviewService extends SchemaContextSupport {
         return out;
     }
 
-    private Map<String, Object> errorTable(Map<String, Object> listedTable, SQLException error) {
+    private Map<String, Object> errorTable(TableEntry listedTable, SQLException error) {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", listedTable.get("schema"));
-        out.put("name", listedTable.get("name"));
-        out.put("type", listedTable.get("type"));
-        out.put("remarks", listedTable.get("remarks"));
+        out.put("schema", listedTable.schema());
+        out.put("name", listedTable.name());
+        out.put("type", listedTable.type());
+        out.put("remarks", listedTable.remarks());
         out.put("error", error.getMessage());
         return out;
     }

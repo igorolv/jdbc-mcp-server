@@ -10,6 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.OracleDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
@@ -145,17 +146,17 @@ class LiveOracleIntegrationTest {
 
     @Test
     void listTablesReturnsSomethingForUserSchema() throws Exception {
-        List<Map<String, Object>> tables = metadata.listTables(schema, null, null);
+        List<TableEntry> tables = metadata.listTables(schema, null, null);
         // Not asserting non-empty — a schema may legitimately be empty. Just must not throw.
         assertThat(tables).isNotNull();
     }
 
     @Test
     void describeFirstTableReturnsColumns() throws Exception {
-        List<Map<String, Object>> tables = metadata.listTables(schema, null, new String[]{"TABLE"});
+        List<TableEntry> tables = metadata.listTables(schema, null, new String[]{"TABLE"});
         Assumptions.assumeTrue(tables != null && !tables.isEmpty(),
                 "no tables in schema " + schema + " — skipping describeTable check");
-        String tableName = String.valueOf(tables.get(0).get("name"));
+        String tableName = tables.get(0).name();
         Map<String, Object> info = metadata.describeTable(schema, tableName);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> cols = (List<Map<String, Object>>) info.get("columns");
@@ -164,10 +165,10 @@ class LiveOracleIntegrationTest {
 
     @Test
     void tableStatsForFirstTable() throws Exception {
-        List<Map<String, Object>> tables = metadata.listTables(schema, null, new String[]{"TABLE"});
+        List<TableEntry> tables = metadata.listTables(schema, null, new String[]{"TABLE"});
         Assumptions.assumeTrue(tables != null && !tables.isEmpty(),
                 "no tables in schema " + schema + " — skipping tableStats check");
-        String tableName = String.valueOf(tables.get(0).get("name"));
+        String tableName = tables.get(0).name();
         Map<String, Object> s = stats.tableStats(schema, tableName);
         // 'found' may be false if the user can't see DBA_*/ALL_TAB_STATISTICS for this table —
         // that's still a valid result (MCP tool would report it as-is).

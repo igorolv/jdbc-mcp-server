@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 
 import java.sql.SQLException;
 import java.time.Instant;
@@ -63,7 +64,7 @@ public class SchemaSnapshotCache {
     private final long ttlMs;
     private final int maxEntries;
     private final Map<TableKey, Entry<Map<String, Object>>> describes = new ConcurrentHashMap<>();
-    private final Map<ListKey, Entry<List<Map<String, Object>>>> lists = new ConcurrentHashMap<>();
+    private final Map<ListKey, Entry<List<TableEntry>>> lists = new ConcurrentHashMap<>();
     private final AtomicLong describeHits = new AtomicLong();
     private final AtomicLong describeMisses = new AtomicLong();
     private final AtomicLong listHits = new AtomicLong();
@@ -99,18 +100,18 @@ public class SchemaSnapshotCache {
         return value;
     }
 
-    public List<Map<String, Object>> listTables(String schema, String namePattern, String[] types,
-                                                SqlSupplier<List<Map<String, Object>>> loader) throws SQLException {
+    public List<TableEntry> listTables(String schema, String namePattern, String[] types,
+                                       SqlSupplier<List<TableEntry>> loader) throws SQLException {
         if (!enabled()) return loader.get();
         ListKey key = ListKey.of(schema, namePattern, types);
         long now = System.currentTimeMillis();
-        Entry<List<Map<String, Object>>> cached = lists.get(key);
+        Entry<List<TableEntry>> cached = lists.get(key);
         if (cached != null && now - cached.loadedAtMs < ttlMs) {
             listHits.incrementAndGet();
             return cached.value;
         }
         listMisses.incrementAndGet();
-        List<Map<String, Object>> value = loader.get();
+        List<TableEntry> value = loader.get();
         if (maxEntries > 0 && lists.size() >= maxEntries) lists.clear();
         lists.put(key, new Entry<>(value, System.currentTimeMillis()));
         return value;
@@ -163,7 +164,7 @@ public class SchemaSnapshotCache {
 
         // lists
         List<Map<String, Object>> listEntries = new ArrayList<>();
-        for (Map.Entry<ListKey, Entry<List<Map<String, Object>>>> e : lists.entrySet()) {
+        for (Map.Entry<ListKey, Entry<List<TableEntry>>> e : lists.entrySet()) {
             ListKey k = e.getKey();
             if (norm != null && !Objects.equals(norm, k.schema)) continue;
             long ageMs = now - e.getValue().loadedAtMs;

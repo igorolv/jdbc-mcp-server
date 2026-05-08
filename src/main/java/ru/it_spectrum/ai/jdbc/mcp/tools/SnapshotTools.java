@@ -5,6 +5,7 @@ import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
@@ -64,17 +65,17 @@ public class SnapshotTools {
             } else if (schema != null && !schema.isBlank()) {
                 cache.invalidateSchema(schema);
                 int limit = maxTables == null ? 300 : Math.max(1, Math.min(maxTables, 5000));
-                List<Map<String, Object>> listed = metadata.listTables(schema, "%",
+                List<TableEntry> listed = metadata.listTables(schema, "%",
                         new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
                 int count = 0;
                 int errors = 0;
-                for (Map<String, Object> row : listed) {
+                for (TableEntry row : listed) {
                     if (count >= limit) break;
-                    Object name = row.get("name");
-                    Object sch = row.get("schema");
+                    String name = row.name();
+                    String sch = row.schema();
                     if (name == null) continue;
                     try {
-                        metadata.describeTable(sch == null ? null : String.valueOf(sch), String.valueOf(name));
+                        metadata.describeTable(sch, name);
                         count++;
                     } catch (SQLException e) {
                         errors++;

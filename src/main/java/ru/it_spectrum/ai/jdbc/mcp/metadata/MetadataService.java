@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
@@ -78,7 +79,7 @@ public class MetadataService {
         });
     }
 
-    public List<Map<String, Object>> listTables(String schema, String namePattern, String[] types)
+    public List<TableEntry> listTables(String schema, String namePattern, String[] types)
             throws SQLException {
         String effectiveSchema = resolveSchema(schema);
         String[] effectiveTypes = types != null && types.length > 0
@@ -94,44 +95,39 @@ public class MetadataService {
      * map an unqualified table reference back to its physical schema; bypasses the default-schema
      * defaulting in {@link #resolveSchema} so a {@code null} schema means "search anywhere".
      */
-    public List<Map<String, Object>> findTablesByName(String tableName) throws SQLException {
+    public List<TableEntry> findTablesByName(String tableName) throws SQLException {
         if (tableName == null || tableName.isBlank()) return List.of();
         String[] effectiveTypes = new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"};
         return executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
-            List<Map<String, Object>> out = new ArrayList<>();
+            List<TableEntry> out = new ArrayList<>();
             try (ResultSet rs = md.getTables(null, null, tableName, effectiveTypes)) {
                 while (rs.next()) {
                     String s = rs.getString("TABLE_SCHEM");
                     if (isSystemSchema(s)) continue;
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("schema", s);
-                    row.put("name", rs.getString("TABLE_NAME"));
-                    row.put("type", rs.getString("TABLE_TYPE"));
-                    out.add(row);
+                    out.add(new TableEntry(s, rs.getString("TABLE_NAME"), rs.getString("TABLE_TYPE")));
                 }
             }
             return out;
         });
     }
 
-    private List<Map<String, Object>> listTablesUncached(String effectiveSchema, String namePattern,
-                                                         String[] effectiveTypes) throws SQLException {
+    private List<TableEntry> listTablesUncached(String effectiveSchema, String namePattern,
+                                                String[] effectiveTypes) throws SQLException {
         return executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
-            List<Map<String, Object>> out = new ArrayList<>();
+            List<TableEntry> out = new ArrayList<>();
             try (ResultSet rs = md.getTables(null, effectiveSchema,
                     namePattern == null || namePattern.isBlank() ? "%" : namePattern,
                     effectiveTypes)) {
                 while (rs.next()) {
                     String s = rs.getString("TABLE_SCHEM");
                     if (effectiveSchema == null && isSystemSchema(s)) continue;
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("schema", s);
-                    row.put("name", rs.getString("TABLE_NAME"));
-                    row.put("type", rs.getString("TABLE_TYPE"));
-                    row.put("remarks", rs.getString("REMARKS"));
-                    out.add(row);
+                    out.add(new TableEntry(
+                            s,
+                            rs.getString("TABLE_NAME"),
+                            rs.getString("TABLE_TYPE"),
+                            rs.getString("REMARKS")));
                 }
             }
             return out;
