@@ -8,6 +8,7 @@ import net.sf.jsqlparser.expression.Function;
 import net.sf.jsqlparser.expression.JdbcNamedParameter;
 import net.sf.jsqlparser.expression.JdbcParameter;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
+import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 import net.sf.jsqlparser.expression.operators.relational.LikeExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
@@ -178,6 +179,7 @@ public class QueryAnalysisService {
                 if (join.getOnExpression() != null) {
                     j.put("on", join.getOnExpression().toString());
                     collectColumns(join.getOnExpression(), model, "join");
+                    extractJoinPairs(join, join.getOnExpression(), model);
                 }
                 if (join.getUsingColumns() != null && !join.getUsingColumns().isEmpty()) {
                     List<String> cols = join.getUsingColumns().stream().map(Column::getColumnName).toList();
@@ -244,6 +246,27 @@ public class QueryAnalysisService {
                 return null;
             }
         }, null);
+    }
+
+    /**
+     * Walks the AND-conjuncts of a JOIN ON-expression and records each {@code Column = Column}
+     * pair as a structured {@link JoinPair}. Non-equality conjuncts (BETWEEN, function calls,
+     * literal comparisons) are intentionally ignored — they remain visible as predicates but
+     * do not contribute to the "observed equi-join" evidence used by the usage catalog.
+     */
+    private void extractJoinPairs(Join join, Expression onExpression, QueryModel model) {
+        for (Expression part : splitAnd(onExpression)) {
+            if (part instanceof EqualsTo eq
+                    && eq.getLeftExpression() instanceof Column left
+                    && eq.getRightExpression() instanceof Column right) {
+                QueryModel.JoinPair pair = new QueryModel.JoinPair(
+                        joinType(join),
+                        left.getTableName(), left.getColumnName(),
+                        right.getTableName(), right.getColumnName(),
+                        onExpression.toString());
+                model.joinPairs.add(pair);
+            }
+        }
     }
 
     private void addPredicate(String scope, Expression expression, QueryModel model) {
@@ -443,6 +466,22 @@ public class QueryAnalysisService {
         public final List<Map<String, Object>> parameters = new ArrayList<>();
         public final Set<String> functions = new LinkedHashSet<>();
         public final List<Map<String, Object>> warnings = new ArrayList<>();
+        public final List<JoinPair> joinPairs = new ArrayList<>();
+
+        /**
+         * A single equi-join column pair {@code leftQualifier.leftColumn = rightQualifier.rightColumn}
+         * extracted from a JOIN ON expression. Qualifiers are raw alias/table names as written in
+         * the SQL — resolution to physical tables happens at a higher layer.
+         */
+        public record JoinPair(
+                String joinType,
+                String leftQualifier,
+                String leftColumn,
+                String rightQualifier,
+                String rightColumn,
+                String onText
+        ) {
+        }
 
         public Set<String> physicalTableNames() {
             Set<String> names = new LinkedHashSet<>();

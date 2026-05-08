@@ -61,7 +61,7 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
             SchemaSnapshotCache cache = new SchemaSnapshotCache(properties);
             MetadataService metadata = new MetadataService(executor, dialect, properties, cache);
             StatsService stats = new StatsService(executor, dialect, properties);
-            SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect);
+            SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
             DistributionService distribution = new DistributionService(
                     executor, dialect, properties, new PostgresPlanParser());
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);

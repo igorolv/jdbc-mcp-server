@@ -84,14 +84,94 @@ context in one call: tables, columns, relationships, constraints, and sample row
 
 | Tool | Description |
 |---|---|
-| `schemaOverview` | Compact schema snapshot for SQL authoring: tables/views, columns, primary keys, foreign keys, indexes, and relationship edges. Parameters: `schema`, `namePattern` (with `%` / `_`), `includeViews`, `includeStats`, `includeInferred` (`*_id` relationships), `maxTables` (default 50, max 300) |
-| `tableContext` | Context around one table: the table itself, FK parents, and optionally child tables and relationship edges. FK traversal uses the requested depth (default 1, max 4). Parameters: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeInferred`, `inferredScanLimit` (default 300, max 300; used only when `includeInferred=true`) |
-| `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition`. Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, max 300), `includeInferred` |
+| `schemaOverview` | Compact schema snapshot for SQL authoring: tables/views, columns, primary keys, foreign keys, indexes, and relationship edges. Parameters: `schema`, `namePattern` (with `%` / `_`), `includeViews`, `includeStats`, `includeInferred` (`*_id` relationships), `includeObserved` (decorate edges with usage-catalog evidence — see *Edge evidence* below), `maxTables` (default 50, max 300) |
+| `tableContext` | Context around one table: the table itself, FK parents, and optionally child tables and relationship edges. FK traversal uses the requested depth (default 1, max 4). Parameters: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeInferred`, `includeObserved`, `inferredScanLimit` (default 300, max 300; used only when `includeInferred=true`) |
+| `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition` and `evidenceLevel`. Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, max 300), `includeInferred`, `includeObserved` |
 | `schemaBrief` | Compact text summary of a schema: hub tables, fact/detail tables, lookup/reference tables, key relationships, enum-like CHECK columns, suspicious implicit JOINs, and brief table notes. Useful when full JSON would be too verbose. Parameters: `schema`, `terms` (optional substring search), `maxTables`, `includeInferred` |
 | `schemaGraph` | Schema relationship graph metrics: nodes with in/out degree and classification, edges, central tables, isolated tables, connected components, and cycle hints. Optionally includes the shortest path between two tables |
 | `schemaLint` | Schema lint audit: missing primary keys, FKs without indexes, FK type mismatches, inferred-but-not-declared relationships, nullable unique constraints, status/type columns without CHECK constraints, orphan `*_id` columns, missing remarks, isolated tables, and wide tables. Checks are configurable through `checks` |
 | `queryContext` | Build compact SQL-authoring context from search terms and/or explicit tables. Finds relevant tables and columns, includes constraints and allowed values, relationships and JOIN paths between selected tables, and optionally sample rows (up to 3 per table) |
 | `schemaGraphDot` | DOT/Graphviz representation of the schema relationship graph. Nodes are tables with all columns and types (`PK` and `FK` marked inline), edges include JOIN conditions. Declared FK relationships are solid lines; inferred `*_id` relationships are dashed gray. Parameters: `schema`, `tables` (optional comma-separated filter), `includeInferred` |
+
+#### Edge evidence
+
+When `includeObserved` is left unset, `schemaOverview` / `tableContext` / `findJoinPaths` enable
+it automatically if the local usage catalog is enabled (see *Usage Catalog* below). Every
+relationship edge then carries an `evidenceLevel` field:
+
+- `declared_fk` — the relationship is a declared foreign key in the database catalog.
+- `inferred_by_name` — the heuristic `*_id` → target rule produced the edge.
+- `observed_in_queries` — the equi-join pair appears in stored application queries (production
+  evidence) but does **not** match any FK or inferred edge. Such edges are appended only between
+  tables already in scope and are flagged `undirected: true`.
+
+Edges that *also* appear in stored queries are decorated with `observedSupport` (number of
+distinct queries) and `observedQueries` (up to 5 contributing uids) regardless of their primary
+evidence level. Composite (multi-column) FKs keep their `declared_fk` stamp without observation
+decoration in this iteration. `schemaBrief`, `schemaGraph`, and `queryContext` do not yet expose
+the `includeObserved` flag — the same edges still flow through them via FK and inferred channels.
+
+### Usage Catalog
+
+A local SQLite-backed store of *known* SQL queries used by applications and reports against the
+inspected database, together with their **business context**: parameters with descriptions,
+output columns with their meaning, and where each output is displayed in the consuming artifact
+(Excel cell in a BI Publisher report, dashboard widget, etc.). The server parses the SQL with
+JSqlParser and stores the extracted tables / columns / equi-join pairs as facts; the caller
+provides the semantic layer (business labels, output→column mappings, field-usage locations).
+
+**Why this exists.** The metadata tools answer "what tables and columns exist". The usage catalog
+answers "how are they actually used by applications". With both, an LLM can move from name-based
+guesses (the dashed `*_id` edges in `schemaOverview`) to evidence-based reasoning ("these two
+columns are joined in 17 production reports, here are their uids").
+
+**Identity.** Each query is keyed by a textual `uid` derived from
+`(dataSource, source.path, source.unit)`:
+
+```
+{dataSource}/{source.path}#{source.unit}
+```
+
+The `#unit` suffix is omitted when there is no unit. Examples — assuming a demo `SHOP` database
+with `customer`, `customer_notes`, and `order` tables:
+
+```
+SHOP/reports/customers/CustomerCard.xdo#CUST
+SHOP/manual/ad-hoc-2026-05-01
+SHOP/com/example/shop/dao/OrderDao.java#findByCustomer
+```
+
+`dataSource` and `source.unit` must not contain `/` or `#`; `source.path` must not contain `#`.
+Re-ingest with the same uid replaces all child rows in one transaction (no versioning is kept).
+
+**Where the file lives.** Default: `${user.home}/.jdbc-mcp/usage.db`. Override with
+`JDBC_USAGE_CATALOG_PATH`. Set `JDBC_USAGE_CATALOG_ENABLED=false` to disable: `ingestQuery` and
+related write tools then return `{"kind":"disabled", ...}`, while lookup tools return empty
+results with `catalog_enabled: false` so the agent can degrade gracefully.
+
+**Local-only writes.** The catalog SQLite file is the only thing this feature writes to. The
+inspected JDBC database (PostgreSQL / Oracle / SQL Server) is still strictly read-only — the
+existing `ReadOnlyGuard` and connection-level protections remain in force.
+
+| Tool | Description |
+|---|---|
+| `ingestQuery` | Upsert a single query record. Required: `dataSource`, `source.{kind, path}`, `sql`. Optional rich payload: `businessLabel`, `businessDomain`, `businessTags`, `parameters[]` (with `businessLabel`/`businessDescription`), `outputs[]` (with `derivedFromColumns`), `fieldUsages[]` (with `transformation.kind` ∈ `identity` / `aggregate` / `derived` / `conditional` / `filter` / `format` / `decode` / `other`, `location.{kind, details}`, `headers`, `confidence`), `sourceMeta`. SQL parse failures are tolerated — the row is still stored with `parseStatus="failed"` so business metadata is not lost |
+| `deleteQueriesBySource` | Remove records by `dataSource` (required) plus optional `sourcePath` / `sourceUnit`. Useful before a bulk re-ingest of a source directory. Returns the number of deleted query rows; child rows are removed via cascade |
+| `getQuery` | Full record by uid: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns), and field usages |
+| `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus` |
+| `findQueriesByTable` | All catalog queries that reference a given table. Case-insensitive matching against alias-resolved, uppercased table names. Optional `schema` filter |
+| `findQueriesByColumn` | All catalog queries that reference a given column, with the SQL `context` of the reference (`select` / `where` / `join` / `order_by` / `having`). Optional `schema` and `table` filters |
+| `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `evidenceLevel` decoration in `schemaOverview` / `tableContext` / `findJoinPaths` |
+| `reresolveQueries` | Re-resolve unqualified table references in stored queries against the live JDBC schema. For every distinct unresolved raw table name in the catalog (scoped to `dataSource`), looks the name up across all non-system schemas: exactly one match → schema written, status `resolved`; multiple matches → `ambiguous`; zero → stays `unresolved`. Already-resolved or CTE rows are untouched. Requires a working JDBC connection |
+| `listKnownTags` | Tags currently used in the catalog, with query counts. Lets the agent reuse a stable vocabulary across ingest calls |
+| `listKnownDomains` | Same for `businessDomain` values |
+
+**Resolution.** During ingest, table / column qualifiers are resolved cheaply through the
+parser's alias map and uppercased for case-insensitive matching. An explicit schema in the SQL
+(`SCHEMA.TABLE`) is preserved verbatim; unqualified references stay schema-less and are written
+with `resolution_status="unresolved"`. Run `reresolveQueries` once to fill in missing schemas
+against the live JDBC database — it does not re-parse SQL, only updates the resolved columns
+across `query_table` / `query_column` / `query_join`.
 
 ### Snapshot / Metadata Cache
 
@@ -245,6 +325,7 @@ user for the strongest guarantee.
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
 - Microsoft SQL Server JDBC 12.8.1
+- SQLite JDBC 3.46.1 (local usage catalog only — not used to talk to the inspected database)
 - Gradle 9.3.1 with version catalog
 
 ## License
@@ -332,6 +413,8 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_POOL_MIN_IDLE` | no | Hikari minimum idle connections, default `1` |
 | `JDBC_CONNECTION_TIMEOUT_MS` | no | Hikari connection checkout timeout in milliseconds, default `10000` |
 | `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
+| `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog (see *Usage Catalog* above), default `true`. When `false`, ingest tools return `{"kind":"disabled"}` and lookup tools return empty results with `catalog_enabled: false` |
+| `JDBC_USAGE_CATALOG_PATH` | no | Path to the SQLite catalog file. Default: `${user.home}/.jdbc-mcp/usage.db`; the parent directory is created on first use |
 
 The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL,
 `jdbc:oracle:` for Oracle, and `jdbc:sqlserver:` for SQL Server.
@@ -429,6 +512,12 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |   +-- format/
 |   |   +-- OutputFormat.java
 |   |   +-- ResultFormatter.java        - JSON / Markdown / CSV
+|   +-- usage/
+|   |   +-- UsageProperties.java        - catalog enable flag and SQLite path (env-driven)
+|   |   +-- UsageDataSourceConfig.java  - SQLite DataSource (WAL, foreign_keys=ON) + schema init
+|   |   +-- UsageUid.java               - build/parse/validate the textual query identifier
+|   |   +-- IngestPayload.java          - DTO records for the ingestQuery payload shape
+|   |   +-- UsageCatalogService.java    - ingest, lookups, observed-relationships aggregation
 |   +-- tools/
 |       +-- QueryTools.java             - executeQuery, explainQuery, analyzePlan, validateQuery, inspectQuery, queryLint
 |       +-- MetadataTools.java          - schemas / tables / describe / view / routines / sequences / search
@@ -437,8 +526,10 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |       +-- StatsTools.java             - tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 |       +-- BenchmarkTools.java         - benchmarkQuery, timedQuery
 |       +-- SchemaContextTools.java     - schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext, schemaGraphDot
+|       +-- UsageTools.java             - ingestQuery, deleteQueriesBySource, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, listKnownTags/Domains
 +-- src/main/resources/
     +-- application.yml                 - MCP stdio + JDBC properties
+    +-- usage-catalog-schema.sql        - DDL applied on first start of the SQLite usage catalog
     +-- logback-spring.xml              - logs to stderr because stdout is used by MCP
 ```
 

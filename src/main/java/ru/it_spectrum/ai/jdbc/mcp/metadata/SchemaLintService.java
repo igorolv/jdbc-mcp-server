@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -17,8 +18,9 @@ import java.util.Set;
 @Service
 class SchemaLintService extends SchemaContextSupport {
 
-    SchemaLintService(MetadataService metadata, StatsService stats, SqlExecutor executor, SqlDialect dialect) {
-        super(metadata, stats, executor, dialect);
+    SchemaLintService(MetadataService metadata, StatsService stats, SqlExecutor executor,
+                      SqlDialect dialect, UsageCatalogService usageCatalog) {
+        super(metadata, stats, executor, dialect, usageCatalog);
     }
 
     public Map<String, Object> schemaLint(String schema, String table, String checks,

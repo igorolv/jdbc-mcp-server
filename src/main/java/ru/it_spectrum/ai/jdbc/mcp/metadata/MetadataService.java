@@ -88,6 +88,33 @@ public class MetadataService {
                 () -> listTablesUncached(effectiveSchema, namePattern, effectiveTypes));
     }
 
+    /**
+     * Cross-schema lookup of every non-system table/view matching the given name. Returns the
+     * raw {@code TABLE_SCHEM} value for each match. Used by the usage-catalog re-resolver to
+     * map an unqualified table reference back to its physical schema; bypasses the default-schema
+     * defaulting in {@link #resolveSchema} so a {@code null} schema means "search anywhere".
+     */
+    public List<Map<String, Object>> findTablesByName(String tableName) throws SQLException {
+        if (tableName == null || tableName.isBlank()) return List.of();
+        String[] effectiveTypes = new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"};
+        return executor.withConnection(conn -> {
+            DatabaseMetaData md = conn.getMetaData();
+            List<Map<String, Object>> out = new ArrayList<>();
+            try (ResultSet rs = md.getTables(null, null, tableName, effectiveTypes)) {
+                while (rs.next()) {
+                    String s = rs.getString("TABLE_SCHEM");
+                    if (isSystemSchema(s)) continue;
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("schema", s);
+                    row.put("name", rs.getString("TABLE_NAME"));
+                    row.put("type", rs.getString("TABLE_TYPE"));
+                    out.add(row);
+                }
+            }
+            return out;
+        });
+    }
+
     private List<Map<String, Object>> listTablesUncached(String effectiveSchema, String namePattern,
                                                          String[] effectiveTypes) throws SQLException {
         return executor.withConnection(conn -> {

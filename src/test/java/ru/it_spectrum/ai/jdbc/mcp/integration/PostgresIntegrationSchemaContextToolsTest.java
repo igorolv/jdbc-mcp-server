@@ -14,7 +14,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void returnsCompactSchemaOverview() {
         ObjectNode overview = object(schemaContextTools().schemaOverview(
-                "public", "%", true, false, true, 20));
+                "public", "%", true, false, true, false, 20));
 
         assertThat(field(overview, "truncated").asBoolean()).isFalse();
         ArrayNode tables = (ArrayNode) field(overview, "tables");
@@ -31,7 +31,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void returnsTableNeighborhood() {
         ObjectNode context = object(schemaContextTools().tableContext(
-                "public", "orders", 1, true, false, true, 100));
+                "public", "orders", 1, true, false, true, false, 100));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         assertThat(findByField(tables, "name", "orders")).isNotNull();
@@ -46,7 +46,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void findsFkJoinPath() {
         ObjectNode result = object(schemaContextTools().findJoinPaths(
-                "public", "line_items", "public", "customers", 4, 5, 100, true));
+                "public", "line_items", "public", "customers", 4, 5, 100, true, false));
 
         assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
         ArrayNode paths = (ArrayNode) field(result, "paths");
@@ -59,7 +59,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void findsInferredJoinPathWithoutDeclaredFk() {
         ObjectNode result = object(schemaContextTools().findJoinPaths(
-                "public", "customer_notes", "public", "customers", 2, 5, 100, true));
+                "public", "customer_notes", "public", "customers", 2, 5, 100, true, false));
 
         assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
         ArrayNode paths = (ArrayNode) field(result, "paths");

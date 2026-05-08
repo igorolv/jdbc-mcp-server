@@ -3,25 +3,30 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 class SchemaJoinPathService extends SchemaContextSupport {
 
-    SchemaJoinPathService(MetadataService metadata, StatsService stats, SqlExecutor executor, SqlDialect dialect) {
-        super(metadata, stats, executor, dialect);
+    SchemaJoinPathService(MetadataService metadata, StatsService stats, SqlExecutor executor,
+                          SqlDialect dialect, UsageCatalogService usageCatalog) {
+        super(metadata, stats, executor, dialect, usageCatalog);
     }
 
     public Map<String, Object> findJoinPaths(String fromSchema, String fromTable,
                                              String toSchema, String toTable,
                                              Integer maxDepth, Integer maxPaths,
-                                             Integer scanLimit, Boolean includeInferred) throws SQLException {
+                                             Integer scanLimit, Boolean includeInferred,
+                                             Boolean includeObserved) throws SQLException {
         if (fromTable == null || fromTable.isBlank()) {
             throw new IllegalArgumentException("fromTable must be provided");
         }
@@ -32,6 +37,7 @@ class SchemaJoinPathService extends SchemaContextSupport {
         int pathLimit = clamp(maxPaths, DEFAULT_MAX_PATHS, 1, MAX_PATHS_LIMIT);
         int tableLimit = clamp(scanLimit, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT);
         boolean inferred = includeInferred == null || includeInferred;
+        boolean observed = defaultIncludeObserved(includeObserved);
 
         Map<String, Object> fromInfo = metadata.describeTable(fromSchema, fromTable);
         String effectiveFromSchema = str(fromInfo.get("schema"));
@@ -44,18 +50,23 @@ class SchemaJoinPathService extends SchemaContextSupport {
         described.putIfAbsent(key(effectiveFromSchema, effectiveFromTable), fromInfo);
         described.putIfAbsent(key(effectiveToSchema, effectiveToTable), toInfo);
 
-        List<GraphEdge> graphEdges = new ArrayList<>();
+        List<Map<String, Object>> rawEdges = new ArrayList<>();
         for (Map<String, Object> info : described.values()) {
-            for (Map<String, Object> edge : outgoingEdges(info)) {
-                graphEdges.add(GraphEdge.forward(edge));
-                graphEdges.add(GraphEdge.reverse(edge));
-            }
+            rawEdges.addAll(outgoingEdges(info));
         }
         if (inferred) {
-            for (Map<String, Object> edge : inferRelationshipEdges(new ArrayList<>(described.values()))) {
-                graphEdges.add(GraphEdge.forward(edge));
-                graphEdges.add(GraphEdge.reverse(edge));
-            }
+            rawEdges.addAll(inferRelationshipEdges(new ArrayList<>(described.values())));
+        }
+        Set<String> describedNamesUpper = new HashSet<>();
+        for (Map<String, Object> info : described.values()) {
+            describedNamesUpper.add(upper(str(info.get("name"))));
+        }
+        decorateAndAppendObserved(rawEdges, describedNamesUpper, observed);
+
+        List<GraphEdge> graphEdges = new ArrayList<>();
+        for (Map<String, Object> edge : rawEdges) {
+            graphEdges.add(GraphEdge.forward(edge));
+            graphEdges.add(GraphEdge.reverse(edge));
         }
 
         Map<String, List<GraphEdge>> byFrom = new HashMap<>();
@@ -74,6 +85,7 @@ class SchemaJoinPathService extends SchemaContextSupport {
         out.put("toTable", effectiveToTable);
         out.put("maxDepth", depthLimit);
         out.put("includeInferred", inferred);
+        out.put("includeObserved", observed);
         out.put("schemaTablesScanned", described.size());
         out.put("pathCount", paths.size());
         out.put("paths", paths);

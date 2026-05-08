@@ -1,0 +1,156 @@
+package ru.it_spectrum.ai.jdbc.mcp.metadata;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.usage.IngestPayload;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageDataSourceConfig;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageProperties;
+
+import javax.sql.DataSource;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class EdgeDecorationTest {
+
+    @TempDir
+    Path tempDir;
+
+    private UsageCatalogService usageCatalog;
+    private DecorationProbe probe;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        Path dbFile = tempDir.resolve("usage-decoration.db");
+        UsageProperties properties = new UsageProperties(true, dbFile.toString());
+        DataSource ds = new UsageDataSourceConfig().usageDataSource(properties);
+        usageCatalog = new UsageCatalogService(properties, ds, new QueryAnalysisService());
+        probe = new DecorationProbe(usageCatalog);
+    }
+
+    @Test
+    void decoratesDeclaredFkAndInferredEdgesWithEvidenceLevelEvenWithoutCatalogData() {
+        List<Map<String, Object>> edges = new ArrayList<>();
+        edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
+        edges.add(edge("inferred", "PAYMENTS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
+
+        probe.run(edges, Set.of("ORDERS", "CUSTOMERS", "PAYMENTS"), true);
+
+        assertThat(edges.get(0).get("evidenceLevel")).isEqualTo("declared_fk");
+        assertThat(edges.get(1).get("evidenceLevel")).isEqualTo("inferred_by_name");
+        assertThat(edges.get(0).get("observedSupport")).isNull();
+    }
+
+    @Test
+    void decoratesEdgesWithObservedSupportWhenMatchingPairsExist() {
+        for (int i = 0; i < 3; i++) {
+            usageCatalog.ingest(simple("SHOP", "obs" + i + ".sql",
+                    "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
+        }
+        List<Map<String, Object>> edges = new ArrayList<>();
+        edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
+
+        probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
+
+        assertThat(edges.get(0).get("evidenceLevel")).isEqualTo("declared_fk");
+        assertThat(edges.get(0).get("observedSupport")).isEqualTo(3);
+        @SuppressWarnings("unchecked")
+        List<String> uids = (List<String>) edges.get(0).get("observedQueries");
+        assertThat(uids).hasSize(3);
+    }
+
+    @Test
+    void appendsObservedOnlyEdgeBetweenDescribedTables() {
+        usageCatalog.ingest(simple("SHOP", "q.sql",
+                "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id"));
+
+        List<Map<String, Object>> edges = new ArrayList<>();
+        probe.run(edges, Set.of("EVENTS", "SESSIONS"), true);
+
+        assertThat(edges).singleElement()
+                .satisfies(e -> {
+                    assertThat(e.get("relationshipType")).isEqualTo("observed");
+                    assertThat(e.get("evidenceLevel")).isEqualTo("observed_in_queries");
+                    assertThat(e.get("undirected")).isEqualTo(true);
+                    assertThat(e.get("fromTable")).isEqualTo("EVENTS");
+                    assertThat(e.get("toTable")).isEqualTo("SESSIONS");
+                });
+    }
+
+    @Test
+    void doesNotAppendObservedEdgeWhenOtherSideIsOutOfScope() {
+        usageCatalog.ingest(simple("SHOP", "q.sql",
+                "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id"));
+
+        List<Map<String, Object>> edges = new ArrayList<>();
+        probe.run(edges, Set.of("EVENTS"), true); // sessions is not in described scope
+
+        assertThat(edges).isEmpty();
+    }
+
+    @Test
+    void includeObservedFalseSkipsCatalogEntirelyButStillStampsEvidenceLevel() {
+        for (int i = 0; i < 3; i++) {
+            usageCatalog.ingest(simple("SHOP", "obs" + i + ".sql",
+                    "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
+        }
+        List<Map<String, Object>> edges = new ArrayList<>();
+        edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
+
+        probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), false);
+
+        assertThat(edges).hasSize(1);
+        assertThat(edges.get(0).get("evidenceLevel")).isEqualTo("declared_fk");
+        assertThat(edges.get(0).get("observedSupport")).isNull();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    //  helpers
+    // ---------------------------------------------------------------------------------------
+
+    private static Map<String, Object> edge(String type, String fromTable, String fromColumn,
+                                            String toTable, String toColumn) {
+        Map<String, Object> e = new LinkedHashMap<>();
+        e.put("relationshipType", type);
+        e.put("fkName", type + "_" + fromTable + "_" + fromColumn);
+        e.put("fromSchema", "APP");
+        e.put("fromTable", fromTable);
+        e.put("fromColumns", List.of(fromColumn));
+        e.put("toSchema", "APP");
+        e.put("toTable", toTable);
+        e.put("toColumns", List.of(toColumn));
+        return e;
+    }
+
+    private static IngestPayload.Request simple(String dataSource, String path, String sql) {
+        return new IngestPayload.Request(
+                dataSource,
+                new IngestPayload.Source("dao", path, null),
+                null, null, null, sql,
+                null, null, null, null);
+    }
+
+    /**
+     * Minimal SchemaContextSupport subclass that only exists to expose the
+     * package-protected {@code decorateAndAppendObserved}. Avoids spinning up the rest of
+     * the metadata stack just to test edge decoration.
+     */
+    private static final class DecorationProbe extends SchemaContextSupport {
+        DecorationProbe(UsageCatalogService usageCatalog) {
+            super(null, null, null, null, usageCatalog);
+        }
+
+        void run(List<Map<String, Object>> edges, Set<String> describedNamesUpper,
+                 boolean includeObserved) {
+            decorateAndAppendObserved(edges, describedNamesUpper, includeObserved);
+        }
+    }
+}

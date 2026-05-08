@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
 import java.util.ArrayDeque;
@@ -17,13 +18,15 @@ import java.util.Set;
 @Service
 class SchemaTableContextService extends SchemaContextSupport {
 
-    SchemaTableContextService(MetadataService metadata, StatsService stats, SqlExecutor executor, SqlDialect dialect) {
-        super(metadata, stats, executor, dialect);
+    SchemaTableContextService(MetadataService metadata, StatsService stats, SqlExecutor executor,
+                              SqlDialect dialect, UsageCatalogService usageCatalog) {
+        super(metadata, stats, executor, dialect, usageCatalog);
     }
 
     public Map<String, Object> tableContext(String schema, String table, Integer depth,
                                             Boolean includeIncoming, Boolean includeStats,
-                                            Boolean includeInferred, Integer inferredScanLimit)
+                                            Boolean includeInferred, Boolean includeObserved,
+                                            Integer inferredScanLimit)
             throws SQLException {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("table must be provided");
@@ -31,6 +34,7 @@ class SchemaTableContextService extends SchemaContextSupport {
         int maxDepth = clamp(depth, DEFAULT_DEPTH, 0, MAX_DEPTH);
         boolean incoming = includeIncoming == null || includeIncoming;
         boolean inferred = includeInferred == null || includeInferred;
+        boolean observed = defaultIncludeObserved(includeObserved);
 
         Map<String, Object> root = metadata.describeTable(schema, table);
         String rootSchema = str(root.get("schema"));
@@ -96,6 +100,11 @@ class SchemaTableContextService extends SchemaContextSupport {
                 }
             }
         }
+        Set<String> describedNamesUpper = new HashSet<>();
+        for (Map<String, Object> info : described.values()) {
+            describedNamesUpper.add(upper(str(info.get("name"))));
+        }
+        decorateAndAppendObserved(relationships, describedNamesUpper, observed);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rootSchema", rootSchema);
@@ -104,6 +113,7 @@ class SchemaTableContextService extends SchemaContextSupport {
         out.put("includeIncoming", incoming);
         out.put("includeStats", Boolean.TRUE.equals(includeStats));
         out.put("includeInferred", inferred);
+        out.put("includeObserved", observed);
         out.put("tables", tables);
         out.put("relationships", relationships);
         return out;

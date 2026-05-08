@@ -60,7 +60,7 @@ abstract class AbstractSqlServerToolsIntegrationTest extends AbstractToolsIntegr
             SchemaSnapshotCache cache = new SchemaSnapshotCache(properties);
             MetadataService metadata = new MetadataService(executor, dialect, properties, cache);
             StatsService stats = new StatsService(executor, dialect, properties);
-            SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect);
+            SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
             SqlServerPlanParser planParser = new SqlServerPlanParser();
             DistributionService distribution = new DistributionService(
                     executor, dialect, properties, planParser);

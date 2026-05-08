@@ -30,3 +30,7 @@ jdbc:
   validation-timeout-ms: ${JDBC_VALIDATION_TIMEOUT_MS:5000}
   metadata-cache-ttl-seconds: ${JDBC_METADATA_CACHE_TTL_SECONDS:300}
   metadata-cache-max-entries: ${JDBC_METADATA_CACHE_MAX_ENTRIES:2000}
+
+usage:
+  catalog-enabled: ${JDBC_USAGE_CATALOG_ENABLED:true}
+  catalog-path: ${JDBC_USAGE_CATALOG_PATH:}

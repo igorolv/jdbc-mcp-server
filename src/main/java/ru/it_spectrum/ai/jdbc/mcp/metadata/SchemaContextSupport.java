@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
 import java.util.ArrayDeque;
@@ -31,13 +32,16 @@ abstract class SchemaContextSupport {
     protected final StatsService stats;
     protected final SqlExecutor executor;
     protected final SqlDialect dialect;
+    protected final UsageCatalogService usageCatalog;
 
     protected SchemaContextSupport(MetadataService metadata, StatsService stats,
-                                   SqlExecutor executor, SqlDialect dialect) {
+                                   SqlExecutor executor, SqlDialect dialect,
+                                   UsageCatalogService usageCatalog) {
         this.metadata = metadata;
         this.stats = stats;
         this.executor = executor;
         this.dialect = dialect;
+        this.usageCatalog = usageCatalog;
     }
 
     protected Map<String, Map<String, Object>> loadSchemaTables(String schema, int limit) throws SQLException {
@@ -487,6 +491,115 @@ abstract class SchemaContextSupport {
         return out;
     }
 
+    /**
+     * Adds {@code evidenceLevel} to existing edges and, when {@code includeObserved} is true and
+     * the local usage catalog is enabled, decorates them with {@code observedSupport} /
+     * {@code observedQueries} from real production queries plus appends any observed-only equi-
+     * join pairs that match neither a declared FK nor an inferred name-based edge.
+     *
+     * <p>{@code evidenceLevel} legend:
+     * <ul>
+     *   <li>{@code declared_fk} — FK metadata in the database catalog (highest evidence).</li>
+     *   <li>{@code inferred_by_name} — heuristic {@code *_id} → target inferred relationship.</li>
+     *   <li>{@code observed_in_queries} — pair appears as an equi-join in stored application
+     *       queries; reported with {@code observedSupport} (number of distinct queries) and
+     *       {@code observedQueries} (uid list, capped to keep responses small).</li>
+     * </ul>
+     *
+     * <p>Matching against observed pairs is undirected and single-column only; composite FKs
+     * keep their {@code declared_fk} stamp without observation decoration in this iteration.
+     */
+    protected void decorateAndAppendObserved(List<Map<String, Object>> edges,
+                                             Set<String> describedTableNamesUpper,
+                                             boolean includeObserved) {
+        for (Map<String, Object> edge : edges) {
+            String type = str(edge.get("relationshipType"));
+            if ("foreignKey".equals(type)) edge.put("evidenceLevel", "declared_fk");
+            else if ("inferred".equals(type)) edge.put("evidenceLevel", "inferred_by_name");
+        }
+        if (!includeObserved || usageCatalog == null || !usageCatalog.enabled()) return;
+
+        Set<String> tableScope = new HashSet<>();
+        if (describedTableNamesUpper != null) tableScope.addAll(describedTableNamesUpper);
+        for (Map<String, Object> edge : edges) {
+            String from = upper(str(edge.get("fromTable")));
+            String to = upper(str(edge.get("toTable")));
+            if (from != null) tableScope.add(from);
+            if (to != null) tableScope.add(to);
+        }
+        if (tableScope.isEmpty()) return;
+
+        List<UsageCatalogService.ObservedEdge> observed = usageCatalog.observedEdges(tableScope, 1);
+        if (observed.isEmpty()) return;
+
+        Map<String, UsageCatalogService.ObservedEdge> byPair = new HashMap<>();
+        for (UsageCatalogService.ObservedEdge oe : observed) {
+            byPair.putIfAbsent(undirectedPairKey(
+                    oe.leftTable(), oe.leftColumn(), oe.rightTable(), oe.rightColumn()), oe);
+        }
+        Set<String> consumed = new HashSet<>();
+        for (Map<String, Object> edge : edges) {
+            List<?> fromCols = edge.get("fromColumns") instanceof List<?> fl ? fl : List.of();
+            List<?> toCols = edge.get("toColumns") instanceof List<?> tl ? tl : List.of();
+            if (fromCols.size() != 1 || toCols.size() != 1) continue;
+            String key = undirectedPairKey(
+                    str(edge.get("fromTable")), String.valueOf(fromCols.get(0)),
+                    str(edge.get("toTable")), String.valueOf(toCols.get(0)));
+            UsageCatalogService.ObservedEdge oe = byPair.get(key);
+            if (oe == null) continue;
+            edge.put("observedSupport", oe.support());
+            edge.put("observedQueries", capQueryUids(oe.queryUids()));
+            consumed.add(key);
+        }
+
+        Set<String> describedScope = describedTableNamesUpper == null ? Set.of() : describedTableNamesUpper;
+        for (UsageCatalogService.ObservedEdge oe : observed) {
+            String key = undirectedPairKey(oe.leftTable(), oe.leftColumn(), oe.rightTable(), oe.rightColumn());
+            if (consumed.contains(key)) continue;
+            String leftUpper = upper(oe.leftTable());
+            String rightUpper = upper(oe.rightTable());
+            if (!describedScope.isEmpty()
+                    && (!describedScope.contains(leftUpper) || !describedScope.contains(rightUpper))) {
+                continue;
+            }
+            Map<String, Object> edge = new LinkedHashMap<>();
+            edge.put("relationshipType", "observed");
+            edge.put("evidenceLevel", "observed_in_queries");
+            edge.put("fkName", "observed_" + oe.leftTable() + "_" + oe.leftColumn()
+                    + "_to_" + oe.rightTable() + "_" + oe.rightColumn());
+            edge.put("fromSchema", oe.leftSchema());
+            edge.put("fromTable", oe.leftTable());
+            edge.put("fromColumns", List.of(oe.leftColumn()));
+            edge.put("toSchema", oe.rightSchema());
+            edge.put("toTable", oe.rightTable());
+            edge.put("toColumns", List.of(oe.rightColumn()));
+            edge.put("observedSupport", oe.support());
+            edge.put("observedQueries", capQueryUids(oe.queryUids()));
+            edge.put("undirected", true);
+            edges.add(edge);
+        }
+    }
+
+    private static List<String> capQueryUids(List<String> uids) {
+        if (uids == null || uids.size() <= 5) return uids == null ? List.of() : List.copyOf(uids);
+        return List.copyOf(uids.subList(0, 5));
+    }
+
+    private static String undirectedPairKey(String tableA, String columnA, String tableB, String columnB) {
+        String a = upper(tableA) + "." + upper(columnA);
+        String b = upper(tableB) + "." + upper(columnB);
+        return a.compareTo(b) <= 0 ? a + "==" + b : b + "==" + a;
+    }
+
+    protected static String upper(String value) {
+        return value == null ? null : value.toUpperCase(Locale.ROOT);
+    }
+
+    protected boolean defaultIncludeObserved(Boolean explicit) {
+        if (explicit != null) return explicit;
+        return usageCatalog != null && usageCatalog.enabled();
+    }
+
     protected List<Map<String, Object>> inferRelationshipEdges(List<Map<String, Object>> tables) {
         Map<String, ReferencedColumn> referencedColumns = new HashMap<>();
         Set<String> realRelationshipKeys = new HashSet<>();
@@ -776,7 +889,8 @@ abstract class SchemaContextSupport {
     protected record GraphEdge(String direction, String relationshipType, String fkName,
                                String fromSchema, String fromTable, Object fromColumns,
                                String toSchema, String toTable, Object toColumns,
-                               Object confidence, Object reason) {
+                               Object confidence, Object reason,
+                               Object evidenceLevel, Object observedSupport, Object observedQueries) {
 
         static GraphEdge forward(Map<String, Object> edge) {
             return new GraphEdge("forward",
@@ -789,7 +903,10 @@ abstract class SchemaContextSupport {
                     strStatic(edge.get("toTable")),
                     edge.get("toColumns"),
                     edge.get("confidence"),
-                    edge.get("reason"));
+                    edge.get("reason"),
+                    edge.get("evidenceLevel"),
+                    edge.get("observedSupport"),
+                    edge.get("observedQueries"));
         }
 
         static GraphEdge reverse(Map<String, Object> edge) {
@@ -803,7 +920,10 @@ abstract class SchemaContextSupport {
                     strStatic(edge.get("fromTable")),
                     edge.get("fromColumns"),
                     edge.get("confidence"),
-                    edge.get("reason"));
+                    edge.get("reason"),
+                    edge.get("evidenceLevel"),
+                    edge.get("observedSupport"),
+                    edge.get("observedQueries"));
         }
 
         Map<String, Object> asMap() {
@@ -820,6 +940,9 @@ abstract class SchemaContextSupport {
             out.put("joinCondition", joinCondition());
             if (confidence != null) out.put("confidence", confidence);
             if (reason != null) out.put("reason", reason);
+            if (evidenceLevel != null) out.put("evidenceLevel", evidenceLevel);
+            if (observedSupport != null) out.put("observedSupport", observedSupport);
+            if (observedQueries != null) out.put("observedQueries", observedQueries);
             return out;
         }
 

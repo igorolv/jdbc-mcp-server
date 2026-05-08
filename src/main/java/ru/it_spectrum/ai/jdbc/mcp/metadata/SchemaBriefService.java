@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -15,8 +16,9 @@ import java.util.Map;
 class SchemaBriefService extends SchemaContextSupport {
 
     @Autowired
-    public SchemaBriefService(MetadataService metadata, StatsService stats, SqlExecutor executor, SqlDialect dialect) {
-        super(metadata, stats, executor, dialect);
+    public SchemaBriefService(MetadataService metadata, StatsService stats, SqlExecutor executor,
+                              SqlDialect dialect, UsageCatalogService usageCatalog) {
+        super(metadata, stats, executor, dialect, usageCatalog);
     }
 
     public String schemaBrief(String schema, String terms, Integer maxTables,

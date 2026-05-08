@@ -30,11 +30,12 @@ public class SchemaContextTools {
             @McpToolParam(description = "Include views and materialized views. Default true.", required = false) Boolean includeViews,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
             @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred,
+            @McpToolParam(description = "Augment relationships with evidence from the local usage catalog: each existing edge gets an 'evidenceLevel' field (declared_fk | inferred_by_name) plus 'observedSupport'/'observedQueries' when matching equi-joins exist; new 'observed_in_queries' edges are appended for joins seen only in stored application queries. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved,
             @McpToolParam(description = "Maximum tables/views to describe. Default 50, capped at 300.", required = false) Integer maxTables
     ) {
         try {
             Map<String, Object> result = schemaContext.schemaOverview(
-                    schema, namePattern, includeViews, includeStats, includeInferred, maxTables);
+                    schema, namePattern, includeViews, includeStats, includeInferred, includeObserved, maxTables);
             return JsonWriter.write(result);
         } catch (SQLException e) {
             return ToolErrors.sql(e);
@@ -54,11 +55,13 @@ public class SchemaContextTools {
             @McpToolParam(description = "Include incoming references from child tables. Default true.", required = false) Boolean includeIncoming,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
             @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred,
+            @McpToolParam(description = "Augment relationships with evidence from the local usage catalog (see schemaOverview for the evidenceLevel legend). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved,
             @McpToolParam(description = "Maximum schema tables to scan for inferred relationships (only used when includeInferred=true). Default 300, capped at 300.", required = false) Integer inferredScanLimit
     ) {
         try {
             Map<String, Object> result = schemaContext.tableContext(
-                    schema, table, depth, includeIncoming, includeStats, includeInferred, inferredScanLimit);
+                    schema, table, depth, includeIncoming, includeStats, includeInferred,
+                    includeObserved, inferredScanLimit);
             return JsonWriter.write(result);
         } catch (SQLException e) {
             return ToolErrors.sql(e);
@@ -79,11 +82,13 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum FK hops. Default 4, capped at 4.", required = false) Integer maxDepth,
             @McpToolParam(description = "Maximum paths to return. Default 5, capped at 25.", required = false) Integer maxPaths,
             @McpToolParam(description = "Maximum schema tables to scan when building the graph. Default 300, capped at 300.", required = false) Integer scanLimit,
-            @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred
+            @McpToolParam(description = "Include inferred relationships based on *_id naming and compatible key types. Default true.", required = false) Boolean includeInferred,
+            @McpToolParam(description = "Include observed equi-join pairs from the local usage catalog as additional edges in the search graph. Each path step then carries 'evidenceLevel' (declared_fk | inferred_by_name | observed_in_queries) and, when applicable, 'observedSupport' / 'observedQueries'. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         try {
             Map<String, Object> result = schemaContext.findJoinPaths(
-                    fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, scanLimit, includeInferred);
+                    fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, scanLimit,
+                    includeInferred, includeObserved);
             return JsonWriter.write(result);
         } catch (SQLException e) {
             return ToolErrors.sql(e);

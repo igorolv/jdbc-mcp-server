@@ -22,6 +22,7 @@ dependencies {
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.ai.mcp.server)
     implementation(libs.jsqlparser)
+    implementation(libs.sqlite.jdbc)
 
     // JDBC drivers bundled into the fat jar
     runtimeOnly(libs.postgresql)

@@ -21,7 +21,7 @@ class PostgresIntegrationSnapshotToolsTest extends AbstractPostgresToolsIntegrat
         long baseListMisses = field(baseline, "listMisses").asLong();
         long baseListHits = field(baseline, "listHits").asLong();
 
-        schemaContextTools().schemaOverview("public", "%", true, false, true, 50);
+        schemaContextTools().schemaOverview("public", "%", true, false, true, false, 50);
 
         ObjectNode afterFirst = object(snapshotTools().getSchemaSnapshot("public"));
         long firstDescribeMisses = field(afterFirst, "describeMisses").asLong();
@@ -33,7 +33,7 @@ class PostgresIntegrationSnapshotToolsTest extends AbstractPostgresToolsIntegrat
                 .as("first call must populate the listTables cache")
                 .isEqualTo(1L);
 
-        schemaContextTools().schemaOverview("public", "%", true, false, true, 50);
+        schemaContextTools().schemaOverview("public", "%", true, false, true, false, 50);
 
         ObjectNode afterSecond = object(snapshotTools().getSchemaSnapshot("public"));
         long secondDescribeMisses = field(afterSecond, "describeMisses").asLong();
@@ -67,7 +67,7 @@ class PostgresIntegrationSnapshotToolsTest extends AbstractPostgresToolsIntegrat
     @Test
     void invalidateForcesReFetch() {
         snapshotTools().invalidateSnapshot(null, null);
-        schemaContextTools().schemaOverview("public", "%", true, false, true, 50);
+        schemaContextTools().schemaOverview("public", "%", true, false, true, false, 50);
 
         ObjectNode warm = object(snapshotTools().getSchemaSnapshot("public"));
         long warmDescribeMisses = field(warm, "describeMisses").asLong();
@@ -76,7 +76,7 @@ class PostgresIntegrationSnapshotToolsTest extends AbstractPostgresToolsIntegrat
         ObjectNode invalidated = object(snapshotTools().invalidateSnapshot("public", null));
         assertThat(field(invalidated, "invalidated").asText()).isEqualTo("schema");
 
-        schemaContextTools().schemaOverview("public", "%", true, false, true, 50);
+        schemaContextTools().schemaOverview("public", "%", true, false, true, false, 50);
 
         ObjectNode afterReWarm = object(snapshotTools().getSchemaSnapshot("public"));
         assertThat(field(afterReWarm, "describeMisses").asLong())

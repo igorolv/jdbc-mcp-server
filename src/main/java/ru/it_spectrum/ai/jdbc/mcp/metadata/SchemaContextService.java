@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
 import java.util.Map;
@@ -40,36 +41,41 @@ public class SchemaContextService {
     }
 
     public SchemaContextService(MetadataService metadata, StatsService stats,
-                                SqlExecutor executor, SqlDialect dialect) {
-        this(new SchemaOverviewService(metadata, stats, executor, dialect),
-                new SchemaTableContextService(metadata, stats, executor, dialect),
-                new SchemaJoinPathService(metadata, stats, executor, dialect),
-                new SchemaLintService(metadata, stats, executor, dialect),
-                new SchemaBriefService(metadata, stats, executor, dialect),
-                new SchemaGraphService(metadata, stats, executor, dialect),
-                new SchemaQueryContextService(metadata, stats, executor, dialect));
+                                SqlExecutor executor, SqlDialect dialect,
+                                UsageCatalogService usageCatalog) {
+        this(new SchemaOverviewService(metadata, stats, executor, dialect, usageCatalog),
+                new SchemaTableContextService(metadata, stats, executor, dialect, usageCatalog),
+                new SchemaJoinPathService(metadata, stats, executor, dialect, usageCatalog),
+                new SchemaLintService(metadata, stats, executor, dialect, usageCatalog),
+                new SchemaBriefService(metadata, stats, executor, dialect, usageCatalog),
+                new SchemaGraphService(metadata, stats, executor, dialect, usageCatalog),
+                new SchemaQueryContextService(metadata, stats, executor, dialect, usageCatalog));
     }
 
     public Map<String, Object> schemaOverview(String schema, String namePattern,
                                               Boolean includeViews, Boolean includeStats,
-                                              Boolean includeInferred, Integer maxTables) throws SQLException {
-        return overview.schemaOverview(schema, namePattern, includeViews, includeStats, includeInferred, maxTables);
+                                              Boolean includeInferred, Boolean includeObserved,
+                                              Integer maxTables) throws SQLException {
+        return overview.schemaOverview(schema, namePattern, includeViews, includeStats, includeInferred,
+                includeObserved, maxTables);
     }
 
     public Map<String, Object> tableContext(String schema, String table, Integer depth,
                                             Boolean includeIncoming, Boolean includeStats,
-                                            Boolean includeInferred, Integer inferredScanLimit)
+                                            Boolean includeInferred, Boolean includeObserved,
+                                            Integer inferredScanLimit)
             throws SQLException {
         return tableContext.tableContext(schema, table, depth, includeIncoming, includeStats,
-                includeInferred, inferredScanLimit);
+                includeInferred, includeObserved, inferredScanLimit);
     }
 
     public Map<String, Object> findJoinPaths(String fromSchema, String fromTable,
                                              String toSchema, String toTable,
                                              Integer maxDepth, Integer maxPaths,
-                                             Integer scanLimit, Boolean includeInferred) throws SQLException {
+                                             Integer scanLimit, Boolean includeInferred,
+                                             Boolean includeObserved) throws SQLException {
         return joinPaths.findJoinPaths(fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths,
-                scanLimit, includeInferred);
+                scanLimit, includeInferred, includeObserved);
     }
 
     public Map<String, Object> schemaLint(String schema, String table, String checks,
