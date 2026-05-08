@@ -28,6 +28,16 @@ With this server, the LLM can:
 
 Any non-SELECT query is blocked before it reaches the database.
 
+Beyond live schema introspection, the server also keeps a local **usage catalog** of known SQL
+queries used by applications and reports against the inspected database, together with their
+business context — parameter meanings, output column descriptions, and where each output is
+rendered (Excel cell, dashboard widget, BI Publisher region). This lets the LLM answer questions
+like *"which production reports already touch this column?"* and *"what business label does this
+field have in the customer card?"* against a curated body of evidence instead of guessing from
+names alone. The catalog is also the source of `evidenceLevel` decoration on relationship edges,
+so undeclared joins observed in production queries are treated as first-class hints alongside
+declared FKs. See *Usage Catalog* below.
+
 ## Architecture
 
 ```text
@@ -151,9 +161,17 @@ results with `catalog_enabled: false` so the agent can degrade gracefully.
 inspected JDBC database (PostgreSQL / Oracle / SQL Server) is still strictly read-only — the
 existing `ReadOnlyGuard` and connection-level protections remain in force.
 
+**Typed payload.** The shape of the `ingestQuery` payload — `source`, `parameters[]`,
+`outputs[]`, `fieldUsages[]` and their nested objects — is described by the JSON Schema that the
+MCP runtime exposes to the client (field names, types, descriptions, enum values). The same
+record types (`IngestPayload.Request` and friends in `usage/IngestPayload.java`) are used by the
+MCP entry point and can be reused directly by an out-of-process bulk loader that deserialises
+JSON files with Jackson and calls `UsageCatalogService.ingest(...)` — one source of truth for
+the contract.
+
 | Tool | Description |
 |---|---|
-| `ingestQuery` | Upsert a single query record. Required: `dataSource`, `source.{kind, path}`, `sql`. Optional rich payload: `businessLabel`, `businessDomain`, `businessTags`, `parameters[]` (with `businessLabel`/`businessDescription`), `outputs[]` (with `derivedFromColumns`), `fieldUsages[]` (with `transformation.kind` ∈ `identity` / `aggregate` / `derived` / `conditional` / `filter` / `format` / `decode` / `other`, `location.{kind, details}`, `headers`, `confidence`), `sourceMeta`. SQL parse failures are tolerated — the row is still stored with `parseStatus="failed"` so business metadata is not lost |
+| `ingestQuery` | Upsert a single query record. Required: `dataSource`, `source.{kind, path}`, `sql`. Everything else (`businessLabel`, `businessDomain`, `businessTags`, `parameters[]`, `outputs[]` with `derivedFromColumns`, `fieldUsages[]` with `transformation`/`location`/`confidence`, `sourceMeta`) is optional — see the tool's JSON Schema for the exact shape. `transformation.kind` is one of `identity` / `aggregate` / `derived` / `conditional` / `filter` / `format` / `decode` / `other`; `confidence` is `high` / `medium` / `low`. SQL parse failures are tolerated — the row is still stored with `parseStatus="failed"` so business metadata is not lost |
 | `deleteQueriesBySource` | Remove records by `dataSource` (required) plus optional `sourcePath` / `sourceUnit`. Useful before a bulk re-ingest of a source directory. Returns the number of deleted query rows; child rows are removed via cascade |
 | `getQuery` | Full record by uid: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns), and field usages |
 | `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus` |
@@ -524,7 +542,7 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |       +-- StatsTools.java             - tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 |       +-- BenchmarkTools.java         - benchmarkQuery, timedQuery
 |       +-- SchemaContextTools.java     - schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext, schemaGraphDot
-|       +-- UsageTools.java             - ingestQuery, deleteQueriesBySource, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, listKnownTags/Domains
+|       +-- UsageTools.java             - ingestQuery, deleteQueriesBySource, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, reresolveQueries, listKnownTags/Domains
 +-- src/main/resources/
     +-- application.yml                 - MCP stdio + JDBC properties
     +-- usage-catalog-schema.sql        - DDL applied on first start of the SQLite usage catalog

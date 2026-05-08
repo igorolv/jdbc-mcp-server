@@ -44,10 +44,6 @@ public class UsageCatalogService {
 
     private static final Logger log = LoggerFactory.getLogger(UsageCatalogService.class);
 
-    private static final Set<String> ALLOWED_TRANSFORMATION_KINDS = Set.of(
-            "identity", "aggregate", "derived", "conditional", "filter", "format", "decode", "other");
-    private static final Set<String> ALLOWED_CONFIDENCE_VALUES = Set.of("high", "medium", "low");
-
     private final UsageProperties properties;
     private final DataSource catalogDs;
     private final QueryAnalysisService analysis;
@@ -144,22 +140,9 @@ public class UsageCatalogService {
         if (req.fieldUsages() != null) {
             for (IngestPayload.FieldUsage fu : req.fieldUsages()) {
                 if (fu == null) continue;
-                if (fu.transformation() == null || fu.transformation().kind() == null
-                        || fu.transformation().kind().isBlank()) {
+                if (fu.transformation() == null || fu.transformation().kind() == null) {
                     throw new IllegalArgumentException(
-                            "fieldUsage.transformation.kind is required (one of " + ALLOWED_TRANSFORMATION_KINDS + ")");
-                }
-                String kind = fu.transformation().kind().toLowerCase(Locale.ROOT);
-                if (!ALLOWED_TRANSFORMATION_KINDS.contains(kind)) {
-                    throw new IllegalArgumentException(
-                            "fieldUsage.transformation.kind must be one of " + ALLOWED_TRANSFORMATION_KINDS
-                                    + ", got: " + fu.transformation().kind());
-                }
-                if (fu.confidence() != null
-                        && !ALLOWED_CONFIDENCE_VALUES.contains(fu.confidence().toLowerCase(Locale.ROOT))) {
-                    throw new IllegalArgumentException(
-                            "fieldUsage.confidence must be one of " + ALLOWED_CONFIDENCE_VALUES
-                                    + ", got: " + fu.confidence());
+                            "fieldUsage.transformation.kind is required");
                 }
             }
         }
@@ -458,13 +441,13 @@ public class UsageCatalogService {
                 if (outputId == null) ps.setNull(2, java.sql.Types.INTEGER);
                 else ps.setLong(2, outputId);
                 ps.setString(3, fu.businessObject());
-                ps.setString(4, fu.transformation().kind().toLowerCase(Locale.ROOT));
+                ps.setString(4, fu.transformation().kind().json());
                 ps.setString(5, fu.transformation().description());
                 ps.setString(6, fu.location() == null ? null : fu.location().kind());
                 ps.setString(7, fu.location() == null || fu.location().details() == null
                         ? null : JsonWriter.write(fu.location().details()));
                 ps.setString(8, fu.headers() == null ? null : JsonWriter.write(fu.headers()));
-                ps.setString(9, fu.confidence() == null ? null : fu.confidence().toLowerCase(Locale.ROOT));
+                ps.setString(9, fu.confidence() == null ? null : fu.confidence().json());
                 ps.addBatch();
                 count++;
             }

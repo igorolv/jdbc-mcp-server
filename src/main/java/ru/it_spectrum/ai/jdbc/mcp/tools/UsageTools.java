@@ -26,33 +26,20 @@ public class UsageTools {
     private static final String INGEST_DESCRIPTION =
             "Ingest one query into the local usage catalog. The catalog stores queries used by "
             + "applications/reports against the inspected database, together with their business "
-            + "context (parameters with business descriptions, output fields with their meaning, "
-            + "and where each output is displayed in templates/UI). The server parses the SQL with "
-            + "JSqlParser and persists tables/columns/equi-join pairs as facts; the caller adds "
-            + "semantics (business labels, output→column mappings, field-usage locations).\n"
+            + "context (parameters, output columns, where each output is rendered). The server "
+            + "parses the SQL with JSqlParser and persists tables/columns/equi-join pairs as facts; "
+            + "the caller adds the semantic layer.\n"
             + "\n"
-            + "Identity is derived from (dataSource, source.path, source.unit) into a single uid: "
+            + "Identity: a uid is built from (dataSource, source.path, source.unit) as "
             + "'{dataSource}/{source.path}#{source.unit}' (the '#unit' suffix is omitted when "
             + "source.unit is empty). Re-ingest with the same uid replaces all child rows in one "
             + "transaction. dataSource and source.unit must not contain '/' or '#'; source.path "
-            + "must not contain '#'.\n"
+            + "must not contain '#'. Parsing failures are tolerated — the row is stored with "
+            + "parseStatus='failed' so business metadata is not lost.\n"
             + "\n"
-            + "Parameter shape (sql is required, all other fields are optional). The example below "
-            + "uses a demo 'SHOP' database with 'customer', 'customer_notes', and 'order' tables:\n"
-            + "  dataSource: 'SHOP'\n"
-            + "  source: {kind: 'bi-publisher-report', path: 'reports/customers/CustomerCard.xdo', unit: 'CUST'}\n"
-            + "  businessLabel, businessDomain, businessTags: free-text discovery aids\n"
-            + "  sql: the SQL text (named ':param' or positional '?' bindings)\n"
-            + "  parameters: [{name, dataType, defaultValue, required, businessLabel, businessDescription}]\n"
-            + "  outputs: [{alias, sourceExpression, businessLabel, businessDescription, "
-            + "             derivedFromColumns:[{schema,table,column}]}]\n"
-            + "  fieldUsages: [{output, businessObject, "
-            + "                 transformation:{kind, description}, "
-            + "                 location:{kind, details}, headers:[...], confidence}]\n"
-            + "  sourceMeta: arbitrary JSON blob preserved for audit\n"
-            + "\n"
-            + "transformation.kind must be one of: identity | aggregate | derived | conditional | "
-            + "filter | format | decode | other. confidence (when provided) must be: high | medium | low.";
+            + "The shape of source/parameters/outputs/fieldUsages is described by the JSON schema "
+            + "of each parameter (field names, types, enum values, descriptions). Only dataSource, "
+            + "source (kind+path), and sql are required; everything else is optional.";
 
     private final UsageCatalogService service;
     private final MetadataService metadata;
@@ -64,29 +51,29 @@ public class UsageTools {
 
     @McpTool(description = INGEST_DESCRIPTION)
     public String ingestQuery(
-            @McpToolParam(description = "Logical database identifier scoping this query (e.g. 'SHOP' for the demo schema). Must not contain '/' or '#'.") String dataSource,
-            @McpToolParam(description = "Where this query comes from: {kind: free-text, path: file/module path, unit: dataset/method/panel name or null}.") Map<String, Object> source,
-            @McpToolParam(description = "SQL text. Named (':name') or positional ('?') bindings. Parsing failures are tolerated — the query is stored with parseStatus='failed' so business metadata is not lost.") String sql,
+            @McpToolParam(description = "Logical database identifier scoping this query (e.g. 'SHOP'). Must not contain '/' or '#'.") String dataSource,
+            @McpToolParam(description = "Where this query comes from: kind/path/unit.") IngestPayload.Source source,
+            @McpToolParam(description = "SQL text. Named (':name') or positional ('?') bindings.") String sql,
             @McpToolParam(description = "Short business label of this query (for listings).", required = false) String businessLabel,
             @McpToolParam(description = "Business domain/area for grouping (free-text; see listKnownDomains).", required = false) String businessDomain,
             @McpToolParam(description = "Discovery tags (free-text; see listKnownTags).", required = false) List<String> businessTags,
-            @McpToolParam(description = "Parameters with optional business descriptions (matched to parser by name when possible, else by ordinal).", required = false) List<Map<String, Object>> parameters,
-            @McpToolParam(description = "Output columns of the query with their business meaning and (optionally) the underlying physical columns they are derived from.", required = false) List<Map<String, Object>> outputs,
-            @McpToolParam(description = "Where in the consuming artifact each output is displayed (Excel cell, RTF region, dashboard widget, …) including transformation kind.", required = false) List<Map<String, Object>> fieldUsages,
+            @McpToolParam(description = "Parameters with optional business descriptions.", required = false) List<IngestPayload.Param> parameters,
+            @McpToolParam(description = "Output columns of the query with their business meaning and (optionally) the underlying physical columns they are derived from.", required = false) List<IngestPayload.Output> outputs,
+            @McpToolParam(description = "Where in the consuming artifact each output is displayed (Excel cell, RTF region, dashboard widget, …) including transformation kind.", required = false) List<IngestPayload.FieldUsage> fieldUsages,
             @McpToolParam(description = "Arbitrary JSON blob preserved verbatim for audit (the original source artifact, etc.).", required = false) Map<String, Object> sourceMeta
     ) {
         if (!service.enabled()) return disabled("ingestQuery");
         try {
             IngestPayload.Request req = new IngestPayload.Request(
                     dataSource,
-                    parseSource(source),
+                    source,
                     businessLabel,
                     businessDomain,
                     businessTags,
                     sql,
-                    parseParams(parameters),
-                    parseOutputs(outputs),
-                    parseFieldUsages(fieldUsages),
+                    parameters,
+                    outputs,
+                    fieldUsages,
                     sourceMeta
             );
             return JsonWriter.write(service.ingest(req));
@@ -249,124 +236,6 @@ public class UsageTools {
         } catch (RuntimeException e) {
             return ToolErrors.unexpected(e);
         }
-    }
-
-    // ---------------------------------------------------------------------------------------
-    //  Payload mapping
-    // ---------------------------------------------------------------------------------------
-
-    private static IngestPayload.Source parseSource(Map<String, Object> source) {
-        if (source == null) return new IngestPayload.Source(null, null, null);
-        return new IngestPayload.Source(
-                stringField(source, "kind"),
-                stringField(source, "path"),
-                stringField(source, "unit"));
-    }
-
-    private static List<IngestPayload.Param> parseParams(List<Map<String, Object>> raw) {
-        if (raw == null) return null;
-        List<IngestPayload.Param> out = new java.util.ArrayList<>();
-        for (Map<String, Object> p : raw) {
-            if (p == null) continue;
-            out.add(new IngestPayload.Param(
-                    stringField(p, "name"),
-                    stringField(p, "dataType"),
-                    stringField(p, "defaultValue"),
-                    booleanField(p, "required"),
-                    stringField(p, "businessLabel"),
-                    stringField(p, "businessDescription")));
-        }
-        return out;
-    }
-
-    private static List<IngestPayload.Output> parseOutputs(List<Map<String, Object>> raw) {
-        if (raw == null) return null;
-        List<IngestPayload.Output> out = new java.util.ArrayList<>();
-        for (Map<String, Object> o : raw) {
-            if (o == null) continue;
-            out.add(new IngestPayload.Output(
-                    stringField(o, "alias"),
-                    stringField(o, "sourceExpression"),
-                    stringField(o, "businessLabel"),
-                    stringField(o, "businessDescription"),
-                    parseDerivedColumns(o.get("derivedFromColumns"))));
-        }
-        return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<IngestPayload.OutputColumn> parseDerivedColumns(Object raw) {
-        if (!(raw instanceof List<?> list)) return null;
-        List<IngestPayload.OutputColumn> out = new java.util.ArrayList<>();
-        for (Object item : list) {
-            if (!(item instanceof Map<?, ?> map)) continue;
-            Map<String, Object> m = (Map<String, Object>) map;
-            out.add(new IngestPayload.OutputColumn(
-                    stringField(m, "schema"),
-                    stringField(m, "table"),
-                    stringField(m, "column")));
-        }
-        return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<IngestPayload.FieldUsage> parseFieldUsages(List<Map<String, Object>> raw) {
-        if (raw == null) return null;
-        List<IngestPayload.FieldUsage> out = new java.util.ArrayList<>();
-        for (Map<String, Object> u : raw) {
-            if (u == null) continue;
-            IngestPayload.Transformation tx = null;
-            Object txRaw = u.get("transformation");
-            if (txRaw instanceof Map<?, ?> txMap) {
-                Map<String, Object> tm = (Map<String, Object>) txMap;
-                tx = new IngestPayload.Transformation(
-                        stringField(tm, "kind"),
-                        stringField(tm, "description"));
-            }
-            IngestPayload.Location loc = null;
-            Object locRaw = u.get("location");
-            if (locRaw instanceof Map<?, ?> locMap) {
-                Map<String, Object> lm = (Map<String, Object>) locMap;
-                Object details = lm.get("details");
-                Map<String, Object> detailsMap = details instanceof Map<?, ?> dm
-                        ? (Map<String, Object>) dm : null;
-                loc = new IngestPayload.Location(stringField(lm, "kind"), detailsMap);
-            }
-            List<String> headers = null;
-            Object headersRaw = u.get("headers");
-            if (headersRaw instanceof List<?> hl) {
-                headers = new java.util.ArrayList<>();
-                for (Object h : hl) {
-                    if (h != null) headers.add(h.toString());
-                }
-            }
-            out.add(new IngestPayload.FieldUsage(
-                    stringField(u, "output"),
-                    stringField(u, "businessObject"),
-                    tx,
-                    loc,
-                    headers,
-                    stringField(u, "confidence")));
-        }
-        return out;
-    }
-
-    private static String stringField(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        if (v == null) return null;
-        String s = v.toString();
-        return s.isEmpty() ? null : s;
-    }
-
-    private static Boolean booleanField(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        if (v == null) return null;
-        if (v instanceof Boolean b) return b;
-        if (v instanceof Number n) return n.intValue() != 0;
-        String s = v.toString().toLowerCase(java.util.Locale.ROOT);
-        if ("true".equals(s) || "1".equals(s) || "yes".equals(s)) return true;
-        if ("false".equals(s) || "0".equals(s) || "no".equals(s)) return false;
-        return null;
     }
 
     // ---------------------------------------------------------------------------------------

@@ -81,10 +81,10 @@ class UsageCatalogServiceTest {
                 List.of(new IngestPayload.FieldUsage(
                         "cust_name",
                         "Карточка клиента / Шапка",
-                        new IngestPayload.Transformation("identity", "Прямое отображение"),
+                        new IngestPayload.Transformation(IngestPayload.TransformationKind.IDENTITY, "Прямое отображение"),
                         new IngestPayload.Location("ui-label", Map.of("widgetId", "lblName")),
                         List.of("Полное имя"),
-                        "high")),
+                        IngestPayload.Confidence.HIGH)),
                 Map.of("origin", "manual"));
 
         service.ingest(req);
@@ -152,7 +152,7 @@ class UsageCatalogServiceTest {
                 List.of(new IngestPayload.Output("a", null, "Колонка А", null, null)),
                 List.of(new IngestPayload.FieldUsage(
                         "a", "Где-то",
-                        new IngestPayload.Transformation("identity", null),
+                        new IngestPayload.Transformation(IngestPayload.TransformationKind.IDENTITY, null),
                         null, null, null)),
                 null);
 
@@ -261,39 +261,19 @@ class UsageCatalogServiceTest {
     }
 
     @Test
-    void rejectsUnknownTransformationKind() {
+    void rejectsMissingTransformationOnFieldUsage() {
         IngestPayload.Request req = new IngestPayload.Request(
                 "SHOP", new IngestPayload.Source("manual", "x.sql", null),
                 null, null, null,
                 "SELECT 1 FROM dual",
                 null, null,
                 List.of(new IngestPayload.FieldUsage(
-                        null, "obj",
-                        new IngestPayload.Transformation("WAT", null),
-                        null, null, null)),
+                        null, "obj", null, null, null, null)),
                 null);
 
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> service.ingest(req))
                 .withMessageContaining("transformation.kind");
-    }
-
-    @Test
-    void rejectsUnknownConfidence() {
-        IngestPayload.Request req = new IngestPayload.Request(
-                "SHOP", new IngestPayload.Source("manual", "x.sql", null),
-                null, null, null,
-                "SELECT 1 FROM dual",
-                null, null,
-                List.of(new IngestPayload.FieldUsage(
-                        null, "obj",
-                        new IngestPayload.Transformation("identity", null),
-                        null, null, "supreme")),
-                null);
-
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> service.ingest(req))
-                .withMessageContaining("confidence");
     }
 
     @Test
