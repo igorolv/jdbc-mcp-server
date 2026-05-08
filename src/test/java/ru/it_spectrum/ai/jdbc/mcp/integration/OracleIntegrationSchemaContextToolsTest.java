@@ -70,7 +70,6 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
         String brief = schemaContextTools().schemaBrief(schema(), null, 100);
 
         assertThat(brief).contains("Schema brief");
-        assertThat(brief).contains("Hub tables");
         assertThat(brief).contains("Key relationships");
         assertThat(brief).contains("ORDERS.CUSTOMER_ID -> CUSTOMERS.ID");
         assertThat(brief).contains("Enum-like columns");

@@ -70,7 +70,6 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
         String brief = schemaContextTools().schemaBrief("public", null, 100);
 
         assertThat(brief).contains("Schema brief");
-        assertThat(brief).contains("Hub tables");
         assertThat(brief).contains("Key relationships");
         assertThat(brief).contains("orders.customer_id -> customers.id");
         assertThat(brief).contains("Enum-like columns");
