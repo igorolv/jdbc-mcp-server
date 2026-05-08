@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 /**
  * MCP tools for inspecting and refreshing the in-memory metadata snapshot cache.
@@ -58,10 +59,10 @@ public class SnapshotTools {
         try {
             if (table != null && !table.isBlank()) {
                 cache.invalidateTable(schema, table);
-                Map<String, Object> described = metadata.describeTable(schema, table);
+                TableDescription described = metadata.describeTable(schema, table);
                 result.put("refreshedTables", 1);
-                result.put("tableSchema", described.get("schema"));
-                result.put("tableName", described.get("name"));
+                result.put("tableSchema", described.schema());
+                result.put("tableName", described.name());
             } else if (schema != null && !schema.isBlank()) {
                 cache.invalidateSchema(schema);
                 int limit = maxTables == null ? 300 : Math.max(1, Math.min(maxTables, 5000));

@@ -14,6 +14,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.UniqueConstraint;
 
 @Service
 class SchemaLintService extends SchemaContextSupport {
@@ -29,12 +36,12 @@ class SchemaLintService extends SchemaContextSupport {
         int findingLimit = clamp(maxFindings, DEFAULT_MAX_FINDINGS, 1, MAX_FINDINGS_LIMIT);
         Set<String> enabledChecks = parseChecks(checks);
 
-        Map<String, Map<String, Object>> tables = table != null && !table.isBlank()
+        Map<String, TableDescription> tables = table != null && !table.isBlank()
                 ? loadSingleTable(schema, table)
                 : loadSchemaTables(schema, tableLimit);
 
         List<Map<String, Object>> findings = new ArrayList<>();
-        for (Map<String, Object> info : tables.values()) {
+        for (TableDescription info : tables.values()) {
             lintTable(info, enabledChecks, findings, findingLimit);
             if (findings.size() >= findingLimit) break;
         }
@@ -56,19 +63,19 @@ class SchemaLintService extends SchemaContextSupport {
         return out;
     }
 
-    private void lintTable(Map<String, Object> info, Set<String> checks,
+    private void lintTable(TableDescription info, Set<String> checks,
                            List<Map<String, Object>> findings, int limit) {
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
-        List<Map<String, Object>> columns = mapList(info.get("columns"));
+        String schema = info.schema();
+        String table = info.name();
+        List<Column> columns = info.columns();
         boolean isTable = !isView(info);
 
-        if (checkEnabled(checks, "missingPrimaryKey") && isTable && mapValue(info.get("primaryKey")).isEmpty()) {
+        if (checkEnabled(checks, "missingPrimaryKey") && isTable && info.primaryKey() == null) {
             addFinding(findings, limit, "HIGH", "missingPrimaryKey", schema, table, null,
                     "Table has no primary key", "Add a primary key if rows need stable identity or joins.");
         }
 
-        if (checkEnabled(checks, "missingRemarks") && isBlank(info.get("remarks"))) {
+        if (checkEnabled(checks, "missingRemarks") && isBlank(info.remarks())) {
             addFinding(findings, limit, "LOW", "missingTableRemarks", schema, table, null,
                     "Object has no table remarks/comment", "Add a table comment to improve schema discoverability.");
         }
@@ -89,12 +96,12 @@ class SchemaLintService extends SchemaContextSupport {
         }
     }
 
-    private void lintNullableUniqueColumns(Map<String, Object> info,
+    private void lintNullableUniqueColumns(TableDescription info,
                                            List<Map<String, Object>> findings, int limit) {
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
-        for (Map<String, Object> unique : mapList(info.get("uniqueConstraints"))) {
-            for (String columnName : stringList(unique, "columns")) {
+        String schema = info.schema();
+        String table = info.name();
+        for (UniqueConstraint unique : info.uniqueConstraints()) {
+            for (String columnName : unique.columns()) {
                 Map<String, Object> column = columnByName(info, columnName);
                 if (Boolean.TRUE.equals(column.get("nullable"))) {
                     addFinding(findings, limit, "MEDIUM", "nullableUniqueColumn", schema, table, columnName,
@@ -105,12 +112,12 @@ class SchemaLintService extends SchemaContextSupport {
         }
     }
 
-    private void lintUnconstrainedStatusColumns(Map<String, Object> info,
+    private void lintUnconstrainedStatusColumns(TableDescription info,
                                                 List<Map<String, Object>> findings, int limit) {
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
-        for (Map<String, Object> column : mapList(info.get("columns"))) {
-            String columnName = str(column.get("name"));
+        String schema = info.schema();
+        String table = info.name();
+        for (Column column : info.columns()) {
+            String columnName = str(column.name());
             String normalized = normalizeIdentifier(columnName);
             if (!("status".equals(normalized) || "type".equals(normalized) || normalized.endsWith("_status")
                     || normalized.endsWith("_type"))) {
@@ -123,12 +130,12 @@ class SchemaLintService extends SchemaContextSupport {
         }
     }
 
-    private void lintOrphanIdColumns(Map<String, Object> info,
+    private void lintOrphanIdColumns(TableDescription info,
                                      List<Map<String, Object>> findings, int limit) {
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
-        for (Map<String, Object> column : mapList(info.get("columns"))) {
-            String columnName = str(column.get("name"));
+        String schema = info.schema();
+        String table = info.name();
+        for (Column column : info.columns()) {
+            String columnName = str(column.name());
             if (referenceNameFromColumn(columnName) == null || isKnownKeyColumn(info, columnName)) continue;
             addFinding(findings, limit, "LOW", "orphanIdColumn", schema, table, columnName,
                     "Column looks like a foreign key but no declared FK exists",
@@ -136,16 +143,16 @@ class SchemaLintService extends SchemaContextSupport {
         }
     }
 
-    private void lintRelationships(Map<String, Map<String, Object>> tables,
+    private void lintRelationships(Map<String, TableDescription> tables,
                                    Set<String> checks,
                                    List<Map<String, Object>> findings, int limit) {
         if (checkEnabled(checks, "fkWithoutIndex")) {
-            for (Map<String, Object> info : tables.values()) {
-                String schema = str(info.get("schema"));
-                String table = str(info.get("name"));
+            for (TableDescription info : tables.values()) {
+                String schema = info.schema();
+                String table = info.name();
                 List<List<String>> indexColumns = indexColumns(info);
-                for (Map<String, Object> fk : mapList(info.get("foreignKeys"))) {
-                    List<String> fkColumns = stringList(fk, "columns");
+                for (ForeignKey fk : info.foreignKeys()) {
+                    List<String> fkColumns = fk.columns();
                     if (isCoveredByIndex(fkColumns, indexColumns)) continue;
                     addFinding(findings, limit, "MEDIUM", "fkWithoutIndex", schema, table,
                             String.join(",", fkColumns),
@@ -160,17 +167,17 @@ class SchemaLintService extends SchemaContextSupport {
         }
     }
 
-    private void lintFkTypeMismatch(Map<String, Map<String, Object>> tables,
+    private void lintFkTypeMismatch(Map<String, TableDescription> tables,
                                     List<Map<String, Object>> findings, int limit) {
-        for (Map<String, Object> info : tables.values()) {
-            String schema = str(info.get("schema"));
-            String table = str(info.get("name"));
-            for (Map<String, Object> fk : mapList(info.get("foreignKeys"))) {
-                String targetKey = key(str(fk.get("referencedSchema")), str(fk.get("referencedTable")));
-                Map<String, Object> target = tables.get(targetKey);
+        for (TableDescription info : tables.values()) {
+            String schema = info.schema();
+            String table = info.name();
+            for (ForeignKey fk : info.foreignKeys()) {
+                String targetKey = key(str(fk.referencedSchema()), str(fk.referencedTable()));
+                TableDescription target = tables.get(targetKey);
                 if (target == null) continue;
-                List<String> left = stringList(fk, "columns");
-                List<String> right = stringList(fk, "referencedColumns");
+                List<String> left = fk.columns();
+                List<String> right = fk.referencedColumns();
                 for (int i = 0; i < Math.min(left.size(), right.size()); i++) {
                     Map<String, Object> leftColumn = columnByName(info, left.get(i));
                     Map<String, Object> rightColumn = columnByName(target, right.get(i));
@@ -185,13 +192,13 @@ class SchemaLintService extends SchemaContextSupport {
         }
     }
 
-    private void lintGraph(Map<String, Map<String, Object>> tables, Set<String> checks,
+    private void lintGraph(Map<String, TableDescription> tables, Set<String> checks,
                            List<Map<String, Object>> findings, int limit) {
         if (!checkEnabled(checks, "isolatedTable")) return;
         Map<String, Integer> degrees = new HashMap<>();
         for (String tableKey : tables.keySet()) degrees.put(tableKey, 0);
-        for (Map<String, Object> info : tables.values()) {
-            String from = key(str(info.get("schema")), str(info.get("name")));
+        for (TableDescription info : tables.values()) {
+            String from = key(info.schema(), info.name());
             for (Map<String, Object> edge : outgoingEdges(info)) {
                 String to = key(str(edge.get("toSchema")), str(edge.get("toTable")));
                 degrees.computeIfPresent(from, (k, v) -> v + 1);
@@ -200,9 +207,9 @@ class SchemaLintService extends SchemaContextSupport {
         }
         for (Map.Entry<String, Integer> entry : degrees.entrySet()) {
             if (entry.getValue() != 0) continue;
-            Map<String, Object> info = tables.get(entry.getKey());
+            TableDescription info = tables.get(entry.getKey());
             addFinding(findings, limit, "LOW", "isolatedTable",
-                    str(info.get("schema")), str(info.get("name")), null,
+                    info.schema(), info.name(), null,
                     "Table has no declared FK relationships in the scanned set",
                     "Verify whether joins rely on naming conventions or application logic.");
         }
@@ -241,17 +248,17 @@ class SchemaLintService extends SchemaContextSupport {
         findings.add(finding);
     }
 
-    private boolean hasCheckConstraintForColumn(Map<String, Object> info, String columnName) {
+    private boolean hasCheckConstraintForColumn(TableDescription info, String columnName) {
         if (columnName == null) return false;
         String normalizedColumn = normalizeIdentifier(columnName);
-        for (Map<String, Object> constraint : mapList(info.get("constraints"))) {
-            if (!"CHECK".equalsIgnoreCase(str(constraint.get("type")))) continue;
-            if (stringList(constraint, "columns").stream()
+        for (Constraint constraint : info.constraints()) {
+            if (!"CHECK".equalsIgnoreCase(str(constraint.type()))) continue;
+            if (constraint.columns().stream()
                     .anyMatch(c -> normalizedColumn.equals(normalizeIdentifier(c)))) {
-                if (isNotNullCheck(constraint.get("definition"), normalizedColumn)) continue;
+                if (isNotNullCheck(constraint.definition(), normalizedColumn)) continue;
                 return true;
             }
-            Object definition = constraint.get("definition");
+            Object definition = constraint.definition();
             if (isNotNullCheck(definition, normalizedColumn)) continue;
             if (definition != null
                     && normalizeIdentifier(String.valueOf(definition)).contains(normalizedColumn)) {
@@ -268,10 +275,10 @@ class SchemaLintService extends SchemaContextSupport {
                 || normalizedDefinition.equals(normalizedColumn + "_not_null");
     }
 
-    private List<List<String>> indexColumns(Map<String, Object> info) {
+    private List<List<String>> indexColumns(TableDescription info) {
         List<List<String>> out = new ArrayList<>();
-        for (Map<String, Object> index : mapList(info.get("indexes"))) {
-            out.add(objectList(index.get("columns")));
+        for (Index index : info.indexes()) {
+            out.add(objectList(index.columns()));
         }
         return out;
     }

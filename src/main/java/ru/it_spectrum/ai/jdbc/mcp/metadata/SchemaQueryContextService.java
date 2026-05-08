@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -17,6 +18,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service
 class SchemaQueryContextService extends SchemaContextSupport {
@@ -33,11 +38,11 @@ class SchemaQueryContextService extends SchemaContextSupport {
         List<String> requestedTables = splitCsvInput(tables);
         List<String> tokens = queryTokens(terms);
 
-        Map<String, Map<String, Object>> selected = new LinkedHashMap<>();
+        Map<String, TableDescription> selected = new LinkedHashMap<>();
         Map<String, Map<String, Object>> semanticMatchesByTable = new LinkedHashMap<>();
         for (String tableName : requestedTables) {
-            Map<String, Object> described = metadata.describeTable(schema, tableName);
-            selected.put(key(str(described.get("schema")), str(described.get("name"))), described);
+            TableDescription described = metadata.describeTable(schema, tableName);
+            selected.put(key(described.schema(), described.name()), described);
         }
 
         List<SemanticTableCandidate> semanticCandidates = List.of();
@@ -47,13 +52,13 @@ class SchemaQueryContextService extends SchemaContextSupport {
             for (SemanticTableCandidate candidate : semanticCandidates) {
                 if (selected.size() >= tableLimit) break;
                 String candidateSchema = candidate.schema() == null ? schema : candidate.schema();
-                Map<String, Object> described;
+                TableDescription described;
                 try {
                     described = metadata.describeTable(candidateSchema, candidate.table());
                 } catch (SQLException ignored) {
                     continue;
                 }
-                String tableKey = key(str(described.get("schema")), str(described.get("name")));
+                String tableKey = key(described.schema(), described.name());
                 selected.putIfAbsent(tableKey, described);
                 semanticMatchesByTable.put(tableKey, candidate.toMap());
             }
@@ -67,7 +72,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
                 String tableName = row.name();
                 if (tableName == null || tableName.isBlank()) continue;
                 if (selected.containsKey(key(tableSchema, tableName))) continue;
-                Map<String, Object> described;
+                TableDescription described;
                 try {
                     described = metadata.describeTable(tableSchema, tableName);
                 } catch (SQLException ignored) {
@@ -81,17 +86,17 @@ class SchemaQueryContextService extends SchemaContextSupport {
             scored.sort((a, b) -> Integer.compare(b.score(), a.score()));
             for (TableScore score : scored) {
                 if (selected.size() >= tableLimit) break;
-                selected.put(key(str(score.table().get("schema")), str(score.table().get("name"))), score.table());
+                selected.put(key(str(score.table().schema()), str(score.table().name())), score.table());
             }
         }
 
         List<Map<String, Object>> declaredEdges = new ArrayList<>();
-        for (Map<String, Object> info : selected.values()) declaredEdges.addAll(outgoingEdges(info));
+        for (TableDescription info : selected.values()) declaredEdges.addAll(outgoingEdges(info));
 
         List<Map<String, Object>> tableContexts = new ArrayList<>();
-        for (Map<String, Object> info : selected.values()) {
+        for (TableDescription info : selected.values()) {
             tableContexts.add(queryTableContext(info, tokens, samples,
-                    semanticMatchesByTable.get(key(str(info.get("schema")), str(info.get("name"))))));
+                    semanticMatchesByTable.get(key(info.schema(), info.name()))));
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -109,25 +114,25 @@ class SchemaQueryContextService extends SchemaContextSupport {
         return out;
     }
 
-    private Map<String, Object> queryTableContext(Map<String, Object> info, List<String> tokens,
+    private Map<String, Object> queryTableContext(TableDescription info, List<String> tokens,
                                                   boolean includeSamples,
                                                   Map<String, Object> semanticMatch) {
         Map<String, Object> out = new LinkedHashMap<>();
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
+        String schema = info.schema();
+        String table = info.name();
         out.put("schema", schema);
         out.put("name", table);
-        out.put("type", info.get("type"));
+        out.put("type", info.type());
         Map<String, TableDegree> degrees = new HashMap<>();
         degrees.put(key(schema, table), new TableDegree());
         out.put("classification", classifyTable(info, degrees));
-        if (!isBlank(info.get("remarks"))) out.put("remarks", info.get("remarks"));
-        out.put("primaryKey", info.get("primaryKey"));
-        out.put("allowedValues", info.get("allowedValues"));
+        if (!isBlank(info.remarks())) out.put("remarks", info.remarks());
+        out.put("primaryKey", info.primaryKey());
+        out.put("allowedValues", info.allowedValues());
         out.put("relevantColumns", relevantColumns(info, tokens));
         out.put("constraints", compactCheckConstraints(info));
-        out.put("foreignKeys", info.get("foreignKeys"));
-        out.put("indexes", compactIndexes(info.get("indexes")));
+        out.put("foreignKeys", info.foreignKeys());
+        out.put("indexes", compactIndexes(info.indexes()));
         if (semanticMatch != null) out.put("semanticMatch", semanticMatch);
         if (includeSamples) {
             Map<String, Object> sample = sampleRowsBestEffort(schema, table, 3);
@@ -136,53 +141,53 @@ class SchemaQueryContextService extends SchemaContextSupport {
         return out;
     }
 
-    private List<Map<String, Object>> relevantColumns(Map<String, Object> info, List<String> tokens) {
+    private List<Map<String, Object>> relevantColumns(TableDescription info, List<String> tokens) {
         List<Map<String, Object>> columns = new ArrayList<>();
-        Set<String> pk = new HashSet<>(stringList(mapValue(info.get("primaryKey")), "columns"));
+        Set<String> pk = new HashSet<>(stringList(mapValue(info.primaryKey()), "columns"));
         Set<String> fk = new HashSet<>();
-        for (Map<String, Object> foreignKey : mapList(info.get("foreignKeys"))) {
-            fk.addAll(stringList(foreignKey, "columns"));
+        for (ForeignKey foreignKey : info.foreignKeys()) {
+            fk.addAll(foreignKey.columns());
         }
-        for (Map<String, Object> column : mapList(info.get("columns"))) {
-            String name = str(column.get("name"));
-            boolean tokenMatch = matchesAnyToken(name, tokens) || matchesAnyToken(str(column.get("remarks")), tokens);
+        for (Column column : info.columns()) {
+            String name = str(column.name());
+            boolean tokenMatch = matchesAnyToken(name, tokens) || matchesAnyToken(str(column.remarks()), tokens);
             boolean important = pk.contains(name) || fk.contains(name) || tokenMatch
-                    || mapValue(info.get("allowedValues")).containsKey(name);
+                    || mapValue(info.allowedValues()).containsKey(name);
             if (!important && !tokens.isEmpty()) continue;
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("name", name);
-            out.put("type", column.get("typeName"));
-            out.put("nullable", column.get("nullable"));
+            out.put("type", column.typeName());
+            out.put("nullable", column.nullable());
             if (pk.contains(name)) out.put("primaryKey", true);
             if (fk.contains(name)) out.put("foreignKey", true);
-            Object allowed = mapValue(info.get("allowedValues")).get(name);
+            Object allowed = mapValue(info.allowedValues()).get(name);
             if (allowed != null) out.put("allowedValues", allowed);
             columns.add(out);
         }
         if (!columns.isEmpty() || tokens.isEmpty()) return columns;
-        for (Map<String, Object> column : mapList(info.get("columns"))) {
+        for (Column column : info.columns()) {
             if (columns.size() >= 8) break;
             Map<String, Object> out = new LinkedHashMap<>();
-            out.put("name", column.get("name"));
-            out.put("type", column.get("typeName"));
-            out.put("nullable", column.get("nullable"));
+            out.put("name", column.name());
+            out.put("type", column.typeName());
+            out.put("nullable", column.nullable());
             columns.add(out);
         }
         return columns;
     }
 
-    private List<Map<String, Object>> compactCheckConstraints(Map<String, Object> info) {
+    private List<Map<String, Object>> compactCheckConstraints(TableDescription info) {
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> constraint : mapList(info.get("constraints"))) {
-            String type = str(constraint.get("type"));
-            if (!"CHECK".equalsIgnoreCase(type) && constraint.get("allowedValues") == null) continue;
+        for (Constraint constraint : info.constraints()) {
+            String type = str(constraint.type());
+            if (!"CHECK".equalsIgnoreCase(type) && constraint.allowedValues() == null) continue;
             Map<String, Object> compact = new LinkedHashMap<>();
-            compact.put("name", constraint.get("name"));
+            compact.put("name", constraint.name());
             compact.put("type", type);
-            if (constraint.get("definition") != null) compact.put("definition", constraint.get("definition"));
-            if (constraint.get("allowedValuesColumn") != null) {
-                compact.put("allowedValuesColumn", constraint.get("allowedValuesColumn"));
-                compact.put("allowedValues", constraint.get("allowedValues"));
+            if (constraint.definition() != null) compact.put("definition", constraint.definition());
+            if (constraint.allowedValuesColumn() != null) {
+                compact.put("allowedValuesColumn", constraint.allowedValuesColumn());
+                compact.put("allowedValues", constraint.allowedValues());
             }
             out.add(compact);
         }
@@ -214,17 +219,17 @@ class SchemaQueryContextService extends SchemaContextSupport {
         return paths;
     }
 
-    private int relevanceScore(Map<String, Object> info, List<String> tokens) {
+    private int relevanceScore(TableDescription info, List<String> tokens) {
         if (tokens.isEmpty()) return 1;
         int score = 0;
-        String tableName = str(info.get("name"));
-        String remarks = str(info.get("remarks"));
+        String tableName = info.name();
+        String remarks = str(info.remarks());
         for (String token : tokens) {
             if (containsNormalized(tableName, token)) score += 10;
             if (containsNormalized(remarks, token)) score += 5;
-            for (Map<String, Object> column : mapList(info.get("columns"))) {
-                if (containsNormalized(str(column.get("name")), token)) score += 4;
-                if (containsNormalized(str(column.get("remarks")), token)) score += 2;
+            for (Column column : info.columns()) {
+                if (containsNormalized(str(column.name()), token)) score += 4;
+                if (containsNormalized(str(column.remarks()), token)) score += 2;
             }
         }
         return score;

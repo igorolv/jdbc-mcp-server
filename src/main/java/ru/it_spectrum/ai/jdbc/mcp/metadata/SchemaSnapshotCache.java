@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 
 import java.sql.SQLException;
@@ -63,7 +64,7 @@ public class SchemaSnapshotCache {
 
     private final long ttlMs;
     private final int maxEntries;
-    private final Map<TableKey, Entry<Map<String, Object>>> describes = new ConcurrentHashMap<>();
+    private final Map<TableKey, Entry<TableDescription>> describes = new ConcurrentHashMap<>();
     private final Map<ListKey, Entry<List<TableEntry>>> lists = new ConcurrentHashMap<>();
     private final AtomicLong describeHits = new AtomicLong();
     private final AtomicLong describeMisses = new AtomicLong();
@@ -83,18 +84,18 @@ public class SchemaSnapshotCache {
         return ttlMs;
     }
 
-    public Map<String, Object> describeTable(String schema, String table,
-                                             SqlSupplier<Map<String, Object>> loader) throws SQLException {
+    public TableDescription describeTable(String schema, String table,
+                                          SqlSupplier<TableDescription> loader) throws SQLException {
         if (!enabled()) return loader.get();
         TableKey key = TableKey.of(schema, table);
         long now = System.currentTimeMillis();
-        Entry<Map<String, Object>> cached = describes.get(key);
+        Entry<TableDescription> cached = describes.get(key);
         if (cached != null && now - cached.loadedAtMs < ttlMs) {
             describeHits.incrementAndGet();
             return cached.value;
         }
         describeMisses.incrementAndGet();
-        Map<String, Object> value = loader.get();
+        TableDescription value = loader.get();
         if (maxEntries > 0 && describes.size() >= maxEntries) describes.clear();
         describes.put(key, new Entry<>(value, System.currentTimeMillis()));
         return value;
@@ -149,7 +150,7 @@ public class SchemaSnapshotCache {
 
         // describes
         Map<String, List<Map<String, Object>>> bySchema = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (Map.Entry<TableKey, Entry<Map<String, Object>>> e : describes.entrySet()) {
+        for (Map.Entry<TableKey, Entry<TableDescription>> e : describes.entrySet()) {
             TableKey k = e.getKey();
             if (norm != null && !Objects.equals(norm, k.schema)) continue;
             String schemaLabel = k.schema == null ? "" : k.schema;

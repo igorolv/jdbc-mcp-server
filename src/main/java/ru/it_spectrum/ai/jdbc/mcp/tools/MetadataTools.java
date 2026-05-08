@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 /**
  * MCP tools exposing database metadata: schemas, tables, columns, indexes, foreign keys,
@@ -75,7 +76,7 @@ public class MetadataTools {
             @McpToolParam(description = "Table or view name") String table
     ) {
         try {
-            Map<String, Object> info = metadata.describeTable(schema, table);
+            TableDescription info = metadata.describeTable(schema, table);
             return JsonWriter.write(info);
         } catch (SQLException e) {
             return ToolErrors.sql(e);

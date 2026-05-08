@@ -11,6 +11,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service
 class SchemaBriefService extends SchemaContextSupport {
@@ -23,17 +27,17 @@ class SchemaBriefService extends SchemaContextSupport {
 
     public String schemaBrief(String schema, String terms, Integer maxTables) throws SQLException {
         int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
-        Map<String, Map<String, Object>> tables = loadBriefTables(schema, terms, tableLimit);
+        Map<String, TableDescription> tables = loadBriefTables(schema, terms, tableLimit);
         List<Map<String, Object>> fkEdges = new ArrayList<>();
-        for (Map<String, Object> info : tables.values()) {
+        for (TableDescription info : tables.values()) {
             fkEdges.addAll(outgoingEdges(info));
         }
 
         Map<String, TableDegree> degrees = tableDegrees(tables, fkEdges);
-        List<Map<String, Object>> tableList = new ArrayList<>(tables.values());
+        List<TableDescription> tableList = new ArrayList<>(tables.values());
         tableList.sort((a, b) -> Integer.compare(
-                degrees.getOrDefault(key(str(b.get("schema")), str(b.get("name"))), TableDegree.ZERO).total(),
-                degrees.getOrDefault(key(str(a.get("schema")), str(a.get("name"))), TableDegree.ZERO).total()));
+                degrees.getOrDefault(key(b.schema(), b.name()), TableDegree.ZERO).total(),
+                degrees.getOrDefault(key(a.schema(), a.name()), TableDegree.ZERO).total()));
 
         StringBuilder sb = new StringBuilder();
         sb.append("Schema brief");
@@ -52,10 +56,10 @@ class SchemaBriefService extends SchemaContextSupport {
         return sb.toString().trim();
     }
 
-    private void appendTableSection(StringBuilder sb, String title, List<Map<String, Object>> tables,
+    private void appendTableSection(StringBuilder sb, String title, List<TableDescription> tables,
                                     Map<String, TableDegree> degrees, String classification, int limit) {
         List<String> lines = new ArrayList<>();
-        for (Map<String, Object> table : tables) {
+        for (TableDescription table : tables) {
             if (!classification.equals(classifyTable(table, degrees))) continue;
             lines.add("- " + qualifiedName(table) + " (" + columnCount(table) + " cols, "
                     + relationshipSummary(table, degrees) + ")");
@@ -84,11 +88,11 @@ class SchemaBriefService extends SchemaContextSupport {
         }
     }
 
-    private void appendEnumSection(StringBuilder sb, List<Map<String, Object>> tables, int limit) {
+    private void appendEnumSection(StringBuilder sb, List<TableDescription> tables, int limit) {
         List<String> lines = new ArrayList<>();
-        for (Map<String, Object> table : tables) {
-            for (Map<String, Object> constraint : mapList(table.get("constraints"))) {
-                if (!"CHECK".equalsIgnoreCase(str(constraint.get("type")))) continue;
+        for (TableDescription table : tables) {
+            for (Constraint constraint : table.constraints()) {
+                if (!"CHECK".equalsIgnoreCase(str(constraint.type()))) continue;
                 EnumLikeConstraint enumLike = enumLikeConstraint(table, constraint);
                 if (enumLike == null) continue;
                 lines.add("- " + qualifiedName(table) + "." + enumLike.column + " in "
@@ -102,12 +106,12 @@ class SchemaBriefService extends SchemaContextSupport {
         for (String line : lines) sb.append(line).append('\n');
     }
 
-    private void appendTableSummarySection(StringBuilder sb, List<Map<String, Object>> tables,
+    private void appendTableSummarySection(StringBuilder sb, List<TableDescription> tables,
                                            Map<String, TableDegree> degrees, int limit) {
         if (tables.isEmpty()) return;
         sb.append('\n').append("Table notes").append('\n');
         int count = 0;
-        for (Map<String, Object> table : tables) {
+        for (TableDescription table : tables) {
             if (count++ >= limit) {
                 sb.append("- ... ").append(tables.size() - limit).append(" more\n");
                 break;
@@ -116,16 +120,16 @@ class SchemaBriefService extends SchemaContextSupport {
                     .append(": ").append(classifyTable(table, degrees))
                     .append(", PK ").append(primaryKeySummary(table))
                     .append(", columns ").append(topColumns(table, 8));
-            if (!isBlank(table.get("remarks"))) {
-                sb.append(", remarks: ").append(shorten(str(table.get("remarks")), 80));
+            if (!isBlank(table.remarks())) {
+                sb.append(", remarks: ").append(shorten(str(table.remarks()), 80));
             }
             sb.append('\n');
         }
     }
 
 
-    private EnumLikeConstraint enumLikeConstraint(Map<String, Object> table, Map<String, Object> constraint) {
-        Object definition = constraint.get("definition");
+    private EnumLikeConstraint enumLikeConstraint(TableDescription table, Constraint constraint) {
+        Object definition = constraint.definition();
         if (definition == null) return null;
         String def = String.valueOf(definition);
         EnumLikeConstraint pgArray = postgresArrayEnumConstraint(table, def);
@@ -139,7 +143,7 @@ class SchemaBriefService extends SchemaContextSupport {
                 .replace("(", "").replace("\"", "").trim();
         String column = before.contains(" ") ? before.substring(before.lastIndexOf(' ') + 1) : before;
         if (column.isBlank()) {
-            List<String> cols = stringList(constraint, "columns");
+            List<String> cols = constraint.columns();
             column = cols.isEmpty() ? null : cols.get(0);
         }
         if (column == null || column.isBlank() || columnByName(table, column).isEmpty()) return null;
@@ -153,7 +157,7 @@ class SchemaBriefService extends SchemaContextSupport {
         return new EnumLikeConstraint(column, values);
     }
 
-    private EnumLikeConstraint postgresArrayEnumConstraint(Map<String, Object> table, String definition) {
+    private EnumLikeConstraint postgresArrayEnumConstraint(TableDescription table, String definition) {
         String upper = definition.toUpperCase(Locale.ROOT);
         int anyPos = upper.indexOf("= ANY");
         int arrayPos = upper.indexOf("ARRAY[", anyPos);
@@ -178,27 +182,27 @@ class SchemaBriefService extends SchemaContextSupport {
         return new EnumLikeConstraint(column, values);
     }
 
-    private String qualifiedName(Map<String, Object> table) {
-        String schema = str(table.get("schema"));
-        String name = str(table.get("name"));
+    private String qualifiedName(TableDescription table) {
+        String schema = table.schema();
+        String name = table.name();
         return schema == null || schema.isBlank() ? name : schema + "." + name;
     }
 
-    private String relationshipSummary(Map<String, Object> table, Map<String, TableDegree> degrees) {
-        TableDegree degree = degrees.getOrDefault(key(str(table.get("schema")), str(table.get("name"))), TableDegree.ZERO);
+    private String relationshipSummary(TableDescription table, Map<String, TableDegree> degrees) {
+        TableDegree degree = degrees.getOrDefault(key(table.schema(), table.name()), TableDegree.ZERO);
         return degree.in + " incoming, " + degree.out + " outgoing";
     }
 
-    private String primaryKeySummary(Map<String, Object> table) {
-        List<String> pk = stringList(mapValue(table.get("primaryKey")), "columns");
+    private String primaryKeySummary(TableDescription table) {
+        List<String> pk = table.primaryKey() != null ? table.primaryKey().columns() : List.of();
         return pk.isEmpty() ? "(none)" : String.join("+", pk);
     }
 
-    private String topColumns(Map<String, Object> table, int limit) {
+    private String topColumns(TableDescription table, int limit) {
         List<String> names = new ArrayList<>();
-        for (Map<String, Object> column : mapList(table.get("columns"))) {
+        for (Column column : table.columns()) {
             if (names.size() >= limit) break;
-            names.add(str(column.get("name")));
+            names.add(str(column.name()));
         }
         return String.join(", ", names);
     }

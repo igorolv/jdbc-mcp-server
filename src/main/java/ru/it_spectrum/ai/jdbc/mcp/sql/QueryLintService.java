@@ -14,6 +14,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 /**
  * Metadata-aware SQL linting for LLM query authoring. Findings are advisory and never block
@@ -85,7 +89,7 @@ public class QueryLintService {
             throws SQLException {
         Map<String, TableInfo> tables = new LinkedHashMap<>();
         for (String tableName : model.physicalTableNames()) {
-            Map<String, Object> desc = metadata.describeTable(schema, tableName);
+            TableDescription desc = metadata.describeTable(schema, tableName);
             TableInfo info = new TableInfo(schema, tableName, desc);
             tables.put(norm(tableName), info);
         }
@@ -229,23 +233,23 @@ public class QueryLintService {
         final Set<String> columns = new LinkedHashSet<>();
         final List<List<String>> indexes = new ArrayList<>();
 
-        TableInfo(String schema, String name, Map<String, Object> desc) {
+        TableInfo(String schema, String name, TableDescription desc) {
             this.schema = schema;
             this.name = name;
-            Object cols = desc.get("columns");
+            List<Column> cols = desc.columns();
             if (cols instanceof List<?> list) {
                 for (Object item : list) {
-                    if (item instanceof Map<?, ?> col && col.get("name") != null) {
-                        columns.add(norm(String.valueOf(col.get("name"))));
+                    if (item instanceof Column col && col.name() != null) {
+                        columns.add(norm(col.name()));
                     }
                 }
             }
-            Object pk = desc.get("primaryKey");
-            if (pk instanceof Map<?, ?> map) addIndexColumns(map.get("columns"));
-            Object idx = desc.get("indexes");
+            PrimaryKey pk = desc.primaryKey();
+            if (pk != null) addIndexColumns(pk.columns());
+            List<Index> idx = desc.indexes();
             if (idx instanceof List<?> list) {
                 for (Object item : list) {
-                    if (item instanceof Map<?, ?> index) addIndexColumns(index.get("columns"));
+                    if (item instanceof Index index) addIndexColumns(index.columns());
                 }
             }
         }
@@ -266,11 +270,11 @@ public class QueryLintService {
             return false;
         }
 
-        private void addIndexColumns(Object raw) {
-            if (!(raw instanceof List<?> list) || list.isEmpty()) return;
+        private void addIndexColumns(List<String> raw) {
+            if (raw == null || raw.isEmpty()) return;
             List<String> cols = new ArrayList<>();
-            for (Object item : list) {
-                if (item != null) cols.add(String.valueOf(item));
+            for (String item : raw) {
+                if (item != null) cols.add(item);
             }
             if (!cols.isEmpty()) indexes.add(cols);
         }

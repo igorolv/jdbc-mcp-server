@@ -32,6 +32,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 /**
  * Read-only smoke tests against a real Oracle database.
@@ -157,9 +159,8 @@ class LiveOracleIntegrationTest {
         Assumptions.assumeTrue(tables != null && !tables.isEmpty(),
                 "no tables in schema " + schema + " — skipping describeTable check");
         String tableName = tables.get(0).name();
-        Map<String, Object> info = metadata.describeTable(schema, tableName);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> cols = (List<Map<String, Object>>) info.get("columns");
+        TableDescription info = metadata.describeTable(schema, tableName);
+        List<Column> cols = info.columns();
         assertThat(cols).isNotEmpty();
     }
 

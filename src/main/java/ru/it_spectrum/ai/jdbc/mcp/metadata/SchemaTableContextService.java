@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service
 class SchemaTableContextService extends SchemaContextSupport {
@@ -34,11 +35,11 @@ class SchemaTableContextService extends SchemaContextSupport {
         boolean incoming = includeIncoming == null || includeIncoming;
         boolean observed = defaultIncludeObserved(includeObserved);
 
-        Map<String, Object> root = metadata.describeTable(schema, table);
-        String rootSchema = str(root.get("schema"));
-        String rootTable = str(root.get("name"));
+        TableDescription root = metadata.describeTable(schema, table);
+        String rootSchema = root.schema();
+        String rootTable = root.name();
 
-        Map<String, Map<String, Object>> described = new LinkedHashMap<>();
+        Map<String, TableDescription> described = new LinkedHashMap<>();
         Queue<NodeDepth> queue = new ArrayDeque<>();
         described.put(key(rootSchema, rootTable), root);
         queue.add(new NodeDepth(rootSchema, rootTable, 0));
@@ -46,13 +47,13 @@ class SchemaTableContextService extends SchemaContextSupport {
         while (!queue.isEmpty()) {
             NodeDepth current = queue.remove();
             if (current.depth() >= maxDepth) continue;
-            Map<String, Object> currentInfo = described.get(key(current.schema(), current.table()));
+            TableDescription currentInfo = described.get(key(current.schema(), current.table()));
             if (currentInfo == null) continue;
 
             for (Neighbor neighbor : neighbors(currentInfo, incoming)) {
                 String neighborKey = key(neighbor.schema(), neighbor.table());
                 if (described.containsKey(neighborKey)) continue;
-                Map<String, Object> neighborInfo = metadata.describeTable(neighbor.schema(), neighbor.table());
+                TableDescription neighborInfo = metadata.describeTable(neighbor.schema(), neighbor.table());
                 described.put(neighborKey, neighborInfo);
                 queue.add(new NodeDepth(neighbor.schema(), neighbor.table(), current.depth() + 1));
             }
@@ -61,11 +62,11 @@ class SchemaTableContextService extends SchemaContextSupport {
         List<Map<String, Object>> tables = new ArrayList<>();
         List<Map<String, Object>> relationships = new ArrayList<>();
         Set<String> relationshipKeys = new HashSet<>();
-        for (Map<String, Object> info : described.values()) {
+        for (TableDescription info : described.values()) {
             Map<String, Object> tableContext = compactTable(info, Boolean.TRUE.equals(includeStats));
             if (observed && usageCatalog != null && usageCatalog.enabled()) {
                 tableContext.put("evidence", usageCatalog.tableEvidenceProfile(
-                        str(info.get("schema")), str(info.get("name"))).toMap());
+                        info.schema(), info.name()).toMap());
             }
             tables.add(tableContext);
             for (Map<String, Object> edge : outgoingEdges(info)) {
@@ -78,8 +79,8 @@ class SchemaTableContextService extends SchemaContextSupport {
             }
         }
         Set<String> describedNamesUpper = new HashSet<>();
-        for (Map<String, Object> info : described.values()) {
-            describedNamesUpper.add(upper(str(info.get("name"))));
+        for (TableDescription info : described.values()) {
+            describedNamesUpper.add(upper(info.name()));
         }
         decorateAndAppendObserved(relationships, describedNamesUpper, observed);
 

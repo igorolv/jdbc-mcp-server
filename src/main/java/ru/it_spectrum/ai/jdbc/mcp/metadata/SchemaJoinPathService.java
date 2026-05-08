@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service
 class SchemaJoinPathService extends SchemaContextSupport {
@@ -37,24 +38,24 @@ class SchemaJoinPathService extends SchemaContextSupport {
         int tableLimit = clamp(scanLimit, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT);
         boolean observed = defaultIncludeObserved(includeObserved);
 
-        Map<String, Object> fromInfo = metadata.describeTable(fromSchema, fromTable);
-        String effectiveFromSchema = str(fromInfo.get("schema"));
-        String effectiveFromTable = str(fromInfo.get("name"));
-        Map<String, Object> toInfo = metadata.describeTable(toSchema, toTable);
-        String effectiveToSchema = str(toInfo.get("schema"));
-        String effectiveToTable = str(toInfo.get("name"));
+        TableDescription fromInfo = metadata.describeTable(fromSchema, fromTable);
+        String effectiveFromSchema = fromInfo.schema();
+        String effectiveFromTable = fromInfo.name();
+        TableDescription toInfo = metadata.describeTable(toSchema, toTable);
+        String effectiveToSchema = toInfo.schema();
+        String effectiveToTable = toInfo.name();
 
-        Map<String, Map<String, Object>> described = loadSchemaTables(effectiveFromSchema, tableLimit);
+        Map<String, TableDescription> described = loadSchemaTables(effectiveFromSchema, tableLimit);
         described.putIfAbsent(key(effectiveFromSchema, effectiveFromTable), fromInfo);
         described.putIfAbsent(key(effectiveToSchema, effectiveToTable), toInfo);
 
         List<Map<String, Object>> rawEdges = new ArrayList<>();
-        for (Map<String, Object> info : described.values()) {
+        for (TableDescription info : described.values()) {
             rawEdges.addAll(outgoingEdges(info));
         }
         Set<String> describedNamesUpper = new HashSet<>();
-        for (Map<String, Object> info : described.values()) {
-            describedNamesUpper.add(upper(str(info.get("name"))));
+        for (TableDescription info : described.values()) {
+            describedNamesUpper.add(upper(info.name()));
         }
         decorateAndAppendObserved(rawEdges, describedNamesUpper, observed);
 

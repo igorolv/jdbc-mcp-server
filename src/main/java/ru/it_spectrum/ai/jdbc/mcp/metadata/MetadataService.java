@@ -4,7 +4,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.IncomingForeignKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.UniqueConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
@@ -136,7 +145,7 @@ public class MetadataService {
 
     // ---------- describeTable (columns + PK + indexes + FKs) ----------
 
-    public Map<String, Object> describeTable(String schema, String table) throws SQLException {
+    public TableDescription describeTable(String schema, String table) throws SQLException {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("table must be provided");
         }
@@ -145,30 +154,29 @@ public class MetadataService {
                 () -> describeTableUncached(effectiveSchema, table));
     }
 
-    private Map<String, Object> describeTableUncached(String effectiveSchema, String table) throws SQLException {
+    private TableDescription describeTableUncached(String effectiveSchema, String table) throws SQLException {
         return executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("schema", effectiveSchema);
-            result.put("name", table);
-            result.put("type", fetchTableType(md, effectiveSchema, table));
-            result.put("remarks", fetchTableRemarks(md, effectiveSchema, table));
-            List<Map<String, Object>> cols = fetchColumns(md, effectiveSchema, table);
+            String type = fetchTableType(md, effectiveSchema, table);
+            String remarks = fetchTableRemarks(md, effectiveSchema, table);
+            List<Column> cols = fetchColumns(md, effectiveSchema, table);
             // Supplement COLUMN_DEF and REMARKS via dialect-specific queries (bypasses LONG restriction
             // on Oracle's DatabaseMetaData.getColumns / getString). Uses the same connection to avoid
             // consuming extra pooled connections.
-            fetchColumnMetadataSupplement(conn, cols, effectiveSchema, table);
-            result.put("columns", cols);
-            result.put("primaryKey", fetchPrimaryKey(md, effectiveSchema, table));
-            result.put("uniqueConstraints", fetchUniqueConstraints(md, effectiveSchema, table));
-            result.put("indexes", fetchIndexes(md, effectiveSchema, table));
-            result.put("foreignKeys", fetchImportedKeys(md, effectiveSchema, table));
-            result.put("referencedBy", fetchExportedKeys(md, effectiveSchema, table));
-            List<Map<String, Object>> constraints = fetchConstraints(effectiveSchema, table);
-            result.put("constraints", constraints);
-            result.put("allowedValues", extractAllowedValues(constraints));
-            result.put("triggers", fetchTriggers(effectiveSchema, table, false));
-            return result;
+            cols = fetchColumnMetadataSupplement(conn, cols, effectiveSchema, table);
+            PrimaryKey pk = fetchPrimaryKey(md, effectiveSchema, table);
+            List<UniqueConstraint> uniqueConstraints = fetchUniqueConstraints(md, effectiveSchema, table);
+            List<Index> indexes = fetchIndexes(md, effectiveSchema, table);
+            List<ForeignKey> foreignKeys = fetchImportedKeys(md, effectiveSchema, table);
+            List<IncomingForeignKey> referencedBy = fetchExportedKeys(md, effectiveSchema, table);
+            List<Constraint> constraints = fetchConstraints(effectiveSchema, table);
+            Map<String, List<String>> allowedValues = extractAllowedValues(constraints);
+            List<Trigger> triggers = fetchTriggers(effectiveSchema, table, false);
+            return new TableDescription(
+                    effectiveSchema, table, type, remarks,
+                    cols, pk, uniqueConstraints, indexes,
+                    foreignKeys, referencedBy, constraints,
+                    allowedValues, triggers);
         });
     }
 
@@ -186,42 +194,38 @@ public class MetadataService {
         return null;
     }
 
-    private List<Map<String, Object>> fetchColumns(DatabaseMetaData md, String schema, String table)
+    private List<Column> fetchColumns(DatabaseMetaData md, String schema, String table)
             throws SQLException {
-        List<Map<String, Object>> cols = new ArrayList<>();
+        List<Column> cols = new ArrayList<>();
         try (ResultSet rs = md.getColumns(null, schema, table, "%")) {
             while (rs.next()) {
-                Map<String, Object> col = new LinkedHashMap<>();
-                col.put("name", rs.getString("COLUMN_NAME"));
-                col.put("ordinalPosition", rs.getInt("ORDINAL_POSITION"));
-                col.put("typeName", rs.getString("TYPE_NAME"));
-                col.put("size", rs.getInt("COLUMN_SIZE"));
+                String name = rs.getString("COLUMN_NAME");
+                int ordinal = rs.getInt("ORDINAL_POSITION");
+                String typeName = rs.getString("TYPE_NAME");
+                int size = rs.getInt("COLUMN_SIZE");
                 int decimals = rs.getInt("DECIMAL_DIGITS");
-                if (!rs.wasNull()) col.put("decimalDigits", decimals);
-                col.put("nullable", "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE")));
-                // NOTE: COLUMN_DEF and REMARKS are LONG in Oracle — fetched separately via
-                // dialect-specific queries (columnDefaultsQuery / columnCommentsQuery) to avoid
-                // ORA-17027. These fields will be added by fetchColumnMetadataSupplement.
-                col.put("default", null);
-                col.put("remarks", null);
+                Integer decimalDigits = rs.wasNull() ? null : decimals;
+                boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
                 String autoInc = null;
                 try {
                     autoInc = rs.getString("IS_AUTOINCREMENT");
                 } catch (SQLException ignore) {
                     // some drivers may not provide this column
                 }
-                if ("YES".equalsIgnoreCase(autoInc)) col.put("autoIncrement", true);
-                cols.add(col);
+                Boolean autoIncrement = "YES".equalsIgnoreCase(autoInc) ? Boolean.TRUE : null;
+                // NOTE: COLUMN_DEF and REMARKS are LONG in Oracle — fetched separately via
+                // dialect-specific queries (columnDefaultsQuery / columnCommentsQuery) to avoid
+                // ORA-17027. fetchColumnMetadataSupplement will fill default/remarks.
+                cols.add(new Column(name, ordinal, typeName, size, decimalDigits, nullable,
+                        null, null, autoIncrement));
             }
         }
-        cols.sort((a, b) -> Integer.compare(
-                (Integer) a.getOrDefault("ordinalPosition", 0),
-                (Integer) b.getOrDefault("ordinalPosition", 0)));
+        cols.sort((a, b) -> Integer.compare(a.ordinalPosition(), b.ordinalPosition()));
         return cols;
     }
 
-    private void fetchColumnMetadataSupplement(Connection conn, List<Map<String, Object>> cols, String schema, String table)
-            throws SQLException {
+    private List<Column> fetchColumnMetadataSupplement(Connection conn, List<Column> cols,
+                                                       String schema, String table) throws SQLException {
         String commentsSql = dialect.columnCommentsQuery();
         String defaultsSql = dialect.columnDefaultsQuery();
 
@@ -280,13 +284,17 @@ public class MetadataService {
             }
         }
 
-        for (Map<String, Object> col : cols) {
-            String cn = String.valueOf(col.get("name")).toUpperCase();
+        List<Column> out = new ArrayList<>(cols.size());
+        for (Column col : cols) {
+            String cn = col.name() == null ? "" : col.name().toUpperCase();
             String comment = comments.get(cn);
-            if (comment != null && !comment.isBlank()) col.put("remarks", comment);
             String def = defaults.get(cn);
-            if (def != null && !def.isBlank()) col.put("default", def);
+            String newDefault = (def != null && !def.isBlank()) ? def : col.defaultValue();
+            String newRemarks = (comment != null && !comment.isBlank()) ? comment : col.remarks();
+            out.add(new Column(col.name(), col.ordinalPosition(), col.typeName(), col.size(),
+                    col.decimalDigits(), col.nullable(), newDefault, newRemarks, col.autoIncrement()));
         }
+        return out;
     }
 
     private static List<String> readColumns(ResultSet rs) throws SQLException {
@@ -299,7 +307,7 @@ public class MetadataService {
         return cols;
     }
 
-    private Map<String, Object> fetchPrimaryKey(DatabaseMetaData md, String schema, String table)
+    private PrimaryKey fetchPrimaryKey(DatabaseMetaData md, String schema, String table)
             throws SQLException {
         List<String> cols = new ArrayList<>();
         String name = null;
@@ -316,57 +324,42 @@ public class MetadataService {
             }
         }
         if (cols.isEmpty()) return null;
-        Map<String, Object> pk = new LinkedHashMap<>();
-        pk.put("name", name);
-        pk.put("columns", cols);
-        return pk;
+        return new PrimaryKey(name, cols);
     }
 
-    private List<Map<String, Object>> fetchUniqueConstraints(DatabaseMetaData md, String schema, String table)
+    private List<UniqueConstraint> fetchUniqueConstraints(DatabaseMetaData md, String schema, String table)
             throws SQLException {
-        Map<String, Map<String, Object>> byName = new LinkedHashMap<>();
+        Map<String, List<String>> byName = new LinkedHashMap<>();
         try (ResultSet rs = md.getIndexInfo(null, schema, table, /*unique*/ true, /*approximate*/ false)) {
             while (rs.next()) {
                 String idxName = rs.getString("INDEX_NAME");
                 String col = rs.getString("COLUMN_NAME");
                 if (idxName == null || col == null) continue;
-                Map<String, Object> info = byName.computeIfAbsent(idxName, k -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", k);
-                    m.put("columns", new ArrayList<String>());
-                    return m;
-                });
-                @SuppressWarnings("unchecked")
-                List<String> cols = (List<String>) info.get("columns");
-                cols.add(col);
+                byName.computeIfAbsent(idxName, k -> new ArrayList<>()).add(col);
             }
         }
-        return new ArrayList<>(byName.values());
+        List<UniqueConstraint> out = new ArrayList<>(byName.size());
+        byName.forEach((name, cols) -> out.add(new UniqueConstraint(name, cols)));
+        return out;
     }
 
-    private List<Map<String, Object>> fetchIndexes(DatabaseMetaData md, String schema, String table)
+    private List<Index> fetchIndexes(DatabaseMetaData md, String schema, String table)
             throws SQLException {
-        Map<String, Map<String, Object>> byName = new LinkedHashMap<>();
+        record Pending(String name, boolean unique, List<String> columns) {}
+        Map<String, Pending> byName = new LinkedHashMap<>();
         try (ResultSet rs = md.getIndexInfo(null, schema, table, false, false)) {
             while (rs.next()) {
                 String idxName = rs.getString("INDEX_NAME");
                 String col = rs.getString("COLUMN_NAME");
                 if (idxName == null) continue;
-                Map<String, Object> info = byName.computeIfAbsent(idxName, k -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", k);
-                    m.put("unique", !rs_unchecked(rs, "NON_UNIQUE", true));
-                    m.put("columns", new ArrayList<String>());
-                    return m;
-                });
-                if (col != null) {
-                    @SuppressWarnings("unchecked")
-                    List<String> cols = (List<String>) info.get("columns");
-                    cols.add(col);
-                }
+                boolean unique = !rs_unchecked(rs, "NON_UNIQUE", true);
+                Pending p = byName.computeIfAbsent(idxName, k -> new Pending(k, unique, new ArrayList<>()));
+                if (col != null) p.columns().add(col);
             }
         }
-        return new ArrayList<>(byName.values());
+        List<Index> out = new ArrayList<>(byName.size());
+        for (Pending p : byName.values()) out.add(new Index(p.name(), p.unique(), p.columns()));
+        return out;
     }
 
     private boolean rs_unchecked(ResultSet rs, String col, boolean fallback) {
@@ -377,62 +370,54 @@ public class MetadataService {
         }
     }
 
-    private List<Map<String, Object>> fetchImportedKeys(DatabaseMetaData md, String schema, String table)
+    private List<ForeignKey> fetchImportedKeys(DatabaseMetaData md, String schema, String table)
             throws SQLException {
-        Map<String, Map<String, Object>> byName = new LinkedHashMap<>();
+        record Pending(String name, List<String> columns, List<String> referencedColumns,
+                       String[] referencedSchema, String[] referencedTable) {}
+        Map<String, Pending> byName = new LinkedHashMap<>();
         try (ResultSet rs = md.getImportedKeys(null, schema, table)) {
             while (rs.next()) {
                 String fkName = rs.getString("FK_NAME");
                 if (fkName == null) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
-                Map<String, Object> fk = byName.computeIfAbsent(fkName, k -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", k);
-                    m.put("columns", new ArrayList<String>());
-                    m.put("referencedSchema", null);
-                    m.put("referencedTable", null);
-                    m.put("referencedColumns", new ArrayList<String>());
-                    return m;
-                });
-                fk.put("referencedSchema", rs.getString("PKTABLE_SCHEM"));
-                fk.put("referencedTable", rs.getString("PKTABLE_NAME"));
-                @SuppressWarnings("unchecked")
-                List<String> cols = (List<String>) fk.get("columns");
-                cols.add(rs.getString("FKCOLUMN_NAME"));
-                @SuppressWarnings("unchecked")
-                List<String> refCols = (List<String>) fk.get("referencedColumns");
-                refCols.add(rs.getString("PKCOLUMN_NAME"));
+                Pending p = byName.computeIfAbsent(fkName, k -> new Pending(
+                        k, new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
+                p.referencedSchema()[0] = rs.getString("PKTABLE_SCHEM");
+                p.referencedTable()[0] = rs.getString("PKTABLE_NAME");
+                p.columns().add(rs.getString("FKCOLUMN_NAME"));
+                p.referencedColumns().add(rs.getString("PKCOLUMN_NAME"));
             }
         }
-        return new ArrayList<>(byName.values());
+        List<ForeignKey> out = new ArrayList<>(byName.size());
+        for (Pending p : byName.values()) {
+            out.add(new ForeignKey(p.name(), p.columns(),
+                    p.referencedSchema()[0], p.referencedTable()[0], p.referencedColumns()));
+        }
+        return out;
     }
 
-    private List<Map<String, Object>> fetchExportedKeys(DatabaseMetaData md, String schema, String table)
+    private List<IncomingForeignKey> fetchExportedKeys(DatabaseMetaData md, String schema, String table)
             throws SQLException {
-        Map<String, Map<String, Object>> byName = new LinkedHashMap<>();
+        record Pending(String name, List<String> fromColumns, List<String> toColumns,
+                       String[] fromSchema, String[] fromTable) {}
+        Map<String, Pending> byName = new LinkedHashMap<>();
         try (ResultSet rs = md.getExportedKeys(null, schema, table)) {
             while (rs.next()) {
                 String fkName = rs.getString("FK_NAME");
                 if (fkName == null) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
-                Map<String, Object> fk = byName.computeIfAbsent(fkName, k -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", k);
-                    m.put("fromSchema", null);
-                    m.put("fromTable", null);
-                    m.put("fromColumns", new ArrayList<String>());
-                    m.put("toColumns", new ArrayList<String>());
-                    return m;
-                });
-                fk.put("fromSchema", rs.getString("FKTABLE_SCHEM"));
-                fk.put("fromTable", rs.getString("FKTABLE_NAME"));
-                @SuppressWarnings("unchecked")
-                List<String> fromCols = (List<String>) fk.get("fromColumns");
-                fromCols.add(rs.getString("FKCOLUMN_NAME"));
-                @SuppressWarnings("unchecked")
-                List<String> toCols = (List<String>) fk.get("toColumns");
-                toCols.add(rs.getString("PKCOLUMN_NAME"));
+                Pending p = byName.computeIfAbsent(fkName, k -> new Pending(
+                        k, new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
+                p.fromSchema()[0] = rs.getString("FKTABLE_SCHEM");
+                p.fromTable()[0] = rs.getString("FKTABLE_NAME");
+                p.fromColumns().add(rs.getString("FKCOLUMN_NAME"));
+                p.toColumns().add(rs.getString("PKCOLUMN_NAME"));
             }
         }
-        return new ArrayList<>(byName.values());
+        List<IncomingForeignKey> out = new ArrayList<>(byName.size());
+        for (Pending p : byName.values()) {
+            out.add(new IncomingForeignKey(p.name(),
+                    p.fromSchema()[0], p.fromTable()[0], p.fromColumns(), p.toColumns()));
+        }
+        return out;
     }
 
     // ---------- Views / routines / sequences / search ----------
@@ -506,52 +491,57 @@ public class MetadataService {
 
     // ---------- helpers ----------
 
-    private List<Map<String, Object>> fetchConstraints(String schema, String table) throws SQLException {
+    private List<Constraint> fetchConstraints(String schema, String table) throws SQLException {
         String sql = dialect.tableConstraintsQuery();
         if (sql == null) return List.of();
         QueryResult r = executor.queryInternal(sql, List.of(schema == null ? "" : schema, table), 1_000);
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<Constraint> out = new ArrayList<>();
         for (Map<String, Object> row : r.rows()) {
-            Map<String, Object> constraint = new LinkedHashMap<>();
-            constraint.put("name", getCI(row, "name"));
-            constraint.put("type", getCI(row, "type"));
-            constraint.put("columns", splitCsv(getCI(row, "columns")));
-            Object definition = getCI(row, "definition");
-            if (definition != null && !String.valueOf(definition).isBlank()) {
-                constraint.put("definition", definition);
-                Map.Entry<String, List<String>> allowed = parseAllowedValues(String.valueOf(definition));
+            String name = asString(getCI(row, "name"));
+            String type = asString(getCI(row, "type"));
+            List<String> columns = splitCsv(getCI(row, "columns"));
+            Object definitionRaw = getCI(row, "definition");
+            String definition = null;
+            String allowedValuesColumn = null;
+            List<String> allowedValuesList = null;
+            if (definitionRaw != null && !String.valueOf(definitionRaw).isBlank()) {
+                definition = String.valueOf(definitionRaw);
+                Map.Entry<String, List<String>> allowed = parseAllowedValues(definition);
                 if (allowed != null) {
-                    constraint.put("allowedValuesColumn", allowed.getKey());
-                    constraint.put("allowedValues", allowed.getValue());
+                    allowedValuesColumn = allowed.getKey();
+                    allowedValuesList = allowed.getValue();
                 }
             }
-            Object referencedSchema = getCI(row, "referenced_schema");
-            Object referencedTable = getCI(row, "referenced_table");
-            List<String> referencedColumns = splitCsv(getCI(row, "referenced_columns"));
-            if (referencedTable != null && !String.valueOf(referencedTable).isBlank()) {
-                constraint.put("referencedSchema", referencedSchema);
-                constraint.put("referencedTable", referencedTable);
-                constraint.put("referencedColumns", referencedColumns);
+            String referencedSchema = null;
+            String referencedTable = null;
+            List<String> referencedColumns = null;
+            Object referencedTableRaw = getCI(row, "referenced_table");
+            if (referencedTableRaw != null && !String.valueOf(referencedTableRaw).isBlank()) {
+                referencedSchema = asString(getCI(row, "referenced_schema"));
+                referencedTable = String.valueOf(referencedTableRaw);
+                referencedColumns = splitCsv(getCI(row, "referenced_columns"));
             }
-            out.add(constraint);
+            out.add(new Constraint(name, type, columns, definition,
+                    allowedValuesColumn, allowedValuesList,
+                    referencedSchema, referencedTable, referencedColumns));
         }
         return out;
     }
 
-    private Map<String, List<String>> extractAllowedValues(List<Map<String, Object>> constraints) {
+    private Map<String, List<String>> extractAllowedValues(List<Constraint> constraints) {
         Map<String, List<String>> out = new LinkedHashMap<>();
-        for (Map<String, Object> constraint : constraints) {
-            Object column = constraint.get("allowedValuesColumn");
-            Object values = constraint.get("allowedValues");
-            if (column instanceof String c && values instanceof List<?> list && !list.isEmpty()) {
-                List<String> cleaned = new ArrayList<>();
-                for (Object value : list) {
-                    if (value != null) cleaned.add(String.valueOf(value));
-                }
-                if (!cleaned.isEmpty()) out.put(c, cleaned);
+        for (Constraint constraint : constraints) {
+            String column = constraint.allowedValuesColumn();
+            List<String> values = constraint.allowedValues();
+            if (column != null && values != null && !values.isEmpty()) {
+                out.put(column, values);
             }
         }
         return out;
+    }
+
+    private static String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private Map.Entry<String, List<String>> parseAllowedValues(String definition) {
@@ -607,25 +597,25 @@ public class MetadataService {
         return values;
     }
 
-    private List<Map<String, Object>> fetchTriggers(String schema, String table, boolean includeDefinition)
+    private List<Trigger> fetchTriggers(String schema, String table, boolean includeDefinition)
             throws SQLException {
         String sql = dialect.tableTriggersQuery();
         if (sql == null) return List.of();
         QueryResult r = executor.queryInternal(sql, List.of(schema == null ? "" : schema, table), 1_000);
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<Trigger> out = new ArrayList<>();
         for (Map<String, Object> row : r.rows()) {
-            Map<String, Object> trigger = new LinkedHashMap<>();
-            trigger.put("schema", getCI(row, "schema"));
-            trigger.put("table", getCI(row, "table_name"));
-            trigger.put("name", getCI(row, "name"));
-            trigger.put("timing", getCI(row, "timing"));
-            trigger.put("events", splitEvents(getCI(row, "events")));
-            trigger.put("enabled", toBool(getCI(row, "enabled")));
-            Object definition = getCI(row, "definition");
-            if (includeDefinition && definition != null && !String.valueOf(definition).isBlank()) {
-                trigger.put("definition", definition);
-            }
-            out.add(trigger);
+            Object definitionRaw = getCI(row, "definition");
+            String definition = (includeDefinition && definitionRaw != null
+                    && !String.valueOf(definitionRaw).isBlank())
+                    ? String.valueOf(definitionRaw) : null;
+            out.add(new Trigger(
+                    asString(getCI(row, "schema")),
+                    asString(getCI(row, "table_name")),
+                    asString(getCI(row, "name")),
+                    asString(getCI(row, "timing")),
+                    splitEvents(getCI(row, "events")),
+                    toBool(getCI(row, "enabled")),
+                    definition));
         }
         return out;
     }

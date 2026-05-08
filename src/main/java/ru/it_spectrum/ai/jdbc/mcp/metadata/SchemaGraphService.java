@@ -13,6 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service
 class SchemaGraphService extends SchemaContextSupport {
@@ -28,9 +30,9 @@ class SchemaGraphService extends SchemaContextSupport {
         int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
         int depthLimit = clamp(maxDepth, MAX_DEPTH, 1, MAX_DEPTH);
 
-        Map<String, Map<String, Object>> tables = loadSchemaTables(schema, tableLimit);
+        Map<String, TableDescription> tables = loadSchemaTables(schema, tableLimit);
         List<Map<String, Object>> declaredEdges = new ArrayList<>();
-        for (Map<String, Object> info : tables.values()) declaredEdges.addAll(outgoingEdges(info));
+        for (TableDescription info : tables.values()) declaredEdges.addAll(outgoingEdges(info));
 
         Map<String, TableDegree> degrees = tableDegrees(tables, declaredEdges);
         Map<String, List<String>> adjacency = undirectedAdjacency(tables, declaredEdges);
@@ -63,8 +65,8 @@ class SchemaGraphService extends SchemaContextSupport {
         int tableLimit = clamp(null, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
         List<String> filterTables = splitCsvInput(tables);
 
-        Map<String, Map<String, Object>> allTables = loadSchemaTables(schema, tableLimit);
-        Map<String, Map<String, Object>> selected;
+        Map<String, TableDescription> allTables = loadSchemaTables(schema, tableLimit);
+        Map<String, TableDescription> selected;
         if (!filterTables.isEmpty()) {
             selected = new LinkedHashMap<>();
             for (String t : filterTables) {
@@ -78,7 +80,7 @@ class SchemaGraphService extends SchemaContextSupport {
         }
 
         List<Map<String, Object>> declaredEdges = new ArrayList<>();
-        for (Map<String, Object> info : selected.values()) {
+        for (TableDescription info : selected.values()) {
             declaredEdges.addAll(outgoingEdges(info));
         }
         declaredEdges.removeIf(e -> !selected.containsKey(key(str(e.get("fromSchema")), str(e.get("fromTable"))))
@@ -92,9 +94,9 @@ class SchemaGraphService extends SchemaContextSupport {
                 fkCols.computeIfAbsent(fromKey, k -> new HashSet<>()).add(col);
             }
         }
-        for (Map<String, Object> info : selected.values()) {
-            String tableKey = key(str(info.get("schema")), str(info.get("name")));
-            for (String pkCol : stringList(mapValue(info.get("primaryKey")), "columns")) {
+        for (TableDescription info : selected.values()) {
+            String tableKey = key(info.schema(), info.name());
+            for (String pkCol : stringList(mapValue(info.primaryKey()), "columns")) {
                 pkCols.computeIfAbsent(tableKey, k -> new HashSet<>()).add(pkCol);
             }
         }
@@ -107,9 +109,9 @@ class SchemaGraphService extends SchemaContextSupport {
         sb.append("  edge [fontname=\"Helvetica\", fontsize=9];\n");
         sb.append('\n');
 
-        for (Map<String, Object> info : selected.values()) {
-            String tableSchema = str(info.get("schema"));
-            String tableName = str(info.get("name"));
+        for (TableDescription info : selected.values()) {
+            String tableSchema = info.schema();
+            String tableName = info.name();
             String tableKey = key(tableSchema, tableName);
             Set<String> pk = pkCols.getOrDefault(tableKey, Set.of());
             Set<String> fk = fkCols.getOrDefault(tableKey, Set.of());
@@ -117,11 +119,11 @@ class SchemaGraphService extends SchemaContextSupport {
             sb.append("  ").append(dotId(tableKey)).append(" [label=<{<b>")
                     .append(escapeHtml(tableName)).append("</b>|");
 
-            List<Map<String, Object>> columns = mapList(info.get("columns"));
+            List<Column> columns = info.columns();
             for (int i = 0; i < columns.size(); i++) {
-                Map<String, Object> col = columns.get(i);
-                String colName = str(col.get("name"));
-                String typeName = str(col.get("typeName"));
+                Column col = columns.get(i);
+                String colName = str(col.name());
+                String typeName = str(col.typeName());
                 if (i > 0) sb.append("<br align=\"left\"/>");
                 if (pk.contains(colName)) sb.append("&#128273; ");
                 else if (fk.contains(colName)) sb.append("&#8594; ");

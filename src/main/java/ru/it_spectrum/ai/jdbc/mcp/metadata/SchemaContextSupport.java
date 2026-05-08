@@ -5,7 +5,14 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.DeclaredSchemaEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedQueryEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.IncomingForeignKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -49,51 +56,51 @@ abstract class SchemaContextSupport {
         this.usageCatalog = usageCatalog;
     }
 
-    protected Map<String, Map<String, Object>> loadSchemaTables(String schema, int limit) throws SQLException {
+    protected Map<String, TableDescription> loadSchemaTables(String schema, int limit) throws SQLException {
         List<TableEntry> listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
-        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        Map<String, TableDescription> out = new LinkedHashMap<>();
         int count = 0;
         for (TableEntry row : listed) {
             if (count >= limit) break;
             String tableSchema = row.schema();
             String tableName = row.name();
             if (tableName == null || tableName.isBlank()) continue;
-            Map<String, Object> described = metadata.describeTable(tableSchema, tableName);
-            out.put(key(str(described.get("schema")), str(described.get("name"))), described);
+            TableDescription described = metadata.describeTable(tableSchema, tableName);
+            out.put(key(described.schema(), described.name()), described);
             count++;
         }
         return out;
     }
 
-    protected Map<String, Map<String, Object>> loadBriefTables(String schema, String terms, int limit)
+    protected Map<String, TableDescription> loadBriefTables(String schema, String terms, int limit)
             throws SQLException {
         String pattern = terms == null || terms.isBlank() ? "%" : "%" + terms + "%";
         List<TableEntry> listed = metadata.listTables(schema, pattern, parseTypes("TABLE"));
         if (listed.isEmpty() && terms != null && !terms.isBlank()) {
             listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
         }
-        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        Map<String, TableDescription> out = new LinkedHashMap<>();
         int count = 0;
         for (TableEntry row : listed) {
             if (count >= limit) break;
             String tableSchema = row.schema();
             String tableName = row.name();
             if (tableName == null || tableName.isBlank()) continue;
-            Map<String, Object> described = metadata.describeTable(tableSchema, tableName);
-            out.put(key(str(described.get("schema")), str(described.get("name"))), described);
+            TableDescription described = metadata.describeTable(tableSchema, tableName);
+            out.put(key(described.schema(), described.name()), described);
             count++;
         }
         return out;
     }
 
-    protected Map<String, Map<String, Object>> loadSingleTable(String schema, String table) throws SQLException {
-        Map<String, Object> described = metadata.describeTable(schema, table);
-        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
-        out.put(key(str(described.get("schema")), str(described.get("name"))), described);
+    protected Map<String, TableDescription> loadSingleTable(String schema, String table) throws SQLException {
+        TableDescription described = metadata.describeTable(schema, table);
+        Map<String, TableDescription> out = new LinkedHashMap<>();
+        out.put(key(described.schema(), described.name()), described);
         return out;
     }
 
-    protected Map<String, TableDegree> tableDegrees(Map<String, Map<String, Object>> tables,
+    protected Map<String, TableDegree> tableDegrees(Map<String, TableDescription> tables,
                                                   List<Map<String, Object>> fkEdges) {
         Map<String, TableDegree> degrees = new HashMap<>();
         for (String tableKey : tables.keySet()) degrees.put(tableKey, new TableDegree());
@@ -110,12 +117,12 @@ abstract class SchemaContextSupport {
         if (toDegree != null) toDegree.in++;
     }
 
-    protected List<Map<String, Object>> graphNodes(Map<String, Map<String, Object>> tables,
+    protected List<Map<String, Object>> graphNodes(Map<String, TableDescription> tables,
                                                  Map<String, TableDegree> degrees) {
         List<Map<String, Object>> nodes = new ArrayList<>();
-        for (Map<String, Object> table : tables.values()) {
-            String schema = str(table.get("schema"));
-            String name = str(table.get("name"));
+        for (TableDescription table : tables.values()) {
+            String schema = table.schema();
+            String name = table.name();
             TableDegree degree = degrees.getOrDefault(key(schema, name), TableDegree.ZERO);
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("id", key(schema, name));
@@ -126,7 +133,7 @@ abstract class SchemaContextSupport {
             node.put("outgoingDegree", degree.out);
             node.put("totalDegree", degree.total());
             node.put("columnCount", columnCount(table));
-            node.put("primaryKey", stringList(mapValue(table.get("primaryKey")), "columns"));
+            node.put("primaryKey", table.primaryKey() != null ? table.primaryKey().columns() : List.of());
             nodes.add(node);
         }
         nodes.sort((a, b) -> Integer.compare(
@@ -182,7 +189,7 @@ abstract class SchemaContextSupport {
         return out;
     }
 
-    protected Map<String, List<String>> undirectedAdjacency(Map<String, Map<String, Object>> tables,
+    protected Map<String, List<String>> undirectedAdjacency(Map<String, TableDescription> tables,
                                                          List<Map<String, Object>> edges) {
         Map<String, List<String>> adjacency = new LinkedHashMap<>();
         for (String tableKey : tables.keySet()) adjacency.put(tableKey, new ArrayList<>());
@@ -197,7 +204,7 @@ abstract class SchemaContextSupport {
         return adjacency;
     }
 
-    protected List<Map<String, Object>> connectedComponents(Map<String, Map<String, Object>> tables,
+    protected List<Map<String, Object>> connectedComponents(Map<String, TableDescription> tables,
                                                           Map<String, List<String>> adjacency) {
         List<Map<String, Object>> components = new ArrayList<>();
         Set<String> visited = new HashSet<>();
@@ -225,7 +232,7 @@ abstract class SchemaContextSupport {
         return components;
     }
 
-    protected List<Map<String, Object>> cycleHints(Map<String, Map<String, Object>> tables,
+    protected List<Map<String, Object>> cycleHints(Map<String, TableDescription> tables,
                                                  List<Map<String, Object>> edges, int limit) {
         List<Map<String, Object>> cycles = new ArrayList<>();
         Set<String> seen = new HashSet<>();
@@ -285,7 +292,7 @@ abstract class SchemaContextSupport {
         return out;
     }
 
-    protected String resolveTableKey(Map<String, Map<String, Object>> tables, String schema, String table) {
+    protected String resolveTableKey(Map<String, TableDescription> tables, String schema, String table) {
         String exact = key(schema, table);
         if (tables.containsKey(exact)) return exact;
         String normalizedTable = table == null ? "" : table.toLowerCase(Locale.ROOT);
@@ -305,12 +312,12 @@ abstract class SchemaContextSupport {
         return out;
     }
 
-    protected String classifyTable(Map<String, Object> table, Map<String, TableDegree> degrees) {
-        String name = normalizeIdentifier(str(table.get("name")));
-        TableDegree degree = degrees.getOrDefault(key(str(table.get("schema")), str(table.get("name"))), TableDegree.ZERO);
+    protected String classifyTable(TableDescription table, Map<String, TableDegree> degrees) {
+        String name = normalizeIdentifier(table.name());
+        TableDegree degree = degrees.getOrDefault(key(table.schema(), table.name()), TableDegree.ZERO);
         int columnCount = columnCount(table);
-        int fkCount = mapList(table.get("foreignKeys")).size();
-        if (name.contains("audit") || name.contains("history") || !mapList(table.get("triggers")).isEmpty()) {
+        int fkCount = table.foreignKeys().size();
+        if (name.contains("audit") || name.contains("history") || !table.triggers().isEmpty()) {
             return "audit/history";
         }
         if (fkCount >= 2 && columnCount <= 6) return "junction/detail";
@@ -323,8 +330,8 @@ abstract class SchemaContextSupport {
         return "entity";
     }
 
-    protected int columnCount(Map<String, Object> table) {
-        return mapList(table.get("columns")).size();
+    protected int columnCount(TableDescription table) {
+        return table.columns().size();
     }
 
     protected List<List<Map<String, Object>>> searchPaths(String start, String target,
@@ -355,26 +362,27 @@ abstract class SchemaContextSupport {
         return paths;
     }
 
-    protected Map<String, Object> compactTable(Map<String, Object> info, boolean includeStats) throws SQLException {
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
-        Set<String> pkColumns = new HashSet<>(stringList(mapValue(info.get("primaryKey")), "columns"));
+    protected Map<String, Object> compactTable(TableDescription info, boolean includeStats) throws SQLException {
+        String schema = info.schema();
+        String table = info.name();
+        Set<String> pkColumns = info.primaryKey() != null
+                ? new HashSet<>(info.primaryKey().columns()) : Set.<String>of();
         Set<String> fkColumns = new HashSet<>();
-        for (Map<String, Object> fk : mapList(info.get("foreignKeys"))) {
-            fkColumns.addAll(stringList(fk, "columns"));
+        for (ForeignKey fk : info.foreignKeys()) {
+            fkColumns.addAll(fk.columns());
         }
         Set<String> indexedColumns = new HashSet<>();
-        for (Map<String, Object> index : mapList(info.get("indexes"))) {
-            indexedColumns.addAll(stringList(index, "columns"));
+        for (Index index : info.indexes()) {
+            indexedColumns.addAll(index.columns());
         }
 
         List<Map<String, Object>> columns = new ArrayList<>();
-        for (Map<String, Object> col : mapList(info.get("columns"))) {
-            String name = str(col.get("name"));
+        for (Column col : info.columns()) {
+            String name = col.name();
             Map<String, Object> compact = new LinkedHashMap<>();
             compact.put("name", name);
-            compact.put("type", col.get("typeName"));
-            compact.put("nullable", col.get("nullable"));
+            compact.put("type", col.typeName());
+            compact.put("nullable", col.nullable());
             if (pkColumns.contains(name)) compact.put("primaryKey", true);
             if (fkColumns.contains(name)) compact.put("foreignKey", true);
             if (indexedColumns.contains(name)) compact.put("indexed", true);
@@ -384,15 +392,15 @@ abstract class SchemaContextSupport {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("schema", schema);
         out.put("name", table);
-        out.put("type", info.get("type"));
-        out.put("remarks", info.get("remarks"));
+        out.put("type", info.type());
+        out.put("remarks", info.remarks());
         out.put("columns", columns);
-        out.put("primaryKey", info.get("primaryKey"));
-        out.put("constraints", info.get("constraints"));
-        out.put("allowedValues", info.get("allowedValues"));
-        out.put("foreignKeys", info.get("foreignKeys"));
-        out.put("indexes", compactIndexes(info.get("indexes")));
-        out.put("triggers", info.get("triggers"));
+        out.put("primaryKey", info.primaryKey());
+        out.put("constraints", info.constraints());
+        out.put("allowedValues", info.allowedValues());
+        out.put("foreignKeys", info.foreignKeys());
+        out.put("indexes", compactIndexes(info.indexes()));
+        out.put("triggers", info.triggers());
         if (includeStats && table != null && !isView(info)) {
             try {
                 out.put("stats", stats.tableStats(schema, table));
@@ -405,70 +413,70 @@ abstract class SchemaContextSupport {
         return out;
     }
 
-    protected List<Map<String, Object>> compactIndexes(Object indexesValue) {
-        List<Map<String, Object>> indexes = new ArrayList<>();
-        for (Map<String, Object> index : mapList(indexesValue)) {
+    protected List<Map<String, Object>> compactIndexes(List<Index> indexes) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Index index : indexes) {
             Map<String, Object> compact = new LinkedHashMap<>();
-            compact.put("name", index.get("name"));
-            compact.put("unique", index.get("unique"));
-            compact.put("columns", index.get("columns"));
-            indexes.add(compact);
+            compact.put("name", index.name());
+            compact.put("unique", index.unique());
+            compact.put("columns", index.columns());
+            out.add(compact);
         }
-        return indexes;
+        return out;
     }
 
-    protected boolean isView(Map<String, Object> info) {
-        String type = str(info.get("type"));
+    protected boolean isView(TableDescription info) {
+        String type = info.type();
         return type != null && type.toUpperCase(Locale.ROOT).contains("VIEW");
     }
 
-    protected List<Neighbor> neighbors(Map<String, Object> info, boolean includeIncoming) {
+    protected List<Neighbor> neighbors(TableDescription info, boolean includeIncoming) {
         List<Neighbor> out = new ArrayList<>();
-        for (Map<String, Object> fk : mapList(info.get("foreignKeys"))) {
-            out.add(new Neighbor(str(fk.get("referencedSchema")), str(fk.get("referencedTable"))));
+        for (ForeignKey fk : info.foreignKeys()) {
+            out.add(new Neighbor(fk.referencedSchema(), fk.referencedTable()));
         }
         if (includeIncoming) {
-            for (Map<String, Object> fk : mapList(info.get("referencedBy"))) {
-                out.add(new Neighbor(str(fk.get("fromSchema")), str(fk.get("fromTable"))));
+            for (IncomingForeignKey fk : info.referencedBy()) {
+                out.add(new Neighbor(fk.fromSchema(), fk.fromTable()));
             }
         }
         out.removeIf(n -> n.table == null || n.table.isBlank());
         return out;
     }
 
-    protected List<Map<String, Object>> outgoingEdges(Map<String, Object> info) {
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
+    protected List<Map<String, Object>> outgoingEdges(TableDescription info) {
+        String schema = info.schema();
+        String table = info.name();
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> fk : mapList(info.get("foreignKeys"))) {
+        for (ForeignKey fk : info.foreignKeys()) {
             Map<String, Object> edge = new LinkedHashMap<>();
             edge.put("relationshipType", "foreignKey");
-            edge.put("fkName", fk.get("name"));
+            edge.put("fkName", fk.name());
             edge.put("fromSchema", schema);
             edge.put("fromTable", table);
-            edge.put("fromColumns", fk.get("columns"));
-            edge.put("toSchema", fk.get("referencedSchema"));
-            edge.put("toTable", fk.get("referencedTable"));
-            edge.put("toColumns", fk.get("referencedColumns"));
+            edge.put("fromColumns", fk.columns());
+            edge.put("toSchema", fk.referencedSchema());
+            edge.put("toTable", fk.referencedTable());
+            edge.put("toColumns", fk.referencedColumns());
             out.add(edge);
         }
         return out;
     }
 
-    protected List<Map<String, Object>> incomingEdges(Map<String, Object> info) {
-        String schema = str(info.get("schema"));
-        String table = str(info.get("name"));
+    protected List<Map<String, Object>> incomingEdges(TableDescription info) {
+        String schema = info.schema();
+        String table = info.name();
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> fk : mapList(info.get("referencedBy"))) {
+        for (IncomingForeignKey fk : info.referencedBy()) {
             Map<String, Object> edge = new LinkedHashMap<>();
             edge.put("relationshipType", "foreignKey");
-            edge.put("fkName", fk.get("name"));
-            edge.put("fromSchema", fk.get("fromSchema"));
-            edge.put("fromTable", fk.get("fromTable"));
-            edge.put("fromColumns", fk.get("fromColumns"));
+            edge.put("fkName", fk.name());
+            edge.put("fromSchema", fk.fromSchema());
+            edge.put("fromTable", fk.fromTable());
+            edge.put("fromColumns", fk.fromColumns());
             edge.put("toSchema", schema);
             edge.put("toTable", table);
-            edge.put("toColumns", fk.get("toColumns"));
+            edge.put("toColumns", fk.toColumns());
             out.add(edge);
         }
         return out;
@@ -623,22 +631,32 @@ abstract class SchemaContextSupport {
         return usageCatalog != null && usageCatalog.enabled();
     }
 
-    protected Map<String, Object> columnByName(Map<String, Object> table, String columnName) {
-        for (Map<String, Object> column : mapList(table.get("columns"))) {
-            if (columnName.equalsIgnoreCase(str(column.get("name")))) {
-                return column;
+    protected Map<String, Object> columnByName(TableDescription table, String columnName) {
+        for (Column column : table.columns()) {
+            if (columnName.equalsIgnoreCase(column.name())) {
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("name", column.name());
+                out.put("typeName", column.typeName());
+                out.put("nullable", column.nullable());
+                out.put("ordinalPosition", column.ordinalPosition());
+                out.put("size", column.size());
+                out.put("decimalDigits", column.decimalDigits());
+                out.put("default", column.defaultValue());
+                out.put("remarks", column.remarks());
+                out.put("autoIncrement", column.autoIncrement());
+                return out;
             }
         }
         return Map.of();
     }
 
-    protected boolean isKnownKeyColumn(Map<String, Object> table, String columnName) {
-        if (stringList(mapValue(table.get("primaryKey")), "columns").stream()
-                .anyMatch(c -> c.equalsIgnoreCase(columnName))) {
+    protected boolean isKnownKeyColumn(TableDescription table, String columnName) {
+        if (table.primaryKey() != null
+                && table.primaryKey().columns().stream().anyMatch(c -> c.equalsIgnoreCase(columnName))) {
             return true;
         }
-        for (Map<String, Object> fk : mapList(table.get("foreignKeys"))) {
-            if (stringList(fk, "columns").stream().anyMatch(c -> c.equalsIgnoreCase(columnName))) {
+        for (ForeignKey fk : table.foreignKeys()) {
+            if (fk.columns().stream().anyMatch(c -> c.equalsIgnoreCase(columnName))) {
                 return true;
             }
         }
@@ -820,7 +838,7 @@ abstract class SchemaContextSupport {
         }
     }
 
-    protected record TableScore(Map<String, Object> table, int score) {
+    protected record TableScore(TableDescription table, int score) {
     }
 
     protected record GraphEdge(String direction, String relationshipType, String fkName,

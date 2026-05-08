@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service
 class SchemaOverviewService extends SchemaContextSupport {
@@ -44,7 +45,7 @@ class SchemaOverviewService extends SchemaContextSupport {
             String tableSchema = row.schema();
             String tableName = row.name();
             if (tableName == null || tableName.isBlank()) continue;
-            Map<String, Object> described;
+            TableDescription described;
             try {
                 described = metadata.describeTable(tableSchema, tableName);
             } catch (SQLException e) {
