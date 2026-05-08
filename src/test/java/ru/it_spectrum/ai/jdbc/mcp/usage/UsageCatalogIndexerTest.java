@@ -1,0 +1,107 @@
+package ru.it_spectrum.ai.jdbc.mcp.usage;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+
+import javax.sql.DataSource;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class UsageCatalogIndexerTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void indexesJsonFilesFromDirectoriesAndZipArchives() throws Exception {
+        Path dir = tempDir.resolve("usage");
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("customers.json"), """
+                {
+                  "dataSource": "SHOP",
+                  "source": {"kind": "dao", "path": "CustomerDao.java", "unit": "findOne"},
+                  "sql": "SELECT c.id, c.name FROM customers c WHERE c.id = :id"
+                }
+                """, StandardCharsets.UTF_8);
+
+        Path zip = tempDir.resolve("reports.zip");
+        try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(zip))) {
+            out.putNextEntry(new ZipEntry("orders/order-summary.json"));
+            out.write("""
+                    {
+                      "dataSource": "SHOP",
+                      "source": {"kind": "report", "path": "orders/summary.xdo"},
+                      "sql": "SELECT o.id FROM orders o JOIN customers c ON o.customer_id = c.id"
+                    }
+                    """.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+
+        UsageCatalogService service = service(List.of(dir.toString(), zip.toString()));
+        UsageCatalogIndexer indexer = indexer(service, List.of(dir.toString(), zip.toString()));
+
+        Map<String, Object> status = indexer.refreshBlocking();
+
+        assertThat(status.get("state")).isEqualTo("ready");
+        assertThat(status.get("filesScanned")).isEqualTo(2);
+        assertThat(status.get("recordsLoaded")).isEqualTo(2);
+        assertThat(service.findQueriesByTable(null, "customers").get("count")).isEqualTo(2);
+        assertThat(asList(service.observedRelationships(null, null, 1), "relationships"))
+                .singleElement()
+                .satisfies(edge -> assertThat(edge.get("support")).isEqualTo(1));
+    }
+
+    @Test
+    void reportsDuplicateUidsAndKeepsFirstRecord() throws Exception {
+        Path dir = tempDir.resolve("usage");
+        Files.createDirectories(dir);
+        String one = """
+                {
+                  "dataSource": "SHOP",
+                  "source": {"kind": "manual", "path": "same.sql"},
+                  "sql": "SELECT id FROM customers"
+                }
+                """;
+        String two = one.replace("customers", "orders");
+        Files.writeString(dir.resolve("a.json"), one, StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("b.json"), two, StandardCharsets.UTF_8);
+
+        UsageCatalogService service = service(List.of(dir.toString()));
+        UsageCatalogIndexer indexer = indexer(service, List.of(dir.toString()));
+
+        Map<String, Object> status = indexer.refreshBlocking();
+
+        assertThat(status.get("state")).isEqualTo("ready");
+        assertThat(status.get("duplicateUids")).isEqualTo(1);
+        assertThat(status.get("recordsLoaded")).isEqualTo(1);
+        assertThat(service.findQueriesByTable(null, "customers").get("count")).isEqualTo(1);
+        assertThat(service.findQueriesByTable(null, "orders").get("count")).isEqualTo(0);
+    }
+
+    private UsageCatalogService service(List<String> paths) throws Exception {
+        UsageProperties properties = properties(paths);
+        DataSource ds = new UsageDataSourceConfig().usageDataSource(properties);
+        return new UsageCatalogService(properties, ds, new QueryAnalysisService());
+    }
+
+    private UsageCatalogIndexer indexer(UsageCatalogService service, List<String> paths) {
+        return new UsageCatalogIndexer(properties(paths), service);
+    }
+
+    private static UsageProperties properties(List<String> paths) {
+        return new UsageProperties(true, paths, false, false, false, "");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> asList(Map<String, Object> root, String key) {
+        return (List<Map<String, Object>>) root.get(key);
+    }
+}

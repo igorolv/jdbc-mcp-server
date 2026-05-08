@@ -121,12 +121,13 @@ keep their `declared_fk` stamp without observation decoration in this iteration.
 
 ### Usage Catalog
 
-A local SQLite-backed store of *known* SQL queries used by applications and reports against the
+A file-backed catalog of *known* SQL queries used by applications and reports against the
 inspected database, together with their **business context**: parameters with descriptions,
 output columns with their meaning, and where each output is displayed in the consuming artifact
-(Excel cell in a BI Publisher report, dashboard widget, etc.). The server parses the SQL with
-JSqlParser and stores the extracted tables / columns / equi-join pairs as facts; the caller
-provides the semantic layer (business labels, output→column mappings, field-usage locations).
+(Excel cell in a BI Publisher report, dashboard widget, etc.). The source of truth is one or more
+directories / JSON files / zip archives containing canonical QueryUsage JSON records. At runtime
+the server parses those files and builds an in-memory H2 index with extracted tables / columns /
+equi-join pairs as facts; the JSON files remain authoritative.
 
 **Why this exists.** The metadata tools answer "what tables and columns exist". The usage catalog
 answers "how are they actually used by applications". With both, an LLM can replace guesses about
@@ -150,24 +151,28 @@ SHOP/com/example/shop/dao/OrderDao.java#findByCustomer
 ```
 
 `dataSource` and `source.unit` must not contain `/` or `#`; `source.path` must not contain `#`.
-Re-ingest with the same uid replaces all child rows in one transaction (no versioning is kept).
+Duplicate uids across input files are reported by `usageCatalogStatus`; the first record wins for
+that index build.
 
-**Where the file lives.** Default: `${user.home}/.jdbc-mcp/usage.db`. Override with
-`JDBC_USAGE_CATALOG_PATH`. Set `JDBC_USAGE_CATALOG_ENABLED=false` to disable: `ingestQuery` and
-related write tools then return `{"kind":"disabled", ...}`, while lookup tools return empty
-results with `catalog_enabled: false` so the agent can degrade gracefully.
+**Where the files live.** Configure `JDBC_USAGE_CATALOG_PATHS` as a comma-separated list of
+directories, `.json` files, or `.zip` archives. Directories are scanned recursively for `*.json`;
+zip archives are scanned for JSON entries. Set `JDBC_USAGE_CATALOG_ENABLED=false` to disable the
+catalog: lookup tools return empty results with `catalog_enabled: false` so the agent can degrade
+gracefully.
 
-**Local-only writes.** The catalog SQLite file is the only thing this feature writes to. The
-inspected JDBC database (PostgreSQL / Oracle / SQL Server) is still strictly read-only — the
-existing `ReadOnlyGuard` and connection-level protections remain in force.
+**Runtime index.** By default the server starts quickly and builds the usage index in the
+background (`JDBC_USAGE_INDEX_ON_STARTUP=true`, `JDBC_USAGE_INDEX_BACKGROUND=true`). The index is
+rebuildable and in-memory; it is not the source of truth. `JDBC_USAGE_INDEX_DISK_CACHE_ENABLED`
+and `JDBC_USAGE_INDEX_CACHE_PATH` are reserved for a derived on-disk cache and are currently
+reported in status but not used to persist data.
 
-**Typed payload.** The shape of the `ingestQuery` payload — `source`, `parameters[]`,
-`outputs[]`, `fieldUsages[]` and their nested objects — is described by the JSON Schema that the
-MCP runtime exposes to the client (field names, types, descriptions, enum values). The same
-record types (`QueryUsage` and friends in `usage/format/`) are used by the
-MCP entry point and can be reused directly by an out-of-process bulk loader that deserialises
-JSON files with Jackson and calls `UsageCatalogService.ingest(...)` — one source of truth for
-the contract.
+**Local-only writes.** The usage catalog never writes to the inspected JDBC database
+(PostgreSQL / Oracle / SQL Server). The existing `ReadOnlyGuard` and connection-level protections
+remain in force.
+
+**Typed payload.** The canonical `source`, `parameters[]`, `outputs[]`, `fieldUsages[]` and nested
+objects are described by the JSON Schema (field names, types, descriptions, enum values). The same
+record types (`QueryUsage` and friends in `usage/format/`) are used by file indexing.
 
 The canonical source-agnostic JSON format is documented in
 `docs/usage-catalog-format.md`; its JSON Schema lives at
@@ -177,23 +182,23 @@ implemented inside the JDBC MCP server.
 
 | Tool | Description |
 |---|---|
-| `ingestQuery` | Upsert a single query record. Required: `dataSource`, `source.{kind, path}`, `sql`. Everything else (`businessLabel`, `businessDomain`, `businessTags`, `parameters[]`, `outputs[]` with `derivedFromColumns`, `fieldUsages[]` with `transformation`/`location`/`confidence`, `sourceMeta`) is optional — see the tool's JSON Schema for the exact shape. `transformation.kind` is one of `identity` / `aggregate` / `derived` / `conditional` / `filter` / `format` / `decode` / `other`; `confidence` is `high` / `medium` / `low`. SQL parse failures are tolerated — the row is still stored with `parseStatus="failed"` so business metadata is not lost |
-| `deleteQueriesBySource` | Remove records by `dataSource` (required) plus optional `sourcePath` / `sourceUnit`. Useful before a bulk re-ingest of a source directory. Returns the number of deleted query rows; child rows are removed via cascade |
+| `usageCatalogStatus` | Runtime index status: configured sources, indexing state, counts, duplicate uids, invalid files and load errors |
+| `refreshUsageCatalog` | Re-scan configured directories / JSON files / zip archives and rebuild the runtime index. With background indexing enabled, returns immediately with current status |
 | `getQuery` | Full record by uid: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns), and field usages |
 | `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus` |
 | `findQueriesByTable` | All catalog queries that reference a given table. Case-insensitive matching against alias-resolved, uppercased table names. Optional `schema` filter |
 | `findQueriesByColumn` | All catalog queries that reference a given column, with the SQL `context` of the reference (`select` / `where` / `join` / `order_by` / `having`). Optional `schema` and `table` filters |
 | `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `evidenceLevel` decoration in `schemaOverview` / `tableContext` / `findJoinPaths` |
-| `reresolveQueries` | Re-resolve unqualified table references in stored queries against the live JDBC schema. For every distinct unresolved raw table name in the catalog (scoped to `dataSource`), looks the name up across all non-system schemas: exactly one match → schema written, status `resolved`; multiple matches → `ambiguous`; zero → stays `unresolved`. Already-resolved or CTE rows are untouched. Requires a working JDBC connection |
+| `reresolveQueries` | Re-resolve unqualified table references in the runtime index against the live JDBC schema. For every distinct unresolved raw table name in the catalog (scoped to `dataSource`), looks the name up across all non-system schemas: exactly one match → schema filled in the runtime index, status `resolved`; multiple matches → `ambiguous`; zero → stays `unresolved`. Already-resolved or CTE rows are untouched. Requires a working JDBC connection |
 | `listKnownTags` | Tags currently used in the catalog, with query counts. Lets the agent reuse a stable vocabulary across ingest calls |
 | `listKnownDomains` | Same for `businessDomain` values |
 
-**Resolution.** During ingest, table / column qualifiers are resolved cheaply through the
+**Resolution.** During indexing, table / column qualifiers are resolved cheaply through the
 parser's alias map and uppercased for case-insensitive matching. An explicit schema in the SQL
 (`SCHEMA.TABLE`) is preserved verbatim; unqualified references stay schema-less and are written
-with `resolution_status="unresolved"`. Run `reresolveQueries` once to fill in missing schemas
-against the live JDBC database — it does not re-parse SQL, only updates the resolved columns
-across `query_table` / `query_column` / `query_join`.
+with `resolution_status="unresolved"`. Run `reresolveQueries` to fill in missing schemas in the
+runtime index against the live JDBC database. A later `refreshUsageCatalog` rebuilds from JSON and
+will recompute this runtime state.
 
 ### Snapshot / Metadata Cache
 
@@ -347,7 +352,7 @@ user for the strongest guarantee.
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
 - Microsoft SQL Server JDBC 12.8.1
-- SQLite JDBC 3.46.1 (local usage catalog only — not used to talk to the inspected database)
+- H2 in-memory runtime index for the local usage catalog
 - Gradle 9.3.1 with version catalog
 
 ## License
@@ -435,8 +440,12 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_POOL_MIN_IDLE` | no | Hikari minimum idle connections, default `1` |
 | `JDBC_CONNECTION_TIMEOUT_MS` | no | Hikari connection checkout timeout in milliseconds, default `10000` |
 | `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
-| `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog (see *Usage Catalog* above), default `true`. When `false`, ingest tools return `{"kind":"disabled"}` and lookup tools return empty results with `catalog_enabled: false` |
-| `JDBC_USAGE_CATALOG_PATH` | no | Path to the SQLite catalog file. Default: `${user.home}/.jdbc-mcp/usage.db`; the parent directory is created on first use |
+| `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog (see *Usage Catalog* above), default `true`. When `false`, lookup tools return empty results with `catalog_enabled: false` |
+| `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |
+| `JDBC_USAGE_INDEX_ON_STARTUP` | no | Build the runtime usage index on startup, default `true` |
+| `JDBC_USAGE_INDEX_BACKGROUND` | no | Build/refresh the runtime usage index in a background thread, default `true` |
+| `JDBC_USAGE_INDEX_DISK_CACHE_ENABLED` | no | Reserved for derived index cache, default `false` |
+| `JDBC_USAGE_INDEX_CACHE_PATH` | no | Reserved cache location, default `${user.home}/.jdbc-mcp/usage-index-cache` |
 
 The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL,
 `jdbc:oracle:` for Oracle, and `jdbc:sqlserver:` for SQL Server.
@@ -535,8 +544,9 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |   |   +-- OutputFormat.java
 |   |   +-- ResultFormatter.java        - JSON / Markdown / CSV
 |   +-- usage/
-|   |   +-- UsageProperties.java        - catalog enable flag and SQLite path (env-driven)
-|   |   +-- UsageDataSourceConfig.java  - SQLite DataSource (WAL, foreign_keys=ON) + schema init
+|   |   +-- UsageProperties.java        - catalog enable flag and JSON/zip source paths
+|   |   +-- UsageDataSourceConfig.java  - H2 in-memory runtime index + schema init
+|   |   +-- UsageCatalogIndexer.java    - background scanner for directories / JSON files / zip archives
 |   |   +-- UsageUid.java               - build/parse/validate the textual query identifier
 |   |   +-- UsageCatalogService.java    - ingest, lookups, observed-relationships aggregation
 |   |   +-- format/
@@ -549,10 +559,10 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |       +-- StatsTools.java             - tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 |       +-- BenchmarkTools.java         - benchmarkQuery, timedQuery
 |       +-- SchemaContextTools.java     - schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext, schemaGraphDot
-|       +-- UsageTools.java             - ingestQuery, deleteQueriesBySource, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, reresolveQueries, listKnownTags/Domains
+|       +-- UsageTools.java             - usageCatalogStatus, refreshUsageCatalog, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, reresolveQueries, listKnownTags/Domains
 +-- src/main/resources/
     +-- application.yml                 - MCP stdio + JDBC properties
-    +-- usage-catalog-schema.sql        - DDL applied on first start of the SQLite usage catalog
+    +-- usage-catalog-schema.sql        - DDL for the H2 in-memory usage-catalog runtime index
     +-- logback-spring.xml              - logs to stderr because stdout is used by MCP
 ```
 

@@ -33,4 +33,9 @@ jdbc:
 
 usage:
   catalog-enabled: ${JDBC_USAGE_CATALOG_ENABLED:true}
-  catalog-path: ${JDBC_USAGE_CATALOG_PATH:}
+  # Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON.
+  catalog-paths: ${JDBC_USAGE_CATALOG_PATHS:}
+  index-on-startup: ${JDBC_USAGE_INDEX_ON_STARTUP:true}
+  index-background: ${JDBC_USAGE_INDEX_BACKGROUND:true}
+  index-disk-cache-enabled: ${JDBC_USAGE_INDEX_DISK_CACHE_ENABLED:false}
+  index-cache-path: ${JDBC_USAGE_INDEX_CACHE_PATH:}

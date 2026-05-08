@@ -2,7 +2,6 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageDataSourceConfig;
@@ -11,7 +10,6 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
 
 import javax.sql.DataSource;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,16 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class EdgeDecorationTest {
 
-    @TempDir
-    Path tempDir;
-
     private UsageCatalogService usageCatalog;
     private DecorationProbe probe;
 
     @BeforeEach
     void setUp() throws Exception {
-        Path dbFile = tempDir.resolve("usage-decoration.db");
-        UsageProperties properties = new UsageProperties(true, dbFile.toString());
+        UsageProperties properties = new UsageProperties(true, List.of(), false, false, false, "");
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties);
         usageCatalog = new UsageCatalogService(properties, ds, new QueryAnalysisService());
         probe = new DecorationProbe(usageCatalog);
@@ -50,10 +44,12 @@ class EdgeDecorationTest {
 
     @Test
     void decoratesEdgesWithObservedSupportWhenMatchingPairsExist() {
+        List<QueryUsage> usages = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
-            usageCatalog.ingest(simple("SHOP", "obs" + i + ".sql",
+            usages.add(simple("SHOP", "obs" + i + ".sql",
                     "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
         }
+        usageCatalog.rebuild(usages);
         List<Map<String, Object>> edges = new ArrayList<>();
         edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
 
@@ -68,8 +64,8 @@ class EdgeDecorationTest {
 
     @Test
     void appendsObservedOnlyEdgeBetweenDescribedTables() {
-        usageCatalog.ingest(simple("SHOP", "q.sql",
-                "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id"));
+        usageCatalog.rebuild(List.of(simple("SHOP", "q.sql",
+                "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id")));
 
         List<Map<String, Object>> edges = new ArrayList<>();
         probe.run(edges, Set.of("EVENTS", "SESSIONS"), true);
@@ -86,8 +82,8 @@ class EdgeDecorationTest {
 
     @Test
     void doesNotAppendObservedEdgeWhenOtherSideIsOutOfScope() {
-        usageCatalog.ingest(simple("SHOP", "q.sql",
-                "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id"));
+        usageCatalog.rebuild(List.of(simple("SHOP", "q.sql",
+                "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id")));
 
         List<Map<String, Object>> edges = new ArrayList<>();
         probe.run(edges, Set.of("EVENTS"), true); // sessions is not in described scope
@@ -97,10 +93,12 @@ class EdgeDecorationTest {
 
     @Test
     void includeObservedFalseSkipsCatalogEntirelyButStillStampsEvidenceLevel() {
+        List<QueryUsage> usages = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
-            usageCatalog.ingest(simple("SHOP", "obs" + i + ".sql",
+            usages.add(simple("SHOP", "obs" + i + ".sql",
                     "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
         }
+        usageCatalog.rebuild(usages);
         List<Map<String, Object>> edges = new ArrayList<>();
         edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
 

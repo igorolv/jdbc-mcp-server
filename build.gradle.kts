@@ -22,7 +22,8 @@ dependencies {
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.ai.mcp.server)
     implementation(libs.jsqlparser)
-    implementation(libs.sqlite.jdbc)
+    implementation(libs.h2)
+    implementation("com.fasterxml.jackson.core:jackson-databind")
 
     // JDBC drivers bundled into the fat jar
     runtimeOnly(libs.postgresql)
@@ -36,8 +37,6 @@ dependencies {
     testImplementation(libs.testcontainers.oracle.free)
     testImplementation(libs.testcontainers.mssqlserver)
     testImplementation(libs.commons.lang3)
-    testImplementation("com.fasterxml.jackson.core:jackson-databind")
-
     // Force all testcontainers modules to 1.20.4 to avoid version conflicts
     testImplementation("org.testcontainers:testcontainers:1.20.4")
     testImplementation("org.testcontainers:database-commons:1.20.4")

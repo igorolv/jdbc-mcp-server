@@ -9,9 +9,8 @@ import java.util.Map;
 /**
  * Canonical query-usage record consumed by the usage catalog.
  *
- * <p>This is the source-agnostic public format of the JDBC MCP server. The MCP
- * {@code ingestQuery} tool is one transport for the same contract; file/stdin bulk loaders should
- * deserialize this type and pass it to the same ingestion service.
+ * <p>This is the source-agnostic public format of the JDBC MCP server. Usage catalog source
+ * directories and zip archives contain JSON documents in this shape.
  *
  * <p>Identity is derived from {@code (dataSource, source.path, source.unit)} into a single textual
  * uid. Re-ingesting the same UID replaces child rows in one transaction.

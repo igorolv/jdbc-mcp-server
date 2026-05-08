@@ -6,28 +6,26 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
-import org.sqlite.SQLiteConfig;
-import org.sqlite.SQLiteDataSource;
+import org.h2.jdbcx.JdbcDataSource;
 
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.UUID;
 
 /**
- * Builds the SQLite-backed {@link DataSource} for the usage catalog and initialises the schema.
+ * Builds the H2 in-memory {@link DataSource} used as the runtime usage-catalog index.
  *
  * <p>The bean is published unconditionally to keep wiring simple; whether the catalog actually
  * accepts ingest requests is decided by {@link UsageProperties#catalogEnabled()} inside the
  * service layer.
  *
- * <p>SQLite is configured with foreign-key enforcement and WAL journal mode so that read-side
- * tools (which do not modify the catalog) can run concurrently with an ongoing ingest call.
+ * <p>The source of truth is the configured set of query-usage JSON files. This database is only a
+ * rebuildable in-memory index over those files.
  */
 @Configuration
 @EnableConfigurationProperties(UsageProperties.class)
@@ -39,23 +37,14 @@ public class UsageDataSourceConfig {
 
     @Bean
     public DataSource usageDataSource(UsageProperties properties) throws IOException, SQLException {
-        Path file = properties.resolvedCatalogPath().toAbsolutePath();
-        Path parent = file.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-
-        SQLiteConfig sqliteConfig = new SQLiteConfig();
-        sqliteConfig.enforceForeignKeys(true);
-        sqliteConfig.setJournalMode(SQLiteConfig.JournalMode.WAL);
-        sqliteConfig.setSynchronous(SQLiteConfig.SynchronousMode.NORMAL);
-
-        SQLiteDataSource ds = new SQLiteDataSource(sqliteConfig);
-        ds.setUrl("jdbc:sqlite:" + file);
+        JdbcDataSource ds = new JdbcDataSource();
+        ds.setURL("jdbc:h2:mem:usage_catalog_" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1");
 
         initialiseSchema(ds);
 
-        log.info("Usage catalog ready at {} (enabled={})", file, properties.catalogEnabled());
+        log.info("Usage catalog runtime index ready (enabled={}, sources={})",
+                properties.catalogEnabled(), properties.resolvedCatalogPaths());
         return ds;
     }
 

@@ -2,7 +2,6 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageConfidence;
@@ -16,7 +15,6 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageTransformation;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageTransformationKind;
 
 import javax.sql.DataSource;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -25,21 +23,17 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 class UsageCatalogServiceTest {
 
-    @TempDir
-    Path tempDir;
-
     private UsageCatalogService service;
 
     @BeforeEach
     void setUp() throws Exception {
-        Path dbFile = tempDir.resolve("usage-test.db");
-        UsageProperties properties = new UsageProperties(true, dbFile.toString());
+        UsageProperties properties = new UsageProperties(true, List.of(), false, false, false, "");
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties);
         service = new UsageCatalogService(properties, ds, new QueryAnalysisService());
     }
 
     @Test
-    void ingestParsedQueryExtractsTablesColumnsAndJoinPairs() {
+    void rebuildParsedQueryExtractsTablesColumnsAndJoinPairs() {
         String sql = """
                 SELECT c.name, o.id
                 FROM customers c
@@ -48,15 +42,15 @@ class UsageCatalogServiceTest {
                 """;
         QueryUsage req = baseRequest("SHOP", "app/dao/CustomerOrders.java", "findOrders", sql);
 
-        Map<String, Object> result = service.ingest(req);
+        Map<String, Object> result = service.rebuild(List.of(req));
 
-        assertThat(result.get("uid")).isEqualTo("SHOP/app/dao/CustomerOrders.java#findOrders");
-        assertThat(result.get("parseStatus")).isEqualTo("parsed");
+        assertThat(result.get("recordsLoaded")).isEqualTo(1);
+        assertThat(result.get("parseFailed")).isEqualTo(0);
         assertThat(result.get("tablesExtracted")).isEqualTo(2);
         assertThat((Integer) result.get("columnsExtracted")).isGreaterThanOrEqualTo(4);
         assertThat(result.get("joinPairsExtracted")).isEqualTo(1);
 
-        Map<String, Object> stored = service.getQuery((String) result.get("uid"));
+        Map<String, Object> stored = service.getQuery("SHOP/app/dao/CustomerOrders.java#findOrders");
         assertThat(asList(stored, "tables"))
                 .extracting(row -> row.get("tableResolved"))
                 .contains("CUSTOMERS", "ORDERS");
@@ -75,7 +69,7 @@ class UsageCatalogServiceTest {
     }
 
     @Test
-    void ingestRejectsUnsupportedSchemaVersion() {
+    void rebuildRejectsUnsupportedSchemaVersion() {
         QueryUsage req = new QueryUsage(
                 2,
                 "SHOP",
@@ -90,12 +84,12 @@ class UsageCatalogServiceTest {
                 null);
 
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> service.ingest(req))
+                .isThrownBy(() -> service.rebuild(List.of(req)))
                 .withMessage("schemaVersion must be 1");
     }
 
     @Test
-    void ingestStoresParametersOutputsAndFieldUsages() {
+    void rebuildStoresParametersOutputsAndFieldUsages() {
         String sql = "SELECT c.name AS cust_name FROM customers c WHERE c.id = :customerId";
         QueryUsage req = new QueryUsage(
                 "SHOP",
@@ -117,7 +111,7 @@ class UsageCatalogServiceTest {
                         QueryUsageConfidence.HIGH)),
                 Map.of("origin", "manual"));
 
-        service.ingest(req);
+        service.rebuild(List.of(req));
 
         Map<String, Object> stored = service.getQuery("SHOP/CustomerDao.java#findOne");
 
@@ -151,16 +145,15 @@ class UsageCatalogServiceTest {
     }
 
     @Test
-    void reIngestReplacesChildRows() {
+    void rebuildReplacesPreviousRows() {
         String sqlV1 = "SELECT id FROM customers WHERE id = :id";
         String sqlV2 = "SELECT id, name, status FROM customers WHERE id = :id";
         QueryUsageSource source = new QueryUsageSource("dao", "CustomerDao.java", "findOne");
 
-        Map<String, Object> v1 = service.ingest(buildRequest("SHOP", source, sqlV1));
-        Map<String, Object> v2 = service.ingest(buildRequest("SHOP", source, sqlV2));
+        service.rebuild(List.of(buildRequest("SHOP", source, sqlV1)));
+        service.rebuild(List.of(buildRequest("SHOP", source, sqlV2)));
 
-        assertThat(v1.get("uid")).isEqualTo(v2.get("uid"));
-        Map<String, Object> stored = service.getQuery((String) v2.get("uid"));
+        Map<String, Object> stored = service.getQuery("SHOP/CustomerDao.java#findOne");
         assertThat(stored.get("rawSql")).isEqualTo(sqlV2);
         // v1 referenced one column (id); v2 references three; child rows must be replaced, not appended.
         assertThat((List<?>) stored.get("columns")).hasSizeGreaterThanOrEqualTo(3);
@@ -186,11 +179,12 @@ class UsageCatalogServiceTest {
                         null, null, null)),
                 null);
 
-        Map<String, Object> result = service.ingest(req);
+        Map<String, Object> result = service.rebuild(List.of(req));
 
-        assertThat(result.get("parseStatus")).isEqualTo("failed");
-        assertThat(result.get("parseError")).isNotNull();
-        Map<String, Object> stored = service.getQuery((String) result.get("uid"));
+        assertThat(result.get("parseFailed")).isEqualTo(1);
+        Map<String, Object> stored = service.getQuery("SHOP/broken.sql");
+        assertThat(stored.get("parseStatus")).isEqualTo("failed");
+        assertThat(stored.get("parseError")).isNotNull();
         assertThat(asList(stored, "parameters")).hasSize(1);
         assertThat(asList(stored, "outputs")).hasSize(1);
         assertThat(asList(stored, "fieldUsages")).hasSize(1);
@@ -198,8 +192,9 @@ class UsageCatalogServiceTest {
 
     @Test
     void findQueriesByTableIsCaseInsensitive() {
-        service.ingest(buildSimple("SHOP", "a.sql", "SELECT * FROM Customers WHERE id = 1"));
-        service.ingest(buildSimple("SHOP", "b.sql", "SELECT * FROM ORDERS WHERE id = 1"));
+        service.rebuild(List.of(
+                buildSimple("SHOP", "a.sql", "SELECT * FROM Customers WHERE id = 1"),
+                buildSimple("SHOP", "b.sql", "SELECT * FROM ORDERS WHERE id = 1")));
 
         Map<String, Object> byLower = service.findQueriesByTable(null, "customers");
         assertThat(byLower.get("count")).isEqualTo(1);
@@ -212,8 +207,8 @@ class UsageCatalogServiceTest {
 
     @Test
     void findQueriesByColumnReportsContext() {
-        service.ingest(buildSimple("SHOP", "a.sql",
-                "SELECT name FROM customers WHERE status = 'A' ORDER BY name"));
+        service.rebuild(List.of(buildSimple("SHOP", "a.sql",
+                "SELECT name FROM customers WHERE status = 'A' ORDER BY name")));
 
         Map<String, Object> nameMatches = service.findQueriesByColumn(null, "customers", "name");
         assertThat(asList(nameMatches, "matches"))
@@ -228,12 +223,13 @@ class UsageCatalogServiceTest {
 
     @Test
     void observedRelationshipsAggregatesAcrossQueries() {
-        service.ingest(buildSimple("SHOP", "q1.sql",
-                "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
-        service.ingest(buildSimple("SHOP", "q2.sql",
-                "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.id = 1"));
-        service.ingest(buildSimple("SHOP", "q3.sql",
-                "SELECT * FROM payments p JOIN customers c ON p.customer_id = c.id"));
+        service.rebuild(List.of(
+                buildSimple("SHOP", "q1.sql",
+                        "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"),
+                buildSimple("SHOP", "q2.sql",
+                        "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.id = 1"),
+                buildSimple("SHOP", "q3.sql",
+                        "SELECT * FROM payments p JOIN customers c ON p.customer_id = c.id")));
 
         Map<String, Object> all = service.observedRelationships(null, null, 1);
         assertThat(asList(all, "relationships")).hasSize(2);
@@ -248,22 +244,6 @@ class UsageCatalogServiceTest {
     }
 
     @Test
-    void deleteBySourceFiltersAreOptional() {
-        service.ingest(buildSimple("SHOP", "a.sql", "SELECT id FROM customers"));
-        service.ingest(buildSimple("SHOP", "b.sql", "SELECT id FROM orders"));
-        service.ingest(buildSimple("OTHER", "a.sql", "SELECT id FROM products"));
-
-        Map<String, Object> deletedNarrow = service.deleteBySource("SHOP", "a.sql", null);
-        assertThat(deletedNarrow.get("deleted")).isEqualTo(1);
-
-        Map<String, Object> deletedWide = service.deleteBySource("SHOP", null, null);
-        assertThat(deletedWide.get("deleted")).isEqualTo(1); // only b.sql remained for SHOP
-
-        Map<String, Object> remaining = service.listQueries(null, null, null, null, null, null, null, null);
-        assertThat(remaining.get("count")).isEqualTo(1);
-    }
-
-    @Test
     void listKnownTagsAndDomainsAggregateCounts() {
         QueryUsage req1 = new QueryUsage(
                 "SHOP", new QueryUsageSource("dao", "a.sql", null),
@@ -273,8 +253,7 @@ class UsageCatalogServiceTest {
                 "SHOP", new QueryUsageSource("dao", "b.sql", null),
                 null, "Customers", List.of("customer", "vip"),
                 "SELECT 1 FROM dual", null, null, null, null);
-        service.ingest(req1);
-        service.ingest(req2);
+        service.rebuild(List.of(req1, req2));
 
         Map<String, Object> tags = service.listKnownTags("SHOP");
         assertThat(asList(tags, "tags"))
@@ -302,18 +281,19 @@ class UsageCatalogServiceTest {
                 null);
 
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> service.ingest(req))
+                .isThrownBy(() -> service.rebuild(List.of(req)))
                 .withMessageContaining("transformation.kind");
     }
 
     @Test
     void observedEdgesReturnsTypedAggregates() {
-        service.ingest(buildSimple("SHOP", "q1.sql",
-                "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
-        service.ingest(buildSimple("SHOP", "q2.sql",
-                "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
-        service.ingest(buildSimple("SHOP", "q3.sql",
-                "SELECT * FROM payments p JOIN customers c ON p.customer_id = c.id"));
+        service.rebuild(List.of(
+                buildSimple("SHOP", "q1.sql",
+                        "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"),
+                buildSimple("SHOP", "q2.sql",
+                        "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"),
+                buildSimple("SHOP", "q3.sql",
+                        "SELECT * FROM payments p JOIN customers c ON p.customer_id = c.id")));
 
         java.util.List<UsageCatalogService.ObservedEdge> all = service.observedEdges(null, 1);
         assertThat(all).hasSize(2);
@@ -330,10 +310,11 @@ class UsageCatalogServiceTest {
 
     @Test
     void reresolveFillsSchemaWhenLookupReturnsExactlyOneMatch() {
-        service.ingest(buildSimple("SHOP", "q1.sql",
-                "SELECT name FROM customers WHERE id = :id"));
-        service.ingest(buildSimple("SHOP", "q2.sql",
-                "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
+        service.rebuild(List.of(
+                buildSimple("SHOP", "q1.sql",
+                        "SELECT name FROM customers WHERE id = :id"),
+                buildSimple("SHOP", "q2.sql",
+                        "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id")));
 
         Map<String, Object> result = service.reresolve("SHOP", name -> {
             List<String[]> matches = new java.util.ArrayList<>();
@@ -365,7 +346,7 @@ class UsageCatalogServiceTest {
 
     @Test
     void reresolveMarksAmbiguousWhenMultipleMatchesFound() {
-        service.ingest(buildSimple("SHOP", "q.sql", "SELECT id FROM orders"));
+        service.rebuild(List.of(buildSimple("SHOP", "q.sql", "SELECT id FROM orders")));
 
         Map<String, Object> result = service.reresolve("SHOP", name -> {
             List<String[]> matches = new java.util.ArrayList<>();
@@ -385,7 +366,7 @@ class UsageCatalogServiceTest {
 
     @Test
     void reresolveLeavesUnresolvedWhenLookupReturnsNothing() {
-        service.ingest(buildSimple("SHOP", "q.sql", "SELECT id FROM orders"));
+        service.rebuild(List.of(buildSimple("SHOP", "q.sql", "SELECT id FROM orders")));
 
         Map<String, Object> result = service.reresolve("SHOP", name -> new java.util.ArrayList<>());
 

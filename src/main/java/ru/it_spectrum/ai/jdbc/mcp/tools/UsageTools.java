@@ -4,12 +4,8 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogIndexer;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
-import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
-import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageFieldUsage;
-import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutput;
-import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageParameter;
-import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,94 +13,39 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MCP tools for the local usage catalog: a SQLite-backed store of known SQL queries used by
- * applications and reports against the inspected database, together with their business context.
- *
- * <p>Writes are local-only (the inspected JDBC database is never modified). The catalog is fed
- * by external callers — typically an AI agent that walks a source artifact (BI Publisher report
- * directory, DAO source, dashboard export) and synthesises rich payloads for ingest.
+ * MCP tools for the local usage catalog: a file-backed set of known SQL queries used by
+ * applications and reports against the inspected database, indexed into a runtime H2 store
+ * together with their business context.
  */
 @Service
 public class UsageTools {
 
-    private static final String INGEST_DESCRIPTION =
-            "Ingest one query into the local usage catalog. The catalog stores queries used by "
-            + "applications/reports against the inspected database, together with their business "
-            + "context (parameters, output columns, where each output is rendered). The server "
-            + "parses the SQL with JSqlParser and persists tables/columns/equi-join pairs as facts; "
-            + "the caller adds the semantic layer.\n"
-            + "\n"
-            + "Identity: a uid is built from (dataSource, source.path, source.unit) as "
-            + "'{dataSource}/{source.path}#{source.unit}' (the '#unit' suffix is omitted when "
-            + "source.unit is empty). Re-ingest with the same uid replaces all child rows in one "
-            + "transaction. dataSource and source.unit must not contain '/' or '#'; source.path "
-            + "must not contain '#'. Parsing failures are tolerated — the row is stored with "
-            + "parseStatus='failed' so business metadata is not lost.\n"
-            + "\n"
-            + "The shape of source/parameters/outputs/fieldUsages is described by the JSON schema "
-            + "of each parameter (field names, types, enum values, descriptions). Only dataSource, "
-            + "source (kind+path), and sql are required; everything else is optional.";
-
     private final UsageCatalogService service;
     private final MetadataService metadata;
+    private final UsageCatalogIndexer indexer;
 
-    public UsageTools(UsageCatalogService service, MetadataService metadata) {
+    public UsageTools(UsageCatalogService service, MetadataService metadata, UsageCatalogIndexer indexer) {
         this.service = service;
         this.metadata = metadata;
+        this.indexer = indexer;
     }
 
-    @McpTool(description = INGEST_DESCRIPTION)
-    public String ingestQuery(
-            @McpToolParam(description = "Logical database identifier scoping this query (e.g. 'SHOP'). Must not contain '/' or '#'.") String dataSource,
-            @McpToolParam(description = "Where this query comes from: kind/path/unit.") QueryUsageSource source,
-            @McpToolParam(description = "SQL text. Named (':name') or positional ('?') bindings.") String sql,
-            @McpToolParam(description = "Short business label of this query (for listings).", required = false) String businessLabel,
-            @McpToolParam(description = "Business domain/area for grouping (free-text; see listKnownDomains).", required = false) String businessDomain,
-            @McpToolParam(description = "Discovery tags (free-text; see listKnownTags).", required = false) List<String> businessTags,
-            @McpToolParam(description = "Parameters with optional business descriptions.", required = false) List<QueryUsageParameter> parameters,
-            @McpToolParam(description = "Output columns of the query with their business meaning and (optionally) the underlying physical columns they are derived from.", required = false) List<QueryUsageOutput> outputs,
-            @McpToolParam(description = "Where in the consuming artifact each output is displayed (Excel cell, RTF region, dashboard widget, …) including transformation kind.", required = false) List<QueryUsageFieldUsage> fieldUsages,
-            @McpToolParam(description = "Arbitrary JSON blob preserved verbatim for audit (the original source artifact, etc.).", required = false) Map<String, Object> sourceMeta
-    ) {
-        if (!service.enabled()) return disabled("ingestQuery");
+    @McpTool(description = "Return the runtime usage-catalog index status: configured JSON/zip sources, indexing state, record counts, parse failures, duplicate UIDs and load errors.")
+    public String usageCatalogStatus() {
+        return JsonWriter.write(indexer.status());
+    }
+
+    @McpTool(description = "Refresh the runtime usage-catalog index from the configured directories, JSON files, and zip archives. When background indexing is enabled this starts a rebuild and returns the current status immediately.")
+    public String refreshUsageCatalog() {
+        if (!service.enabled()) return disabled("refreshUsageCatalog");
         try {
-            QueryUsage req = new QueryUsage(
-                    dataSource,
-                    source,
-                    businessLabel,
-                    businessDomain,
-                    businessTags,
-                    sql,
-                    parameters,
-                    outputs,
-                    fieldUsages,
-                    sourceMeta
-            );
-            return JsonWriter.write(service.ingest(req));
-        } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return JsonWriter.write(indexer.refresh());
         } catch (RuntimeException e) {
             return ToolErrors.unexpected(e);
         }
     }
 
-    @McpTool(description = "Delete usage-catalog records by source. Useful before a bulk re-ingest of a directory: pass dataSource alone to wipe everything for a logical DB, or narrow with sourcePath / sourceUnit. Returns the number of deleted query rows; child rows are removed via cascade.")
-    public String deleteQueriesBySource(
-            @McpToolParam(description = "Logical database identifier (required).") String dataSource,
-            @McpToolParam(description = "Optional exact source path filter.", required = false) String sourcePath,
-            @McpToolParam(description = "Optional exact source unit filter (use empty string '' to match records without a unit).", required = false) String sourceUnit
-    ) {
-        if (!service.enabled()) return disabled("deleteQueriesBySource");
-        try {
-            return JsonWriter.write(service.deleteBySource(dataSource, sourcePath, sourceUnit));
-        } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
-        } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
-        }
-    }
-
-    @McpTool(description = "Return the full usage-catalog record for one query: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns) and field usages. Pass the uid returned by ingestQuery, or compose it as '{dataSource}/{path}#{unit}'.")
+    @McpTool(description = "Return the full usage-catalog record for one query: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns) and field usages. Compose uid as '{dataSource}/{path}#{unit}' (without '#unit' when there is no unit).")
     public String getQuery(
             @McpToolParam(description = "Query uid. Format: '{dataSource}/{source.path}#{source.unit}' (without '#unit' when there is no unit).") String uid
     ) {

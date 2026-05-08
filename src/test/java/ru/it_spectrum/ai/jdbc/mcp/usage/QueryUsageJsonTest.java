@@ -16,9 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Pins the JSON contract of {@link QueryUsage}. The same type is deserialised both by the MCP
- * runtime (when the {@code ingestQuery} tool is invoked) and by any future bulk loader that reads
- * JSONL/JSON files into the catalog — a single source of truth for the payload shape.
+ * Pins the JSON contract of {@link QueryUsage}. The same type is deserialised when usage JSON
+ * files are scanned into the runtime catalog index.
  */
 class QueryUsageJsonTest {
 

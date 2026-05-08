@@ -1,8 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import net.sf.jsqlparser.JSQLParserException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService.QueryModel;
@@ -35,8 +33,7 @@ import java.util.Set;
  *
  * <p>Responsibilities:
  * <ul>
- *   <li>Ingest a single query record (parse SQL via {@link QueryAnalysisService}, persist parser
- *       facts plus caller-provided semantics in one transaction, with upsert by uid).</li>
+ *   <li>Rebuild the runtime index from canonical {@link QueryUsage} records loaded from files.</li>
  *   <li>Read-side lookups used by the {@code findQueriesBy*} and {@code observedRelationships}
  *       MCP tools.</li>
  * </ul>
@@ -47,8 +44,6 @@ import java.util.Set;
  */
 @Service
 public class UsageCatalogService {
-
-    private static final Logger log = LoggerFactory.getLogger(UsageCatalogService.class);
 
     private final UsageProperties properties;
     private final DataSource catalogDs;
@@ -67,62 +62,67 @@ public class UsageCatalogService {
     }
 
     // ---------------------------------------------------------------------------------------
-    //  Ingest
+    //  Rebuild
     // ---------------------------------------------------------------------------------------
 
-    public Map<String, Object> ingest(QueryUsage req) {
-        validateRequest(req);
-        QueryUsageSource src = req.source();
-        String unit = src.unit() == null ? "" : src.unit();
-        String uid = UsageUid.build(req.dataSource(), src.path(), unit);
-
-        QueryModel model;
-        String parseStatus;
-        String parseError = null;
-        try {
-            model = analysis.model(req.sql());
-            parseStatus = "parsed";
-        } catch (JSQLParserException | RuntimeException e) {
-            model = new QueryModel();
-            parseStatus = "failed";
-            parseError = rootMessage(e);
-            log.debug("ingestQuery: parse failed for uid={} ({})", uid, parseError);
+    public Map<String, Object> rebuild(List<QueryUsage> records) {
+        if (!enabled()) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("catalog_enabled", false);
+            body.put("recordsLoaded", 0);
+            return body;
         }
-
+        List<QueryUsage> safeRecords = records == null ? List.of() : records;
         Counters counters = new Counters();
+        int parseFailed = 0;
+        Set<String> seen = new LinkedHashSet<>();
+        long started = System.currentTimeMillis();
         try (Connection conn = catalogDs.getConnection()) {
             conn.setAutoCommit(false);
             try {
-                deleteByUid(conn, uid);
-                insertQuery(conn, uid, req, src, unit, model, parseStatus, parseError);
-                insertTags(conn, uid, req.businessTags());
-                counters.paramsStored = insertParams(conn, uid, model, req.parameters());
-                List<TableInsertResult> tableInserts = insertTables(conn, uid, model);
-                counters.tablesExtracted = tableInserts.size();
-                counters.columnsExtracted = insertColumns(conn, uid, model, tableInserts);
-                counters.joinPairsExtracted = insertJoinPairs(conn, uid, model);
-                Map<String, Long> outputAliasToId = insertOutputs(conn, uid, req.outputs());
-                counters.outputsStored = outputAliasToId.size();
-                counters.fieldUsagesStored = insertFieldUsages(conn, uid, req.fieldUsages(), outputAliasToId);
+                clearAll(conn);
+                for (QueryUsage req : safeRecords) {
+                    validateRequest(req);
+                    QueryUsageSource src = req.source();
+                    String unit = src.unit() == null ? "" : src.unit();
+                    String uid = UsageUid.build(req.dataSource(), src.path(), unit);
+                    if (!seen.add(uid)) {
+                        throw new IllegalArgumentException("duplicate query uid: " + uid);
+                    }
+
+                    QueryModel model;
+                    String parseStatus;
+                    String parseError = null;
+                    try {
+                        model = analysis.model(req.sql());
+                        parseStatus = "parsed";
+                    } catch (JSQLParserException | RuntimeException e) {
+                        model = new QueryModel();
+                        parseStatus = "failed";
+                        parseError = rootMessage(e);
+                        parseFailed++;
+                    }
+                    insertAnalyzed(conn, uid, req, src, unit, model, parseStatus, parseError, counters);
+                }
                 conn.commit();
             } catch (SQLException | RuntimeException e) {
                 conn.rollback();
                 throw e;
             }
         } catch (SQLException e) {
-            throw new IllegalStateException("Failed to write usage catalog: " + e.getMessage(), e);
+            throw new IllegalStateException("Failed to rebuild usage catalog index: " + e.getMessage(), e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("uid", uid);
-        out.put("parseStatus", parseStatus);
-        if (parseError != null) out.put("parseError", parseError);
+        out.put("recordsLoaded", safeRecords.size());
+        out.put("parseFailed", parseFailed);
         out.put("paramsStored", counters.paramsStored);
         out.put("tablesExtracted", counters.tablesExtracted);
         out.put("columnsExtracted", counters.columnsExtracted);
         out.put("joinPairsExtracted", counters.joinPairsExtracted);
         out.put("outputsStored", counters.outputsStored);
         out.put("fieldUsagesStored", counters.fieldUsagesStored);
+        out.put("indexBuildMs", System.currentTimeMillis() - started);
         return out;
     }
 
@@ -157,11 +157,26 @@ public class UsageCatalogService {
         }
     }
 
-    private void deleteByUid(Connection conn, String uid) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM query WHERE uid = ?")) {
-            ps.setString(1, uid);
+    private void clearAll(Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM query")) {
             ps.executeUpdate();
         }
+    }
+
+    private void insertAnalyzed(Connection conn, String uid, QueryUsage req,
+                                QueryUsageSource src, String unit, QueryModel model,
+                                String parseStatus, String parseError,
+                                Counters counters) throws SQLException {
+        insertQuery(conn, uid, req, src, unit, model, parseStatus, parseError);
+        insertTags(conn, uid, req.businessTags());
+        counters.paramsStored += insertParams(conn, uid, model, req.parameters());
+        List<TableInsertResult> tableInserts = insertTables(conn, uid, model);
+        counters.tablesExtracted += tableInserts.size();
+        counters.columnsExtracted += insertColumns(conn, uid, model, tableInserts);
+        counters.joinPairsExtracted += insertJoinPairs(conn, uid, model);
+        Map<String, Long> outputAliasToId = insertOutputs(conn, uid, req.outputs());
+        counters.outputsStored += outputAliasToId.size();
+        counters.fieldUsagesStored += insertFieldUsages(conn, uid, req.fieldUsages(), outputAliasToId);
     }
 
     private void insertQuery(Connection conn, String uid, QueryUsage req,
@@ -194,12 +209,15 @@ public class UsageCatalogService {
 
     private void insertTags(Connection conn, String uid, List<String> tags) throws SQLException {
         if (tags == null || tags.isEmpty()) return;
-        String sql = "INSERT OR IGNORE INTO query_tag (query_uid, tag) VALUES (?, ?)";
+        String sql = "INSERT INTO query_tag (query_uid, tag) VALUES (?, ?)";
+        Set<String> uniqueTags = new LinkedHashSet<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             for (String tag : tags) {
                 if (tag == null || tag.isBlank()) continue;
+                String cleanTag = tag.trim();
+                if (!uniqueTags.add(cleanTag)) continue;
                 ps.setString(1, uid);
-                ps.setString(2, tag.trim());
+                ps.setString(2, cleanTag);
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -394,7 +412,7 @@ public class UsageCatalogService {
                 ) VALUES (?, ?, ?, ?, ?)
                 """;
         String columnSql = """
-                INSERT OR IGNORE INTO query_output_column (
+                INSERT INTO query_output_column (
                     query_output_id, schema_resolved, table_resolved, column_name
                 ) VALUES (?, ?, ?, ?)
                 """;
@@ -416,12 +434,18 @@ public class UsageCatalogService {
                 }
                 aliasToId.put(out.alias(), outputId);
                 if (out.derivedFromColumns() != null) {
+                    Set<String> uniqueColumns = new LinkedHashSet<>();
                     for (QueryUsageOutputColumn oc : out.derivedFromColumns()) {
                         if (oc == null || oc.column() == null || oc.column().isBlank()) continue;
+                        String schema = oc.schema() == null ? null : oc.schema().toUpperCase(Locale.ROOT);
+                        String table = oc.table() == null ? null : oc.table().toUpperCase(Locale.ROOT);
+                        String column = oc.column().toUpperCase(Locale.ROOT);
+                        String key = schema + "\u0000" + table + "\u0000" + column;
+                        if (!uniqueColumns.add(key)) continue;
                         pc.setLong(1, outputId);
-                        pc.setString(2, oc.schema() == null ? null : oc.schema().toUpperCase(Locale.ROOT));
-                        pc.setString(3, oc.table() == null ? null : oc.table().toUpperCase(Locale.ROOT));
-                        pc.setString(4, oc.column().toUpperCase(Locale.ROOT));
+                        pc.setString(2, schema);
+                        pc.setString(3, table);
+                        pc.setString(4, column);
                         pc.addBatch();
                     }
                 }
@@ -468,34 +492,6 @@ public class UsageCatalogService {
     // ---------------------------------------------------------------------------------------
     //  Read side
     // ---------------------------------------------------------------------------------------
-
-    public Map<String, Object> deleteBySource(String dataSource, String sourcePath, String sourceUnit) {
-        if (dataSource == null || dataSource.isBlank()) {
-            throw new IllegalArgumentException("dataSource is required");
-        }
-        StringBuilder sql = new StringBuilder("DELETE FROM query WHERE data_source = ?");
-        List<Object> args = new ArrayList<>();
-        args.add(dataSource);
-        if (sourcePath != null && !sourcePath.isBlank()) {
-            sql.append(" AND source_path = ?");
-            args.add(sourcePath);
-        }
-        if (sourceUnit != null) {
-            sql.append(" AND source_unit = ?");
-            args.add(sourceUnit);
-        }
-        int deleted;
-        try (Connection conn = catalogDs.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
-            deleted = ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new IllegalStateException("Failed to delete usage records: " + e.getMessage(), e);
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("deleted", deleted);
-        return out;
-    }
 
     public Map<String, Object> getQuery(String uid) {
         if (uid == null || uid.isBlank()) throw new IllegalArgumentException("uid is required");
@@ -703,7 +699,7 @@ public class UsageCatalogService {
                     left_schema, left_table, left_column,
                     right_schema, right_table, right_column,
                     COUNT(*) AS support,
-                    GROUP_CONCAT(query_uid, '|') AS uids
+                    STRING_AGG(query_uid, '|') AS uids
                 FROM query_join
                 WHERE equality = 1
                   AND left_table IS NOT NULL AND right_table IS NOT NULL
@@ -789,7 +785,7 @@ public class UsageCatalogService {
                     left_schema, left_table, left_column,
                     right_schema, right_table, right_column,
                     COUNT(*) AS support,
-                    GROUP_CONCAT(query_uid, '|') AS uids
+                    STRING_AGG(query_uid, '|') AS uids
                 FROM query_join
                 WHERE equality = 1
                   AND left_table IS NOT NULL AND right_table IS NOT NULL

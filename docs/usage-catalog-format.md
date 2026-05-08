@@ -98,7 +98,7 @@ Closed enums are used only where the server needs stable behavior:
 
 ## Loading
 
-The MCP `ingestQuery` tool accepts the same logical shape for a single record, but MCP is only one
-transport. Bulk loading should deserialize canonical records and pass them to the same internal
-ingestion service. Source-specific adapters should output canonical records; they do not need to
-be part of this project.
+The source of truth is a set of JSON files in this format. Configure the server with one or more
+directories, individual JSON files, or zip archives; it scans them on startup and builds a runtime
+usage index. Source-specific adapters should output canonical records; they do not need to be part
+of this project.
