@@ -100,7 +100,7 @@ context in one call: tables, columns, relationships, constraints, and sample row
 | `schemaBrief` | Compact text summary of a schema: hub tables, fact/detail tables, lookup/reference tables, key relationships, enum-like CHECK columns, and brief table notes. Useful when full JSON would be too verbose. Parameters: `schema`, `terms` (optional substring search), `maxTables` |
 | `schemaGraph` | Schema relationship graph metrics: nodes with in/out degree and classification, edges, central tables, isolated tables, connected components, and cycle hints. Optionally includes the shortest path between two tables |
 | `schemaLint` | Schema lint audit: missing primary keys, FKs without indexes, FK type mismatches, nullable unique constraints, status/type columns without CHECK constraints, orphan `*_id` columns, missing remarks, isolated tables, and wide tables. Checks are configurable through `checks` |
-| `queryContext` | Build compact SQL-authoring context from search terms and/or explicit tables. Finds relevant tables and columns, includes constraints and allowed values, relationships and JOIN paths between selected tables, and optionally sample rows (up to 3 per table) |
+| `queryContext` | Build compact SQL-authoring context from search terms and/or explicit tables. Finds relevant tables and columns using declared schema names/comments plus usage-catalog semantic evidence when available, includes constraints and allowed values, relationships and JOIN paths between selected tables, and optionally sample rows (up to 3 per table) |
 | `schemaGraphDot` | DOT/Graphviz representation of the schema relationship graph. Nodes are tables with all columns and types (`PK` and `FK` marked inline), edges include JOIN conditions. Parameters: `schema`, `tables` (optional comma-separated filter) |
 
 #### Edge evidence
@@ -157,6 +157,12 @@ In `tableContext`, the existing table fields are the compact `declared_schema` v
 
 The server treats this as evidence, not as a single canonical business model. Different queries
 may legitimately attach different business roles to the same physical table or column.
+
+`queryContext` also uses `semantic_usage` as a discovery signal. When the user passes natural
+language `terms`, the server searches usage-catalog domains, tags, query labels, output labels and
+business objects. Matching tables are returned in `semanticMatches` and are considered before the
+fallback name/comment scan over live schema metadata. This lets terms such as "payer" find a
+physical `CUSTOMERS` table when existing reports expose `customers.name` as "Payer name".
 
 ### Usage Catalog
 

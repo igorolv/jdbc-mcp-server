@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
@@ -214,6 +215,57 @@ class UsageCatalogServiceTest {
         assertThat(asEvidenceValues(semantic, "businessTags")).contains("customer", "invoice");
         assertThat(asEvidenceValues(semantic, "outputLabels")).contains("Customer name", "Payer name");
         assertThat(asEvidenceValues(semantic, "businessObjects")).contains("Customer card", "Invoice payer");
+    }
+
+    @Test
+    void semanticTableCandidatesFindTablesByBusinessTerms() {
+        QueryUsage payerReport = new QueryUsage(
+                "SHOP",
+                new QueryUsageSource("report", "InvoiceReport.json", "header"),
+                "Invoice payer header",
+                "Billing",
+                List.of("invoice", "payer"),
+                "SELECT c.name AS payer_name FROM customers c JOIN orders o ON o.customer_id = c.id",
+                null,
+                List.of(new QueryUsageOutput("payer_name", "c.name", "Payer name", null,
+                        List.of(new QueryUsageOutputColumn(null, "customers", "name")))),
+                List.of(new QueryUsageFieldUsage(
+                        "payer_name",
+                        "Invoice payer",
+                        new QueryUsageTransformation(QueryUsageTransformationKind.IDENTITY, null),
+                        null,
+                        null,
+                        QueryUsageConfidence.HIGH)),
+                null);
+        QueryUsage inventoryReport = new QueryUsage(
+                "SHOP",
+                new QueryUsageSource("report", "InventoryReport.json", "main"),
+                "Warehouse stock",
+                "Inventory",
+                List.of("stock"),
+                "SELECT id FROM products",
+                null,
+                null,
+                null,
+                null);
+
+        service.rebuild(List.of(payerReport, inventoryReport));
+
+        List<SemanticTableCandidate> candidates = service.semanticTableCandidates(null, "payer", 10);
+
+        assertThat(candidates)
+                .extracting(SemanticTableCandidate::table)
+                .contains("CUSTOMERS");
+        SemanticTableCandidate customers = candidates.stream()
+                .filter(c -> "CUSTOMERS".equals(c.table()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(customers.support()).isGreaterThanOrEqualTo(3);
+        assertThat(customers.queryUids()).contains("SHOP/InvoiceReport.json#header");
+        assertThat(customers.matchedTerms())
+                .extracting(term -> term.value())
+                .contains("business_tag:payer", "query_label:Invoice payer header",
+                        "output_label:Payer name", "business_object:Invoice payer");
     }
 
     @Test

@@ -6,6 +6,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedColumnUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticColumnUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
@@ -1029,6 +1030,105 @@ public class UsageCatalogService {
         return new TableEvidenceProfile(schemaUpper, tableUpper, observed, semantic);
     }
 
+    /**
+     * Finds physical tables whose cataloged queries carry semantic terms matching the user's
+     * natural-language terms. This is deliberately a usage-catalog lookup: live database metadata
+     * remains the authority for whether the candidate table can actually be described.
+     */
+    public List<SemanticTableCandidate> semanticTableCandidates(String schema, String terms, int limit) {
+        if (!enabled()) return List.of();
+        List<String> tokens = semanticTokens(terms);
+        if (tokens.isEmpty()) return List.of();
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
+        String tokenClause = String.join(" OR ", Collections.nCopies(tokens.size(), "LOWER(term_value) LIKE ?"));
+        String sql = """
+                SELECT schema_name, table_name, source_kind, term_value,
+                       COUNT(DISTINCT query_uid) AS support,
+                       STRING_AGG(query_uid, '|') AS uids
+                FROM (
+                    SELECT qt.schema_resolved AS schema_name, qt.table_resolved AS table_name,
+                           'business_domain' AS source_kind, q.business_domain AS term_value, q.uid AS query_uid
+                    FROM query_table qt
+                    JOIN query q ON q.uid = qt.query_uid
+                    WHERE q.business_domain IS NOT NULL AND q.business_domain <> ''
+                    UNION ALL
+                    SELECT qt.schema_resolved AS schema_name, qt.table_resolved AS table_name,
+                           'business_tag' AS source_kind, tag.tag AS term_value, q.uid AS query_uid
+                    FROM query_table qt
+                    JOIN query q ON q.uid = qt.query_uid
+                    JOIN query_tag tag ON tag.query_uid = q.uid
+                    UNION ALL
+                    SELECT qt.schema_resolved AS schema_name, qt.table_resolved AS table_name,
+                           'query_label' AS source_kind, q.business_label AS term_value, q.uid AS query_uid
+                    FROM query_table qt
+                    JOIN query q ON q.uid = qt.query_uid
+                    WHERE q.business_label IS NOT NULL AND q.business_label <> ''
+                    UNION ALL
+                    SELECT qoc.schema_resolved AS schema_name, qoc.table_resolved AS table_name,
+                           'output_label' AS source_kind, qo.business_label AS term_value, qo.query_uid AS query_uid
+                    FROM query_output_column qoc
+                    JOIN query_output qo ON qo.id = qoc.query_output_id
+                    WHERE qo.business_label IS NOT NULL AND qo.business_label <> ''
+                    UNION ALL
+                    SELECT qoc.schema_resolved AS schema_name, qoc.table_resolved AS table_name,
+                           'business_object' AS source_kind, qfu.business_object AS term_value, qo.query_uid AS query_uid
+                    FROM query_output_column qoc
+                    JOIN query_output qo ON qo.id = qoc.query_output_id
+                    JOIN query_field_usage qfu ON qfu.query_output_id = qo.id
+                    WHERE qfu.business_object IS NOT NULL AND qfu.business_object <> ''
+                ) semantic_terms
+                WHERE table_name IS NOT NULL
+                  AND (? IS NULL OR schema_name = ? OR schema_name IS NULL)
+                  AND (%s)
+                GROUP BY schema_name, table_name, source_kind, term_value
+                ORDER BY support DESC, table_name, source_kind, term_value
+                LIMIT ?
+                """.formatted(tokenClause);
+        List<SemanticTermRow> rows = queryList(sql, ps -> {
+            int i = 1;
+            ps.setString(i++, schemaUpper);
+            ps.setString(i++, schemaUpper);
+            for (String token : tokens) ps.setString(i++, "%" + token + "%");
+            ps.setInt(i, safeLimit * 5);
+        }, rs -> new SemanticTermRow(
+                rs.getString("schema_name"),
+                rs.getString("table_name"),
+                rs.getString("source_kind"),
+                rs.getString("term_value"),
+                rs.getInt("support"),
+                splitUids(rs.getString("uids"))));
+        return aggregateSemanticCandidates(rows, safeLimit);
+    }
+
+    private List<SemanticTableCandidate> aggregateSemanticCandidates(List<SemanticTermRow> rows, int limit) {
+        Map<String, SemanticCandidateAccumulator> byTable = new LinkedHashMap<>();
+        for (SemanticTermRow row : rows) {
+            String key = (row.schema() == null ? "" : row.schema()) + "\u0000" + row.table();
+            SemanticCandidateAccumulator acc = byTable.computeIfAbsent(key,
+                    ignored -> new SemanticCandidateAccumulator(row.schema(), row.table()));
+            acc.support += row.support();
+            acc.queryUids.addAll(row.queryUids());
+            acc.terms.add(new SemanticTermEvidence(
+                    row.sourceKind() + ":" + row.termValue(),
+                    row.support(),
+                    capStrings(row.queryUids(), QUERY_UID_PREVIEW_LIMIT)));
+        }
+        return byTable.values().stream()
+                .map(acc -> new SemanticTableCandidate(
+                        acc.schema,
+                        acc.table,
+                        acc.support,
+                        capTerms(acc.terms, DEFAULT_PROFILE_LIMIT),
+                        capStrings(new ArrayList<>(acc.queryUids), QUERY_UID_PREVIEW_LIMIT)))
+                .sorted((a, b) -> {
+                    int bySupport = Integer.compare(b.support(), a.support());
+                    return bySupport != 0 ? bySupport : a.table().compareToIgnoreCase(b.table());
+                })
+                .limit(limit)
+                .toList();
+    }
+
     private List<String> tableQueryUids(String schemaUpper, String tableUpper) {
         String sql = """
                 SELECT DISTINCT q.uid
@@ -1367,6 +1467,24 @@ public class UsageCatalogService {
         return List.copyOf(values.subList(0, safeLimit));
     }
 
+    private static List<SemanticTermEvidence> capTerms(List<SemanticTermEvidence> values, int limit) {
+        if (values == null || values.isEmpty()) return List.of();
+        int safeLimit = Math.max(0, limit);
+        if (values.size() <= safeLimit) return List.copyOf(values);
+        return List.copyOf(values.subList(0, safeLimit));
+    }
+
+    private static List<String> semanticTokens(String terms) {
+        if (terms == null || terms.isBlank()) return List.of();
+        List<String> out = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (String raw : terms.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+            if (raw.length() < 2) continue;
+            if (seen.add(raw)) out.add(raw);
+        }
+        return out;
+    }
+
     private static String rootMessage(Throwable e) {
         Throwable cur = e;
         while (cur.getCause() != null) cur = cur.getCause();
@@ -1416,6 +1534,10 @@ public class UsageCatalogService {
     private record ColumnTerm(String column, SemanticTermEvidence evidence) {
     }
 
+    private record SemanticTermRow(String schema, String table, String sourceKind,
+                                   String termValue, int support, List<String> queryUids) {
+    }
+
     private static class ColumnUsageAccumulator {
         final String column;
         final Set<String> queryUids = new LinkedHashSet<>();
@@ -1433,6 +1555,19 @@ public class UsageCatalogService {
 
         SemanticColumnAccumulator(String column) {
             this.column = column;
+        }
+    }
+
+    private static class SemanticCandidateAccumulator {
+        final String schema;
+        final String table;
+        int support;
+        final Set<String> queryUids = new LinkedHashSet<>();
+        final List<SemanticTermEvidence> terms = new ArrayList<>();
+
+        SemanticCandidateAccumulator(String schema, String table) {
+            this.schema = schema;
+            this.table = table;
         }
     }
 

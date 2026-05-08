@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -32,9 +33,29 @@ class SchemaQueryContextService extends SchemaContextSupport {
         List<String> tokens = queryTokens(terms);
 
         Map<String, Map<String, Object>> selected = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> semanticMatchesByTable = new LinkedHashMap<>();
         for (String tableName : requestedTables) {
             Map<String, Object> described = metadata.describeTable(schema, tableName);
             selected.put(key(str(described.get("schema")), str(described.get("name"))), described);
+        }
+
+        List<SemanticTableCandidate> semanticCandidates = List.of();
+        if (selected.size() < tableLimit && usageCatalog != null && usageCatalog.enabled()
+                && terms != null && !terms.isBlank()) {
+            semanticCandidates = usageCatalog.semanticTableCandidates(schema, terms, tableLimit);
+            for (SemanticTableCandidate candidate : semanticCandidates) {
+                if (selected.size() >= tableLimit) break;
+                String candidateSchema = candidate.schema() == null ? schema : candidate.schema();
+                Map<String, Object> described;
+                try {
+                    described = metadata.describeTable(candidateSchema, candidate.table());
+                } catch (SQLException ignored) {
+                    continue;
+                }
+                String tableKey = key(str(described.get("schema")), str(described.get("name")));
+                selected.putIfAbsent(tableKey, described);
+                semanticMatchesByTable.put(tableKey, candidate.toMap());
+            }
         }
 
         if (selected.size() < tableLimit) {
@@ -68,7 +89,8 @@ class SchemaQueryContextService extends SchemaContextSupport {
 
         List<Map<String, Object>> tableContexts = new ArrayList<>();
         for (Map<String, Object> info : selected.values()) {
-            tableContexts.add(queryTableContext(info, tokens, samples));
+            tableContexts.add(queryTableContext(info, tokens, samples,
+                    semanticMatchesByTable.get(key(str(info.get("schema")), str(info.get("name"))))));
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -77,6 +99,9 @@ class SchemaQueryContextService extends SchemaContextSupport {
         out.put("requestedTables", requestedTables);
         out.put("includeSamples", samples);
         out.put("tableCount", tableContexts.size());
+        out.put("semanticMatches", semanticCandidates.stream()
+                .map(SemanticTableCandidate::toMap)
+                .toList());
         out.put("tables", tableContexts);
         out.put("relationships", graphEdges(declaredEdges));
         out.put("joinPaths", pairwiseJoinPaths(new ArrayList<>(selected.keySet()), declaredEdges));
@@ -84,7 +109,8 @@ class SchemaQueryContextService extends SchemaContextSupport {
     }
 
     private Map<String, Object> queryTableContext(Map<String, Object> info, List<String> tokens,
-                                                  boolean includeSamples) {
+                                                  boolean includeSamples,
+                                                  Map<String, Object> semanticMatch) {
         Map<String, Object> out = new LinkedHashMap<>();
         String schema = str(info.get("schema"));
         String table = str(info.get("name"));
@@ -101,6 +127,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
         out.put("constraints", compactCheckConstraints(info));
         out.put("foreignKeys", info.get("foreignKeys"));
         out.put("indexes", compactIndexes(info.get("indexes")));
+        if (semanticMatch != null) out.put("semanticMatch", semanticMatch);
         if (includeSamples) {
             Map<String, Object> sample = sampleRowsBestEffort(schema, table, 3);
             out.put("sample", sample);

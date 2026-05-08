@@ -90,6 +90,10 @@ and columns as an `evidence` block. That projection is intentionally aggregative
 can have several business roles, labels or domains with separate support counts and contributing
 query UIDs.
 
+The same semantic fields are also search signals for `queryContext`: terms are matched against
+business domains, tags, query labels, output labels and field-usage business objects, then mapped
+back to the physical tables and columns derived from the SQL catalog.
+
 ## Free Classifiers
 
 The following fields are intentionally open strings:
