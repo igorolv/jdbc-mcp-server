@@ -34,9 +34,9 @@ business context — parameter meanings, output column descriptions, and where e
 rendered (Excel cell, dashboard widget, BI Publisher region). This lets the LLM answer questions
 like *"which production reports already touch this column?"* and *"what business label does this
 field have in the customer card?"* against a curated body of evidence instead of guessing from
-names alone. The catalog is also the source of `evidenceLevel` decoration on relationship edges,
-so undeclared joins observed in production queries are treated as first-class hints alongside
-declared FKs. See *Usage Catalog* below.
+names alone. The catalog is also the source of the typed three-layer `evidence` bundle on
+relationship edges, so undeclared joins observed in production queries are treated as first-class
+hints alongside declared FKs. See *Usage Catalog* below.
 
 ## Architecture
 
@@ -96,7 +96,7 @@ context in one call: tables, columns, relationships, constraints, and sample row
 |---|---|
 | `schemaOverview` | Compact schema snapshot for SQL authoring: tables/views, columns, primary keys, foreign keys, indexes, and relationship edges. Parameters: `schema`, `namePattern` (with `%` / `_`), `includeViews`, `includeStats`, `includeObserved` (decorate edges with usage-catalog evidence — see *Edge evidence* below), `maxTables` (default 50, max 300) |
 | `tableContext` | Context around one table: the table itself, FK parents, and optionally child tables and relationship edges. FK traversal uses the requested depth (default 1, max 4). Parameters: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeObserved` |
-| `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition` and `evidenceLevel`. Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, max 300), `includeObserved` |
+| `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition` and a typed `evidence` bundle (see *Edge evidence* below). Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, max 300), `includeObserved` |
 | `schemaBrief` | Compact text summary of a schema: hub tables, fact/detail tables, lookup/reference tables, key relationships, enum-like CHECK columns, and brief table notes. Useful when full JSON would be too verbose. Parameters: `schema`, `terms` (optional substring search), `maxTables` |
 | `schemaGraph` | Schema relationship graph metrics: nodes with in/out degree and classification, edges, central tables, isolated tables, connected components, and cycle hints. Optionally includes the shortest path between two tables |
 | `schemaLint` | Schema lint audit: missing primary keys, FKs without indexes, FK type mismatches, nullable unique constraints, status/type columns without CHECK constraints, orphan `*_id` columns, missing remarks, isolated tables, and wide tables. Checks are configurable through `checks` |
@@ -107,17 +107,40 @@ context in one call: tables, columns, relationships, constraints, and sample row
 
 When `includeObserved` is left unset, `schemaOverview` / `tableContext` / `findJoinPaths` enable
 it automatically if the local usage catalog is enabled (see *Usage Catalog* below). Every
-relationship edge then carries an `evidenceLevel` field:
+relationship edge then carries a typed three-layer `evidence` bundle. Each layer is independently
+optional and is omitted when there is no signal:
 
-- `declared_fk` — the relationship is a declared foreign key in the database catalog.
-- `observed_in_queries` — the equi-join pair appears in stored application queries (production
-  evidence) but does **not** match any declared FK. Such edges are appended only between
-  tables already in scope and are flagged `undirected: true`.
+- `declaredSchema` — the relationship is a declared foreign key in the database catalog. Carries
+  the FK name and column lists.
+- `observedQuery` — the equi-join pair appears in stored application queries. Carries
+  `joinSupport` (number of distinct queries) and `queryUids` (up to 5 contributing uids).
+- `semanticUsage` — terms shared across queries that touch *both* tables: business domains,
+  business objects, and output labels, plus the co-occurring query count and uid preview. This
+  layer decorates existing edges only — it never proposes new relationships.
 
-Edges that *also* appear in stored queries are decorated with `observedSupport` (number of
-distinct queries) and `observedQueries` (up to 5 contributing uids). Composite (multi-column) FKs
-keep their `declared_fk` stamp without observation decoration in this iteration. `schemaBrief`,
-`schemaGraph`, and `queryContext` only surface declared FK relationships.
+```jsonc
+{
+  "relationshipType": "foreignKey",
+  "fromTable": "ORDERS", "fromColumns": ["CUSTOMER_ID"],
+  "toTable": "CUSTOMERS", "toColumns": ["ID"],
+  "evidence": {
+    "declaredSchema": { "foreignKeyName": "FK_ORDERS_CUSTOMER", "fromColumns": ["CUSTOMER_ID"], "toColumns": ["ID"] },
+    "observedQuery": { "joinSupport": 18, "queryUids": ["SHOP/InvoiceReport.json#header"] },
+    "semanticUsage": {
+      "sharedBusinessDomains": [{ "value": "Customers", "support": 12, "queryUids": [...] }],
+      "sharedBusinessObjects": [{ "value": "Invoice payer", "support": 4, "queryUids": [...] }],
+      "sharedOutputLabels":     [{ "value": "Payer name",   "support": 3, "queryUids": [...] }],
+      "coOccurringQueryCount": 22,
+      "coOccurringQueryUids": [...]
+    }
+  }
+}
+```
+
+Equi-join pairs seen only in stored queries (no declared FK) are appended as new edges with
+`relationshipType: "observed"` and `undirected: true`, between tables already in scope. Composite
+(multi-column) FKs receive a `declaredSchema` layer but no observed-pair match in this iteration.
+`schemaBrief`, `schemaGraph`, and `queryContext` only surface declared FK relationships.
 
 #### Evidence model
 
@@ -233,7 +256,7 @@ implemented inside the JDBC MCP server.
 | `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus` |
 | `findQueriesByTable` | All catalog queries that reference a given table. Case-insensitive matching against alias-resolved, uppercased table names. Optional `schema` filter |
 | `findQueriesByColumn` | All catalog queries that reference a given column, with the SQL `context` of the reference (`select` / `where` / `join` / `order_by` / `having`). Optional `schema` and `table` filters |
-| `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `evidenceLevel` decoration in `schemaOverview` / `tableContext` / `findJoinPaths` |
+| `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `observedQuery` layer of the relationship `evidence` bundle in `schemaOverview` / `tableContext` / `findJoinPaths` |
 | `reresolveQueries` | Re-resolve unqualified table references in the runtime index against the live JDBC schema. For every distinct unresolved raw table name in the catalog (scoped to `dataSource`), looks the name up across all non-system schemas: exactly one match → schema filled in the runtime index, status `resolved`; multiple matches → `ambiguous`; zero → stays `unresolved`. Already-resolved or CTE rows are untouched. Requires a working JDBC connection |
 | `listKnownTags` | Tags currently used in the catalog, with query counts. Lets the agent reuse a stable vocabulary across ingest calls |
 | `listKnownDomains` | Same for `businessDomain` values |

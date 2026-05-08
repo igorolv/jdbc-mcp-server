@@ -1,5 +1,12 @@
 # JDBC MCP Server — Setup Guide for AI Agents
 
+> **Build tool: Gradle (Kotlin DSL)**, not Maven. Use `./gradlew` (Linux/macOS) or
+> `.\gradlew.bat` (Windows / PowerShell). There is no `pom.xml`, `mvnw`, or `mvn` — do not
+> attempt to invoke them. Common commands:
+> - Compile: `./gradlew classes`
+> - Run tests: `./gradlew test` (single class: `./gradlew test --tests <FQCN>`)
+> - Full build: `./gradlew build`
+
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
 It exposes 40 read-only tools across eight groups:
 

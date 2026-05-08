@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedColumnUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticColumnUsage;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
@@ -782,7 +783,8 @@ public class UsageCatalogService {
 
     /**
      * Typed bulk lookup of observed equi-join pairs for use by other services (e.g. the schema
-     * context tools that decorate edges with {@code evidenceLevel}). Unlike
+     * context tools that build the {@code observedQuery} layer of the edge {@code evidence}
+     * bundle). Unlike
      * {@link #observedRelationships}, this returns plain {@link ObservedEdge} records that are
      * cheaper to consume than untyped maps. Pass {@code tableFilter} (uppercased names) to limit
      * results; an empty/null filter returns every observed pair in the catalog.
@@ -1028,6 +1030,97 @@ public class UsageCatalogService {
                         "JOIN query_field_usage qfu ON qfu.query_output_id = qoc.query_output_id"),
                 semanticColumnUsages(schemaUpper, tableUpper));
         return new TableEvidenceProfile(schemaUpper, tableUpper, observed, semantic);
+    }
+
+    /**
+     * Computes the semantic layer of evidence for a relationship between two physical tables.
+     * The evidence is restricted to <i>queries that touch both tables</i> (resolved
+     * {@code query_table} rows). For that co-occurring query set we report:
+     * <ul>
+     *   <li>shared business domains ({@code query.business_domain}),</li>
+     *   <li>shared business objects ({@code query_field_usage.business_object}),</li>
+     *   <li>shared output labels ({@code query_output.business_label}),</li>
+     *   <li>the count and a capped uid preview of the co-occurring queries themselves.</li>
+     * </ul>
+     * This intentionally does <b>not</b> propose new relationships — semantic evidence here is a
+     * decoration on edges that already exist via declared FKs or observed equi-joins.
+     * Returns {@code null} when the catalog is disabled or table inputs are blank.
+     */
+    public SemanticEdgeEvidence semanticEdgeEvidence(String leftSchema, String leftTable,
+                                                      String rightSchema, String rightTable) {
+        if (!enabled()) return null;
+        if (leftTable == null || leftTable.isBlank()) return null;
+        if (rightTable == null || rightTable.isBlank()) return null;
+        String leftSchemaUpper = leftSchema == null || leftSchema.isBlank()
+                ? null : leftSchema.toUpperCase(Locale.ROOT);
+        String rightSchemaUpper = rightSchema == null || rightSchema.isBlank()
+                ? null : rightSchema.toUpperCase(Locale.ROOT);
+        String leftTableUpper = leftTable.toUpperCase(Locale.ROOT);
+        String rightTableUpper = rightTable.toUpperCase(Locale.ROOT);
+
+        List<String> coUids = coOccurringQueryUids(
+                leftSchemaUpper, leftTableUpper, rightSchemaUpper, rightTableUpper);
+        if (coUids.isEmpty()) {
+            return new SemanticEdgeEvidence(List.of(), List.of(), List.of(), 0, List.of());
+        }
+        return new SemanticEdgeEvidence(
+                sharedTerms(coUids, "q.business_domain", "query q",
+                        "q.business_domain IS NOT NULL AND q.business_domain <> ''", "q.uid"),
+                sharedTerms(coUids, "qfu.business_object", "query_field_usage qfu",
+                        "qfu.business_object IS NOT NULL AND qfu.business_object <> ''", "qfu.query_uid"),
+                sharedTerms(coUids, "qo.business_label", "query_output qo",
+                        "qo.business_label IS NOT NULL AND qo.business_label <> ''", "qo.query_uid"),
+                coUids.size(),
+                capStrings(coUids, QUERY_UID_PREVIEW_LIMIT));
+    }
+
+    private List<String> coOccurringQueryUids(String leftSchemaUpper, String leftTableUpper,
+                                              String rightSchemaUpper, String rightTableUpper) {
+        String sql = """
+                SELECT DISTINCT q.uid
+                FROM query q
+                WHERE EXISTS (SELECT 1 FROM query_table qt WHERE qt.query_uid = q.uid
+                              AND qt.table_resolved = ?
+                              AND (? IS NULL OR qt.schema_resolved = ? OR qt.schema_resolved IS NULL))
+                  AND EXISTS (SELECT 1 FROM query_table qt WHERE qt.query_uid = q.uid
+                              AND qt.table_resolved = ?
+                              AND (? IS NULL OR qt.schema_resolved = ? OR qt.schema_resolved IS NULL))
+                ORDER BY q.uid
+                """;
+        return queryList(sql, ps -> {
+            ps.setString(1, leftTableUpper);
+            ps.setString(2, leftSchemaUpper);
+            ps.setString(3, leftSchemaUpper);
+            ps.setString(4, rightTableUpper);
+            ps.setString(5, rightSchemaUpper);
+            ps.setString(6, rightSchemaUpper);
+        }, rs -> rs.getString("uid"));
+    }
+
+    private List<SemanticTermEvidence> sharedTerms(List<String> queryUids,
+                                                   String valueExpression,
+                                                   String fromExpression,
+                                                   String whereExtra,
+                                                   String uidColumn) {
+        if (queryUids == null || queryUids.isEmpty()) return List.of();
+        String placeholders = String.join(", ", Collections.nCopies(queryUids.size(), "?"));
+        String sql = ("""
+                SELECT %s AS term_value,
+                       COUNT(DISTINCT %s) AS support,
+                       STRING_AGG(%s, '|') AS uids
+                FROM %s
+                WHERE %s
+                  AND %s IN (%s)
+                GROUP BY %s
+                ORDER BY support DESC, term_value
+                LIMIT ?
+                """).formatted(valueExpression, uidColumn, uidColumn, fromExpression,
+                whereExtra, uidColumn, placeholders, valueExpression);
+        return queryList(sql, ps -> {
+            int i = 1;
+            for (String uid : queryUids) ps.setString(i++, uid);
+            ps.setInt(i, DEFAULT_PROFILE_LIMIT);
+        }, this::termEvidenceRow);
     }
 
     /**

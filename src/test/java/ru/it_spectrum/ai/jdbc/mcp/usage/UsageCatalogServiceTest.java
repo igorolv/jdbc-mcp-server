@@ -2,7 +2,9 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
@@ -498,6 +500,83 @@ class UsageCatalogServiceTest {
         Map<String, Object> stored = service.getQuery("SHOP/q.sql");
         assertThat(asList(stored, "tables")).singleElement()
                 .satisfies(t -> assertThat(t.get("resolutionStatus")).isEqualTo("unresolved"));
+    }
+
+    @Test
+    void semanticEdgeEvidenceReturnsSharedTermsAcrossCoOccurringQueries() {
+        QueryUsage payerReport = new QueryUsage(
+                "SHOP",
+                new QueryUsageSource("report", "InvoiceReport.json", "header"),
+                "Invoice payer header",
+                "Customers",
+                List.of("invoice", "payer"),
+                "SELECT c.name AS payer_name FROM customers c JOIN orders o ON o.customer_id = c.id",
+                null,
+                List.of(new QueryUsageOutput("payer_name", "c.name", "Payer name", null,
+                        List.of(new QueryUsageOutputColumn(null, "customers", "name")))),
+                List.of(new QueryUsageFieldUsage(
+                        "payer_name",
+                        "Invoice payer",
+                        new QueryUsageTransformation(QueryUsageTransformationKind.IDENTITY, null),
+                        null,
+                        null,
+                        QueryUsageConfidence.HIGH)),
+                null);
+        QueryUsage shipmentReport = new QueryUsage(
+                "SHOP",
+                new QueryUsageSource("report", "ShipmentReport.json", "main"),
+                "Customer shipments",
+                "Customers",
+                List.of("shipment"),
+                "SELECT o.id AS order_id FROM orders o JOIN customers c ON o.customer_id = c.id",
+                null,
+                List.of(new QueryUsageOutput("order_id", "o.id", "Order id", null,
+                        List.of(new QueryUsageOutputColumn(null, "orders", "id")))),
+                List.of(new QueryUsageFieldUsage(
+                        "order_id",
+                        "Invoice payer",
+                        new QueryUsageTransformation(QueryUsageTransformationKind.IDENTITY, null),
+                        null,
+                        null,
+                        QueryUsageConfidence.HIGH)),
+                null);
+        QueryUsage standalone = new QueryUsage(
+                "SHOP",
+                new QueryUsageSource("report", "InventoryReport.json", "main"),
+                "Stock",
+                "Inventory",
+                List.of("stock"),
+                "SELECT id FROM products",
+                null, null, null, null);
+
+        service.rebuild(List.of(payerReport, shipmentReport, standalone));
+
+        SemanticEdgeEvidence evidence = service.semanticEdgeEvidence(null, "orders", null, "customers");
+
+        assertThat(evidence.coOccurringQueryCount()).isEqualTo(2);
+        assertThat(evidence.coOccurringQueryUids())
+                .contains("SHOP/InvoiceReport.json#header", "SHOP/ShipmentReport.json#main");
+        assertThat(evidence.sharedBusinessDomains())
+                .extracting(SemanticTermEvidence::value)
+                .containsOnly("Customers");
+        assertThat(evidence.sharedBusinessObjects())
+                .extracting(SemanticTermEvidence::value)
+                .contains("Invoice payer");
+        assertThat(evidence.sharedOutputLabels())
+                .extracting(SemanticTermEvidence::value)
+                .contains("Payer name", "Order id");
+    }
+
+    @Test
+    void semanticEdgeEvidenceReturnsEmptyWhenNoQueriesTouchBothTables() {
+        service.rebuild(List.of(
+                buildSimple("SHOP", "a.sql", "SELECT id FROM customers"),
+                buildSimple("SHOP", "b.sql", "SELECT id FROM products")));
+
+        SemanticEdgeEvidence evidence = service.semanticEdgeEvidence(null, "customers", null, "products");
+
+        assertThat(evidence.coOccurringQueryCount()).isZero();
+        assertThat(evidence.isEmpty()).isTrue();
     }
 
     @Test

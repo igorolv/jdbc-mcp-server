@@ -29,7 +29,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Table/view name pattern with JDBC wildcards, e.g. '%customer%' (optional)", required = false) String namePattern,
             @McpToolParam(description = "Include views and materialized views. Default true.", required = false) Boolean includeViews,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
-            @McpToolParam(description = "Augment relationships with evidence from the local usage catalog: each declared FK edge gets an 'evidenceLevel' field (declared_fk) plus 'observedSupport'/'observedQueries' when matching equi-joins exist; new 'observed_in_queries' edges are appended for joins seen only in stored application queries. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved,
+            @McpToolParam(description = "Augment relationships with a typed three-layer 'evidence' bundle from the local usage catalog: 'declaredSchema' for catalog FKs, 'observedQuery' (joinSupport + queryUids) when matching equi-joins exist in stored application queries, and 'semanticUsage' (shared business domains/objects/output labels across queries that touch both tables). Observed-only equi-join pairs are appended as new edges with 'relationshipType: observed'. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved,
             @McpToolParam(description = "Maximum tables/views to describe. Default 50, capped at 300.", required = false) Integer maxTables
     ) {
         try {
@@ -53,7 +53,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "FK traversal depth. Default 1, capped at 4.", required = false) Integer depth,
             @McpToolParam(description = "Include incoming references from child tables. Default true.", required = false) Boolean includeIncoming,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
-            @McpToolParam(description = "Augment relationships with evidence from the local usage catalog (see schemaOverview for the evidenceLevel legend). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
+            @McpToolParam(description = "Augment relationships with the three-layer 'evidence' bundle from the local usage catalog (see schemaOverview for the layer breakdown). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         try {
             Map<String, Object> result = schemaContext.tableContext(
@@ -78,7 +78,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum FK hops. Default 4, capped at 4.", required = false) Integer maxDepth,
             @McpToolParam(description = "Maximum paths to return. Default 5, capped at 25.", required = false) Integer maxPaths,
             @McpToolParam(description = "Maximum schema tables to scan when building the graph. Default 300, capped at 300.", required = false) Integer scanLimit,
-            @McpToolParam(description = "Include observed equi-join pairs from the local usage catalog as additional edges in the search graph. Each path step then carries 'evidenceLevel' (declared_fk | observed_in_queries) and, when applicable, 'observedSupport' / 'observedQueries'. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
+            @McpToolParam(description = "Include observed equi-join pairs from the local usage catalog as additional edges in the search graph. Each path step then carries an 'evidence' bundle with 'declaredSchema', 'observedQuery' and 'semanticUsage' layers (any of which may be absent). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         try {
             Map<String, Object> result = schemaContext.findJoinPaths(

@@ -1,6 +1,10 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.DeclaredSchemaEdgeEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedQueryEdgeEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -470,31 +474,41 @@ abstract class SchemaContextSupport {
     }
 
     /**
-     * Adds {@code evidenceLevel} to existing edges and, when {@code includeObserved} is true and
-     * the local usage catalog is enabled, decorates them with {@code observedSupport} /
-     * {@code observedQueries} from real production queries plus appends any observed-only equi-
-     * join pairs that don't match a declared FK.
+     * Decorates each edge with a typed three-layer {@link RelationshipEvidence} bundle and, when
+     * {@code includeObserved} is true and the local usage catalog is enabled, appends any
+     * observed-only equi-join pairs that don't match a declared FK.
      *
-     * <p>{@code evidenceLevel} legend:
+     * <p>The {@code evidence} block on each edge carries up to three layers:
      * <ul>
-     *   <li>{@code declared_fk} — FK metadata in the database catalog (highest evidence).</li>
-     *   <li>{@code observed_in_queries} — pair appears as an equi-join in stored application
-     *       queries; reported with {@code observedSupport} (number of distinct queries) and
-     *       {@code observedQueries} (uid list, capped to keep responses small).</li>
+     *   <li>{@code declaredSchema} — present iff the edge originates from a database catalog FK
+     *       (highest structural evidence).</li>
+     *   <li>{@code observedQuery} — present iff the (table, column) pair appears as an equi-join
+     *       in stored application queries; carries {@code joinSupport} and a capped uid list.</li>
+     *   <li>{@code semanticUsage} — overlap of business domains / business objects / output
+     *       labels across queries that touch <i>both</i> tables. This is decoration only — it
+     *       never introduces new edges.</li>
      * </ul>
      *
      * <p>Matching against observed pairs is undirected and single-column only; composite FKs
-     * keep their {@code declared_fk} stamp without observation decoration in this iteration.
+     * still receive a declared layer but no observed-pair match in this iteration.
      */
     protected void decorateAndAppendObserved(List<Map<String, Object>> edges,
                                              Set<String> describedTableNamesUpper,
                                              boolean includeObserved) {
+        Map<Map<String, Object>, RelationshipEvidence.Builder> builders = new LinkedHashMap<>();
         for (Map<String, Object> edge : edges) {
+            RelationshipEvidence.Builder b = builderFor(edge, builders);
             if ("foreignKey".equals(str(edge.get("relationshipType")))) {
-                edge.put("evidenceLevel", "declared_fk");
+                b.declaredSchema = new DeclaredSchemaEdgeEvidence(
+                        str(edge.get("fkName")),
+                        objectList(edge.get("fromColumns")),
+                        objectList(edge.get("toColumns")));
             }
         }
-        if (!includeObserved || usageCatalog == null || !usageCatalog.enabled()) return;
+        if (!includeObserved || usageCatalog == null || !usageCatalog.enabled()) {
+            applyEvidence(edges, builders);
+            return;
+        }
 
         Set<String> tableScope = new HashSet<>();
         if (describedTableNamesUpper != null) tableScope.addAll(describedTableNamesUpper);
@@ -504,11 +518,12 @@ abstract class SchemaContextSupport {
             if (from != null) tableScope.add(from);
             if (to != null) tableScope.add(to);
         }
-        if (tableScope.isEmpty()) return;
+        if (tableScope.isEmpty()) {
+            applyEvidence(edges, builders);
+            return;
+        }
 
         List<UsageCatalogService.ObservedEdge> observed = usageCatalog.observedEdges(tableScope, 1);
-        if (observed.isEmpty()) return;
-
         Map<String, UsageCatalogService.ObservedEdge> byPair = new HashMap<>();
         for (UsageCatalogService.ObservedEdge oe : observed) {
             byPair.putIfAbsent(undirectedPairKey(
@@ -524,8 +539,8 @@ abstract class SchemaContextSupport {
                     str(edge.get("toTable")), String.valueOf(toCols.get(0)));
             UsageCatalogService.ObservedEdge oe = byPair.get(key);
             if (oe == null) continue;
-            edge.put("observedSupport", oe.support());
-            edge.put("observedQueries", capQueryUids(oe.queryUids()));
+            builderFor(edge, builders).observedQuery = new ObservedQueryEdgeEvidence(
+                    oe.support(), capQueryUids(oe.queryUids()));
             consumed.add(key);
         }
 
@@ -541,7 +556,6 @@ abstract class SchemaContextSupport {
             }
             Map<String, Object> edge = new LinkedHashMap<>();
             edge.put("relationshipType", "observed");
-            edge.put("evidenceLevel", "observed_in_queries");
             edge.put("fkName", "observed_" + oe.leftTable() + "_" + oe.leftColumn()
                     + "_to_" + oe.rightTable() + "_" + oe.rightColumn());
             edge.put("fromSchema", oe.leftSchema());
@@ -550,10 +564,41 @@ abstract class SchemaContextSupport {
             edge.put("toSchema", oe.rightSchema());
             edge.put("toTable", oe.rightTable());
             edge.put("toColumns", List.of(oe.rightColumn()));
-            edge.put("observedSupport", oe.support());
-            edge.put("observedQueries", capQueryUids(oe.queryUids()));
             edge.put("undirected", true);
             edges.add(edge);
+            RelationshipEvidence.Builder b = builderFor(edge, builders);
+            b.observedQuery = new ObservedQueryEdgeEvidence(oe.support(), capQueryUids(oe.queryUids()));
+        }
+
+        for (Map.Entry<Map<String, Object>, RelationshipEvidence.Builder> entry : builders.entrySet()) {
+            Map<String, Object> edge = entry.getKey();
+            RelationshipEvidence.Builder b = entry.getValue();
+            if (b.declaredSchema == null && b.observedQuery == null) continue;
+            SemanticEdgeEvidence semantic = usageCatalog.semanticEdgeEvidence(
+                    str(edge.get("fromSchema")), str(edge.get("fromTable")),
+                    str(edge.get("toSchema")), str(edge.get("toTable")));
+            if (semantic != null && !semantic.isEmpty()) {
+                b.semanticUsage = semantic;
+            }
+        }
+
+        applyEvidence(edges, builders);
+    }
+
+    private static RelationshipEvidence.Builder builderFor(
+            Map<String, Object> edge,
+            Map<Map<String, Object>, RelationshipEvidence.Builder> builders) {
+        return builders.computeIfAbsent(edge, ignored -> new RelationshipEvidence.Builder());
+    }
+
+    private static void applyEvidence(List<Map<String, Object>> edges,
+                                      Map<Map<String, Object>, RelationshipEvidence.Builder> builders) {
+        for (Map<String, Object> edge : edges) {
+            RelationshipEvidence.Builder b = builders.get(edge);
+            if (b == null) continue;
+            RelationshipEvidence re = b.build();
+            if (re.isEmpty()) continue;
+            edge.put("evidence", re.toMap());
         }
     }
 
@@ -780,7 +825,7 @@ abstract class SchemaContextSupport {
     protected record GraphEdge(String direction, String relationshipType, String fkName,
                                String fromSchema, String fromTable, Object fromColumns,
                                String toSchema, String toTable, Object toColumns,
-                               Object evidenceLevel, Object observedSupport, Object observedQueries) {
+                               Object evidence) {
 
         static GraphEdge forward(Map<String, Object> edge) {
             return new GraphEdge("forward",
@@ -792,9 +837,7 @@ abstract class SchemaContextSupport {
                     strStatic(edge.get("toSchema")),
                     strStatic(edge.get("toTable")),
                     edge.get("toColumns"),
-                    edge.get("evidenceLevel"),
-                    edge.get("observedSupport"),
-                    edge.get("observedQueries"));
+                    edge.get("evidence"));
         }
 
         static GraphEdge reverse(Map<String, Object> edge) {
@@ -807,9 +850,7 @@ abstract class SchemaContextSupport {
                     strStatic(edge.get("fromSchema")),
                     strStatic(edge.get("fromTable")),
                     edge.get("fromColumns"),
-                    edge.get("evidenceLevel"),
-                    edge.get("observedSupport"),
-                    edge.get("observedQueries"));
+                    edge.get("evidence"));
         }
 
         Map<String, Object> asMap() {
@@ -824,9 +865,7 @@ abstract class SchemaContextSupport {
             out.put("toTable", toTable);
             out.put("toColumns", toColumns);
             out.put("joinCondition", joinCondition());
-            if (evidenceLevel != null) out.put("evidenceLevel", evidenceLevel);
-            if (observedSupport != null) out.put("observedSupport", observedSupport);
-            if (observedQueries != null) out.put("observedQueries", observedQueries);
+            if (evidence != null) out.put("evidence", evidence);
             return out;
         }
 

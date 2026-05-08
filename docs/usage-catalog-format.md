@@ -90,6 +90,20 @@ and columns as an `evidence` block. That projection is intentionally aggregative
 can have several business roles, labels or domains with separate support counts and contributing
 query UIDs.
 
+Relationship edges in `schemaOverview` / `tableContext` / `findJoinPaths` carry a typed
+three-layer `evidence` bundle bringing the same separation to FK / observed-join pairs:
+
+- `declaredSchema` - present iff the edge originates from a declared catalog FK; carries the FK
+  name and column lists.
+- `observedQuery` - present iff the (table, column) pair appears as an equi-join in stored
+  application queries; carries `joinSupport` and a capped uid preview.
+- `semanticUsage` - terms shared across queries that touch *both* tables: business domains,
+  business objects and output labels, plus the co-occurring query count and uid preview. This
+  layer decorates existing edges only - it never proposes new relationships.
+
+Equi-join pairs seen only in stored queries (no declared FK) are appended as new edges with
+`relationshipType: "observed"` and `undirected: true`, between tables already in scope.
+
 The same semantic fields are also search signals for `queryContext`: terms are matched against
 business domains, tags, query labels, output labels and field-usage business objects, then mapped
 back to the physical tables and columns derived from the SQL catalog.
