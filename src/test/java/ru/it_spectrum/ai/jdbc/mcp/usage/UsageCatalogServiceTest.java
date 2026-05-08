@@ -4,6 +4,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageConfidence;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageFieldUsage;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageLocation;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutput;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutputColumn;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageParameter;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageTransformation;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageTransformationKind;
 
 import javax.sql.DataSource;
 import java.nio.file.Path;
@@ -36,7 +46,7 @@ class UsageCatalogServiceTest {
                 LEFT JOIN orders o ON o.customer_id = c.id
                 WHERE c.status = :status
                 """;
-        IngestPayload.Request req = baseRequest("SHOP", "app/dao/CustomerOrders.java", "findOrders", sql);
+        QueryUsage req = baseRequest("SHOP", "app/dao/CustomerOrders.java", "findOrders", sql);
 
         Map<String, Object> result = service.ingest(req);
 
@@ -65,26 +75,46 @@ class UsageCatalogServiceTest {
     }
 
     @Test
+    void ingestRejectsUnsupportedSchemaVersion() {
+        QueryUsage req = new QueryUsage(
+                2,
+                "SHOP",
+                new QueryUsageSource("manual", "q.sql", null),
+                null,
+                null,
+                null,
+                "SELECT 1",
+                null,
+                null,
+                null,
+                null);
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> service.ingest(req))
+                .withMessage("schemaVersion must be 1");
+    }
+
+    @Test
     void ingestStoresParametersOutputsAndFieldUsages() {
         String sql = "SELECT c.name AS cust_name FROM customers c WHERE c.id = :customerId";
-        IngestPayload.Request req = new IngestPayload.Request(
+        QueryUsage req = new QueryUsage(
                 "SHOP",
-                new IngestPayload.Source("dao", "CustomerDao.java", "findOne"),
+                new QueryUsageSource("dao", "CustomerDao.java", "findOne"),
                 "Карточка клиента",
                 "Customers",
                 List.of("customer", "card"),
                 sql,
-                List.of(new IngestPayload.Param("customerId", "number", null, true,
+                List.of(new QueryUsageParameter("customerId", "number", null, true,
                         "Идентификатор клиента", "PK таблицы CUSTOMERS")),
-                List.of(new IngestPayload.Output("cust_name", "c.name", "Имя клиента", null,
-                        List.of(new IngestPayload.OutputColumn(null, "customers", "name")))),
-                List.of(new IngestPayload.FieldUsage(
+                List.of(new QueryUsageOutput("cust_name", "c.name", "Имя клиента", null,
+                        List.of(new QueryUsageOutputColumn(null, "customers", "name")))),
+                List.of(new QueryUsageFieldUsage(
                         "cust_name",
                         "Карточка клиента / Шапка",
-                        new IngestPayload.Transformation(IngestPayload.TransformationKind.IDENTITY, "Прямое отображение"),
-                        new IngestPayload.Location("ui-label", Map.of("widgetId", "lblName")),
+                        new QueryUsageTransformation(QueryUsageTransformationKind.IDENTITY, "Прямое отображение"),
+                        new QueryUsageLocation("ui-label", Map.of("widgetId", "lblName")),
                         List.of("Полное имя"),
-                        IngestPayload.Confidence.HIGH)),
+                        QueryUsageConfidence.HIGH)),
                 Map.of("origin", "manual"));
 
         service.ingest(req);
@@ -124,7 +154,7 @@ class UsageCatalogServiceTest {
     void reIngestReplacesChildRows() {
         String sqlV1 = "SELECT id FROM customers WHERE id = :id";
         String sqlV2 = "SELECT id, name, status FROM customers WHERE id = :id";
-        IngestPayload.Source source = new IngestPayload.Source("dao", "CustomerDao.java", "findOne");
+        QueryUsageSource source = new QueryUsageSource("dao", "CustomerDao.java", "findOne");
 
         Map<String, Object> v1 = service.ingest(buildRequest("SHOP", source, sqlV1));
         Map<String, Object> v2 = service.ingest(buildRequest("SHOP", source, sqlV2));
@@ -142,17 +172,17 @@ class UsageCatalogServiceTest {
     @Test
     void parseFailureKeepsBusinessMetadata() {
         String unparsable = "SELECT FROM"; // intentionally broken
-        IngestPayload.Request req = new IngestPayload.Request(
+        QueryUsage req = new QueryUsage(
                 "SHOP",
-                new IngestPayload.Source("manual", "broken.sql", null),
+                new QueryUsageSource("manual", "broken.sql", null),
                 "Сломанный запрос",
                 null, null,
                 unparsable,
-                List.of(new IngestPayload.Param("p", null, null, null, "Параметр", null)),
-                List.of(new IngestPayload.Output("a", null, "Колонка А", null, null)),
-                List.of(new IngestPayload.FieldUsage(
+                List.of(new QueryUsageParameter("p", null, null, null, "Параметр", null)),
+                List.of(new QueryUsageOutput("a", null, "Колонка А", null, null)),
+                List.of(new QueryUsageFieldUsage(
                         "a", "Где-то",
-                        new IngestPayload.Transformation(IngestPayload.TransformationKind.IDENTITY, null),
+                        new QueryUsageTransformation(QueryUsageTransformationKind.IDENTITY, null),
                         null, null, null)),
                 null);
 
@@ -235,12 +265,12 @@ class UsageCatalogServiceTest {
 
     @Test
     void listKnownTagsAndDomainsAggregateCounts() {
-        IngestPayload.Request req1 = new IngestPayload.Request(
-                "SHOP", new IngestPayload.Source("dao", "a.sql", null),
+        QueryUsage req1 = new QueryUsage(
+                "SHOP", new QueryUsageSource("dao", "a.sql", null),
                 null, "Customers", List.of("customer"),
                 "SELECT 1 FROM dual", null, null, null, null);
-        IngestPayload.Request req2 = new IngestPayload.Request(
-                "SHOP", new IngestPayload.Source("dao", "b.sql", null),
+        QueryUsage req2 = new QueryUsage(
+                "SHOP", new QueryUsageSource("dao", "b.sql", null),
                 null, "Customers", List.of("customer", "vip"),
                 "SELECT 1 FROM dual", null, null, null, null);
         service.ingest(req1);
@@ -262,12 +292,12 @@ class UsageCatalogServiceTest {
 
     @Test
     void rejectsMissingTransformationOnFieldUsage() {
-        IngestPayload.Request req = new IngestPayload.Request(
-                "SHOP", new IngestPayload.Source("manual", "x.sql", null),
+        QueryUsage req = new QueryUsage(
+                "SHOP", new QueryUsageSource("manual", "x.sql", null),
                 null, null, null,
                 "SELECT 1 FROM dual",
                 null, null,
-                List.of(new IngestPayload.FieldUsage(
+                List.of(new QueryUsageFieldUsage(
                         null, "obj", null, null, null, null)),
                 null);
 
@@ -376,22 +406,22 @@ class UsageCatalogServiceTest {
     //  helpers
     // ---------------------------------------------------------------------------------------
 
-    private static IngestPayload.Request baseRequest(String dataSource, String path, String unit, String sql) {
-        return new IngestPayload.Request(
+    private static QueryUsage baseRequest(String dataSource, String path, String unit, String sql) {
+        return new QueryUsage(
                 dataSource,
-                new IngestPayload.Source("dao", path, unit),
+                new QueryUsageSource("dao", path, unit),
                 null, null, null,
                 sql,
                 null, null, null, null);
     }
 
-    private static IngestPayload.Request buildRequest(String dataSource, IngestPayload.Source source, String sql) {
-        return new IngestPayload.Request(
+    private static QueryUsage buildRequest(String dataSource, QueryUsageSource source, String sql) {
+        return new QueryUsage(
                 dataSource, source, null, null, null, sql,
                 null, null, null, null);
     }
 
-    private static IngestPayload.Request buildSimple(String dataSource, String path, String sql) {
+    private static QueryUsage buildSimple(String dataSource, String path, String sql) {
         return baseRequest(dataSource, path, null, sql);
     }
 

@@ -164,10 +164,16 @@ existing `ReadOnlyGuard` and connection-level protections remain in force.
 **Typed payload.** The shape of the `ingestQuery` payload — `source`, `parameters[]`,
 `outputs[]`, `fieldUsages[]` and their nested objects — is described by the JSON Schema that the
 MCP runtime exposes to the client (field names, types, descriptions, enum values). The same
-record types (`IngestPayload.Request` and friends in `usage/IngestPayload.java`) are used by the
+record types (`QueryUsage` and friends in `usage/format/`) are used by the
 MCP entry point and can be reused directly by an out-of-process bulk loader that deserialises
 JSON files with Jackson and calls `UsageCatalogService.ingest(...)` — one source of truth for
 the contract.
+
+The canonical source-agnostic JSON format is documented in
+`docs/usage-catalog-format.md`; its JSON Schema lives at
+`src/main/resources/schemas/query-usage-record.schema.json`, with examples under
+`examples/usage/`. Source-specific adapters should emit this canonical shape rather than being
+implemented inside the JDBC MCP server.
 
 | Tool | Description |
 |---|---|
@@ -532,8 +538,9 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |   |   +-- UsageProperties.java        - catalog enable flag and SQLite path (env-driven)
 |   |   +-- UsageDataSourceConfig.java  - SQLite DataSource (WAL, foreign_keys=ON) + schema init
 |   |   +-- UsageUid.java               - build/parse/validate the textual query identifier
-|   |   +-- IngestPayload.java          - DTO records for the ingestQuery payload shape
 |   |   +-- UsageCatalogService.java    - ingest, lookups, observed-relationships aggregation
+|   |   +-- format/
+|   |   |   +-- QueryUsage.java         - canonical query usage record DTO
 |   +-- tools/
 |       +-- QueryTools.java             - executeQuery, explainQuery, analyzePlan, validateQuery, inspectQuery, queryLint
 |       +-- MetadataTools.java          - schemas / tables / describe / view / routines / sequences / search

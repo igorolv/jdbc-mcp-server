@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "dataSource": "SHOP",
+  "source": {
+    "kind": "manual",
+    "path": "examples/manual/customer-count"
+  },
+  "sql": "SELECT COUNT(*) AS customer_count FROM customers"
+}

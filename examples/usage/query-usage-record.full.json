@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "dataSource": "SHOP",
+  "source": {
+    "kind": "java-dao",
+    "path": "src/main/java/com/acme/shop/CustomerDao.java",
+    "unit": "findActiveCustomer"
+  },
+  "businessLabel": "Active customer card",
+  "businessDomain": "Customers",
+  "businessTags": ["customer", "card", "operational"],
+  "sql": "SELECT c.id AS customer_id, c.name AS customer_name, c.status FROM customers c WHERE c.id = :customerId AND c.status = :status",
+  "parameters": [
+    {
+      "name": "customerId",
+      "dataType": "number",
+      "required": true,
+      "businessLabel": "Customer id",
+      "businessDescription": "Primary key of the customer record."
+    },
+    {
+      "name": "status",
+      "dataType": "varchar",
+      "defaultValue": "ACTIVE",
+      "required": true,
+      "businessLabel": "Customer status"
+    }
+  ],
+  "outputs": [
+    {
+      "alias": "customer_id",
+      "sourceExpression": "c.id",
+      "businessLabel": "Customer id",
+      "derivedFromColumns": [
+        {
+          "table": "customers",
+          "column": "id"
+        }
+      ]
+    },
+    {
+      "alias": "customer_name",
+      "sourceExpression": "c.name",
+      "businessLabel": "Customer name",
+      "derivedFromColumns": [
+        {
+          "table": "customers",
+          "column": "name"
+        }
+      ]
+    }
+  ],
+  "fieldUsages": [
+    {
+      "output": "customer_name",
+      "businessObject": "Customer card",
+      "transformation": {
+        "kind": "identity",
+        "description": "Shown without transformation."
+      },
+      "location": {
+        "kind": "ui-label",
+        "details": {
+          "screen": "customer-card",
+          "widgetId": "customerName"
+        }
+      },
+      "headers": ["Customer"],
+      "confidence": "high"
+    }
+  ],
+  "sourceMeta": {
+    "adapter": "example",
+    "adapterVersion": "1.0.0",
+    "sourceFingerprint": "sha256:example"
+  }
+}

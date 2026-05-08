@@ -7,6 +7,12 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService.QueryModel;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonWriter;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageFieldUsage;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutput;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutputColumn;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageParameter;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -64,9 +70,9 @@ public class UsageCatalogService {
     //  Ingest
     // ---------------------------------------------------------------------------------------
 
-    public Map<String, Object> ingest(IngestPayload.Request req) {
+    public Map<String, Object> ingest(QueryUsage req) {
         validateRequest(req);
-        IngestPayload.Source src = req.source();
+        QueryUsageSource src = req.source();
         String unit = src.unit() == null ? "" : src.unit();
         String uid = UsageUid.build(req.dataSource(), src.path(), unit);
 
@@ -120,8 +126,11 @@ public class UsageCatalogService {
         return out;
     }
 
-    private void validateRequest(IngestPayload.Request req) {
+    private void validateRequest(QueryUsage req) {
         if (req == null) throw new IllegalArgumentException("payload is required");
+        if (req.schemaVersion() == null || req.schemaVersion() != 1) {
+            throw new IllegalArgumentException("schemaVersion must be 1");
+        }
         if (req.dataSource() == null || req.dataSource().isBlank()) {
             throw new IllegalArgumentException("dataSource is required");
         }
@@ -138,7 +147,7 @@ public class UsageCatalogService {
         UsageUid.validate(req.dataSource(), req.source().path(), req.source().unit());
 
         if (req.fieldUsages() != null) {
-            for (IngestPayload.FieldUsage fu : req.fieldUsages()) {
+            for (QueryUsageFieldUsage fu : req.fieldUsages()) {
                 if (fu == null) continue;
                 if (fu.transformation() == null || fu.transformation().kind() == null) {
                     throw new IllegalArgumentException(
@@ -155,8 +164,8 @@ public class UsageCatalogService {
         }
     }
 
-    private void insertQuery(Connection conn, String uid, IngestPayload.Request req,
-                             IngestPayload.Source src, String unit, QueryModel model,
+    private void insertQuery(Connection conn, String uid, QueryUsage req,
+                             QueryUsageSource src, String unit, QueryModel model,
                              String parseStatus, String parseError) throws SQLException {
         String sql = """
                 INSERT INTO query (
@@ -204,7 +213,7 @@ public class UsageCatalogService {
      * still stored so business descriptions are not lost.
      */
     private int insertParams(Connection conn, String uid, QueryModel model,
-                             List<IngestPayload.Param> payloadParams) throws SQLException {
+                             List<QueryUsageParameter> payloadParams) throws SQLException {
         List<ParamRow> rows = new ArrayList<>();
         Set<String> claimedNames = new LinkedHashSet<>();
         int ordinal = 0;
@@ -212,7 +221,7 @@ public class UsageCatalogService {
         for (Map<String, Object> parsed : model.parameters) {
             ordinal++;
             String name = stringValue(parsed.get("name"));
-            IngestPayload.Param payload = name != null ? findParamByName(payloadParams, name) : null;
+            QueryUsageParameter payload = name != null ? findParamByName(payloadParams, name) : null;
             if (payload == null && payloadParams != null && ordinal - 1 < payloadParams.size()
                     && (name == null || payloadParams.get(ordinal - 1).name() == null)) {
                 payload = payloadParams.get(ordinal - 1);
@@ -230,7 +239,7 @@ public class UsageCatalogService {
         }
 
         if (payloadParams != null) {
-            for (IngestPayload.Param payload : payloadParams) {
+            for (QueryUsageParameter payload : payloadParams) {
                 if (payload == null) continue;
                 if (payload.name() != null && claimedNames.contains(payload.name())) continue;
                 ordinal++;
@@ -376,7 +385,7 @@ public class UsageCatalogService {
     }
 
     private Map<String, Long> insertOutputs(Connection conn, String uid,
-                                            List<IngestPayload.Output> outputs) throws SQLException {
+                                            List<QueryUsageOutput> outputs) throws SQLException {
         if (outputs == null || outputs.isEmpty()) return Map.of();
         Map<String, Long> aliasToId = new LinkedHashMap<>();
         String outputSql = """
@@ -391,7 +400,7 @@ public class UsageCatalogService {
                 """;
         try (PreparedStatement po = conn.prepareStatement(outputSql, Statement.RETURN_GENERATED_KEYS);
              PreparedStatement pc = conn.prepareStatement(columnSql)) {
-            for (IngestPayload.Output out : outputs) {
+            for (QueryUsageOutput out : outputs) {
                 if (out == null || out.alias() == null || out.alias().isBlank()) continue;
                 if (aliasToId.containsKey(out.alias())) continue;
                 po.setString(1, uid);
@@ -407,7 +416,7 @@ public class UsageCatalogService {
                 }
                 aliasToId.put(out.alias(), outputId);
                 if (out.derivedFromColumns() != null) {
-                    for (IngestPayload.OutputColumn oc : out.derivedFromColumns()) {
+                    for (QueryUsageOutputColumn oc : out.derivedFromColumns()) {
                         if (oc == null || oc.column() == null || oc.column().isBlank()) continue;
                         pc.setLong(1, outputId);
                         pc.setString(2, oc.schema() == null ? null : oc.schema().toUpperCase(Locale.ROOT));
@@ -422,7 +431,7 @@ public class UsageCatalogService {
         return aliasToId;
     }
 
-    private int insertFieldUsages(Connection conn, String uid, List<IngestPayload.FieldUsage> usages,
+    private int insertFieldUsages(Connection conn, String uid, List<QueryUsageFieldUsage> usages,
                                   Map<String, Long> outputAliasToId) throws SQLException {
         if (usages == null || usages.isEmpty()) return 0;
         String sql = """
@@ -434,7 +443,7 @@ public class UsageCatalogService {
                 """;
         int count = 0;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            for (IngestPayload.FieldUsage fu : usages) {
+            for (QueryUsageFieldUsage fu : usages) {
                 if (fu == null) continue;
                 Long outputId = fu.output() == null ? null : outputAliasToId.get(fu.output());
                 ps.setString(1, uid);
@@ -1128,9 +1137,9 @@ public class UsageCatalogService {
         return byAlias != null ? byAlias : byTable;
     }
 
-    private static IngestPayload.Param findParamByName(List<IngestPayload.Param> params, String name) {
+    private static QueryUsageParameter findParamByName(List<QueryUsageParameter> params, String name) {
         if (params == null) return null;
-        for (IngestPayload.Param p : params) {
+        for (QueryUsageParameter p : params) {
             if (p != null && name.equals(p.name())) return p;
         }
         return null;

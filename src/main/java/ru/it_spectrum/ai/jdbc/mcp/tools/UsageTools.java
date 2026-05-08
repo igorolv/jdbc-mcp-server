@@ -4,8 +4,12 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
-import ru.it_spectrum.ai.jdbc.mcp.usage.IngestPayload;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageFieldUsage;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutput;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageParameter;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -52,19 +56,19 @@ public class UsageTools {
     @McpTool(description = INGEST_DESCRIPTION)
     public String ingestQuery(
             @McpToolParam(description = "Logical database identifier scoping this query (e.g. 'SHOP'). Must not contain '/' or '#'.") String dataSource,
-            @McpToolParam(description = "Where this query comes from: kind/path/unit.") IngestPayload.Source source,
+            @McpToolParam(description = "Where this query comes from: kind/path/unit.") QueryUsageSource source,
             @McpToolParam(description = "SQL text. Named (':name') or positional ('?') bindings.") String sql,
             @McpToolParam(description = "Short business label of this query (for listings).", required = false) String businessLabel,
             @McpToolParam(description = "Business domain/area for grouping (free-text; see listKnownDomains).", required = false) String businessDomain,
             @McpToolParam(description = "Discovery tags (free-text; see listKnownTags).", required = false) List<String> businessTags,
-            @McpToolParam(description = "Parameters with optional business descriptions.", required = false) List<IngestPayload.Param> parameters,
-            @McpToolParam(description = "Output columns of the query with their business meaning and (optionally) the underlying physical columns they are derived from.", required = false) List<IngestPayload.Output> outputs,
-            @McpToolParam(description = "Where in the consuming artifact each output is displayed (Excel cell, RTF region, dashboard widget, …) including transformation kind.", required = false) List<IngestPayload.FieldUsage> fieldUsages,
+            @McpToolParam(description = "Parameters with optional business descriptions.", required = false) List<QueryUsageParameter> parameters,
+            @McpToolParam(description = "Output columns of the query with their business meaning and (optionally) the underlying physical columns they are derived from.", required = false) List<QueryUsageOutput> outputs,
+            @McpToolParam(description = "Where in the consuming artifact each output is displayed (Excel cell, RTF region, dashboard widget, …) including transformation kind.", required = false) List<QueryUsageFieldUsage> fieldUsages,
             @McpToolParam(description = "Arbitrary JSON blob preserved verbatim for audit (the original source artifact, etc.).", required = false) Map<String, Object> sourceMeta
     ) {
         if (!service.enabled()) return disabled("ingestQuery");
         try {
-            IngestPayload.Request req = new IngestPayload.Request(
+            QueryUsage req = new QueryUsage(
                     dataSource,
                     source,
                     businessLabel,

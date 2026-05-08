@@ -4,10 +4,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
-import ru.it_spectrum.ai.jdbc.mcp.usage.IngestPayload;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageDataSourceConfig;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageProperties;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
 
 import javax.sql.DataSource;
 import java.nio.file.Path;
@@ -128,10 +129,10 @@ class EdgeDecorationTest {
         return e;
     }
 
-    private static IngestPayload.Request simple(String dataSource, String path, String sql) {
-        return new IngestPayload.Request(
+    private static QueryUsage simple(String dataSource, String path, String sql) {
+        return new QueryUsage(
                 dataSource,
-                new IngestPayload.Source("dao", path, null),
+                new QueryUsageSource("dao", path, null),
                 null, null, null, sql,
                 null, null, null, null);
     }
