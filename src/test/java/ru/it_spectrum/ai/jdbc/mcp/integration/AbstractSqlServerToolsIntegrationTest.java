@@ -77,7 +77,7 @@ abstract class AbstractSqlServerToolsIntegrationTest extends AbstractToolsIntegr
                     properties.defaultSchema(),
                     new QueryTools(executor, dialect, properties, guard, planParser, analysis, lint, json, errors),
                     new MetadataTools(metadata, json, errors),
-                    new SampleTools(executor, dialect, errors),
+                    new SampleTools(executor, dialect, json, errors),
                     new StatsTools(stats, json, errors),
                     new SchemaContextTools(schemaContext, json, errors),
                     new DistributionTools(distribution, json, errors),

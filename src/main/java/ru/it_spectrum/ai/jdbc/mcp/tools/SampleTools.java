@@ -5,8 +5,6 @@ import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
-import ru.it_spectrum.ai.jdbc.mcp.format.OutputFormat;
-import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
@@ -21,11 +19,13 @@ public class SampleTools {
 
     private final SqlExecutor executor;
     private final SqlDialect dialect;
+    private final JsonResponses json;
     private final ToolErrors errors;
 
-    public SampleTools(SqlExecutor executor, SqlDialect dialect, ToolErrors errors) {
+    public SampleTools(SqlExecutor executor, SqlDialect dialect, JsonResponses json, ToolErrors errors) {
         this.executor = executor;
         this.dialect = dialect;
+        this.json = json;
         this.errors = errors;
     }
 
@@ -42,7 +42,7 @@ public class SampleTools {
         String sql = dialect.limitQuery("SELECT * FROM " + qualified, n);
         try {
             QueryResult r = executor.queryInternal(sql, Collections.emptyList(), n);
-            return ResultFormatter.format(r, OutputFormat.JSON);
+            return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
         }

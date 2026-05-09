@@ -75,7 +75,7 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
                     schema,
                     new QueryTools(executor, dialect, properties, guard, new OraclePlanParser(), analysis, lint, json, errors),
                     new MetadataTools(metadata, json, errors),
-                    new SampleTools(executor, dialect, errors),
+                    new SampleTools(executor, dialect, json, errors),
                     new StatsTools(stats, json, errors),
                     new SchemaContextTools(schemaContext, json, errors),
                     new DistributionTools(distribution, json, errors),

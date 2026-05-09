@@ -6,8 +6,6 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
-import ru.it_spectrum.ai.jdbc.mcp.format.OutputFormat;
-import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
@@ -83,21 +81,18 @@ public class QueryTools {
             "are rejected before being sent to the database. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "Output format: 'json' (default), 'markdown', or 'csv'. " +
-            "Results are truncated to 'limit' rows (default JDBC_MAX_ROWS) with a 'truncated' marker.")
+            "Returns JSON. Results are truncated to 'limit' rows (default JDBC_MAX_ROWS) with a 'truncated' marker.")
     public String executeQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
-            @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds,
-            @McpToolParam(description = "Output format: json (default), markdown, csv", required = false) String format
+            @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {
         try {
             String normalizedSql = normalizeSql(sql);
-            OutputFormat fmt = OutputFormat.parse(format);
             QueryResult result = query(normalizedSql, params, namedParams, limit, timeoutSeconds);
-            return ResultFormatter.format(result, fmt);
+            return json.write(result);
         } catch (SqlNotAllowedException e) {
             return errors.rejected(e);
         } catch (SQLException e) {

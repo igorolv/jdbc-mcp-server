@@ -3,8 +3,6 @@ package ru.it_spectrum.ai.jdbc.mcp.tools;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.format.OutputFormat;
-import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 
@@ -39,7 +37,7 @@ public class DistributionTools {
     ) {
         try {
             QueryResult r = distribution.columnStats(schema, table, column);
-            return ResultFormatter.format(r, OutputFormat.JSON);
+            return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
         } catch (IllegalArgumentException e) {

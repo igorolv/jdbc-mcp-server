@@ -3,7 +3,6 @@ package ru.it_spectrum.ai.jdbc.mcp.tools;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 
@@ -59,7 +58,7 @@ public class StatsTools {
     ) {
         try {
             QueryResult r = stats.indexStats(schema, table);
-            return ResultFormatter.toJson(r);
+            return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
         }

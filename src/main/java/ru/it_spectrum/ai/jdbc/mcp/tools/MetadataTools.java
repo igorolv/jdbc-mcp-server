@@ -3,7 +3,6 @@ package ru.it_spectrum.ai.jdbc.mcp.tools;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.format.ResultFormatter;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
@@ -66,7 +65,7 @@ public class MetadataTools {
                 row.put("remarks", e.remarks());
                 rows.add(row);
             }
-            return ResultFormatter.toJson(toResult(List.of("schema", "name", "type", "remarks"), rows));
+            return json.write(toResult(List.of("schema", "name", "type", "remarks"), rows));
         } catch (SQLException e) {
             return errors.sql(e);
         }
@@ -126,7 +125,7 @@ public class MetadataTools {
     ) {
         try {
             QueryResult r = metadata.listRoutines(schema, namePattern);
-            return ResultFormatter.toJson(r);
+            return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
         }
@@ -152,7 +151,7 @@ public class MetadataTools {
     ) {
         try {
             QueryResult r = metadata.listSequences(schema);
-            return ResultFormatter.toJson(r);
+            return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
         }
@@ -167,7 +166,7 @@ public class MetadataTools {
     ) {
         try {
             QueryResult r = metadata.searchObjects(namePattern);
-            return ResultFormatter.toJson(r);
+            return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
         }

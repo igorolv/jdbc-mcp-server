@@ -15,16 +15,16 @@ class PostgresIntegrationQueryToolsTest extends AbstractPostgresToolsIntegration
     void executeQuerySupportsJsonLimitAndNamedParams() {
         ObjectNode result = object(queryTools().executeQuery(
                 "SELECT name, email FROM customers ORDER BY id",
-                null, null, 1, 5, null));
+                null, null, 1, 5));
 
         assertThat(field(result, "rowCount").asInt()).isEqualTo(1);
         assertThat(field(result, "truncated").asBoolean()).isTrue();
         assertThat(field(row(result, 0), "name").asText()).isEqualTo("Alice");
 
-        String csv = queryTools().executeQuery(
+        ObjectNode count = object(queryTools().executeQuery(
                 "SELECT COUNT(*) AS c FROM orders WHERE customer_id = :customerId",
-                null, Map.of("customerId", 1), null, 5, "csv");
-        assertThat(csv).contains("c").contains("2");
+                null, Map.of("customerId", 1), null, 5));
+        assertThat(field(row(count, 0), "c").asInt()).isEqualTo(2);
     }
 
     @Test
@@ -49,12 +49,12 @@ class PostgresIntegrationQueryToolsTest extends AbstractPostgresToolsIntegration
         assertInvalidArgument(
                 queryTools().executeQuery(
                         "SELECT * FROM customers WHERE id = ?",
-                        null, null, 5, 5, null),
+                        null, null, 5, 5),
                 "contains '?' placeholders");
         assertInvalidArgument(
                 queryTools().executeQuery(
                         "SELECT * FROM customers WHERE id = :id",
-                        java.util.List.of(1), null, 5, 5, null),
+                        java.util.List.of(1), null, 5, 5),
                 "'namedParams'");
 
         ObjectNode invalid = object(queryTools().validateQuery("DELETE FROM customers", null, null));
@@ -66,7 +66,7 @@ class PostgresIntegrationQueryToolsTest extends AbstractPostgresToolsIntegration
     @Test
     void queryToolsRejectWrites() {
         assertRejected(
-                queryTools().executeQuery("DELETE FROM customers", null, null, null, null, null),
+                queryTools().executeQuery("DELETE FROM customers", null, null, null, null),
                 "Only SELECT");
     }
 

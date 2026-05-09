@@ -56,7 +56,7 @@ The protocol is `stdio` only. The client starts the server as a child process.
 
 | Tool | Description |
 |---|---|
-| `executeQuery` | Execute a `SELECT`, `WITH`, or `EXPLAIN` statement. Parameters: `sql`, `params` (array for `?`) or `namedParams` (object for `:name`), `limit`, `timeoutSeconds`, `format` (`json` by default, `markdown`, `csv`). The result is marked with `truncated: true` if the row limit is hit |
+| `executeQuery` | Execute a `SELECT`, `WITH`, or `EXPLAIN` statement and return JSON. Parameters: `sql`, `params` (array for `?`) or `namedParams` (object for `:name`), `limit`, `timeoutSeconds`. The result is marked with `truncated: true` if the row limit is hit |
 | `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` plus `DBMS_XPLAN.DISPLAY`. SQL Server: `SET SHOWPLAN_TEXT ON` on the same session. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). `analyze=true` on PostgreSQL enables `EXPLAIN ANALYZE`; be careful, because the query is actually executed. SQL Server currently returns estimated plans only |
 | `analyzePlan` | Compact LLM-oriented plan summary instead of a large raw plan dump: highest-cost nodes, full scans on large tables, estimate errors (planner vs. reality, requires `analyze=true` on PostgreSQL), risky nested loops with large outer input, and disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` plus `PLAN_TABLE` (`analyze` is ignored because Oracle provides a static plan here). SQL Server: `SET SHOWPLAN_XML ON` estimated plan. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`) |
 | `validateQuery` | Validate syntax without execution: read-only guard plus driver `prepareStatement`, with a JSqlParser-derived `inspection` summary when parsing succeeds. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). Useful for LLM self-correction |
@@ -608,9 +608,6 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |   |   +-- SqlServerPlanParser.java    - SHOWPLAN_XML -> tree
 |   |   +-- PlanAnalyzer.java           - summary: expensive / full scan / estimate error / nested loop / spill
 |   |   +-- JsonReader.java             - small dependency-free JSON parser
-|   +-- format/
-|   |   +-- OutputFormat.java
-|   |   +-- ResultFormatter.java        - JSON / Markdown / CSV
 |   +-- usage/
 |   |   +-- UsageProperties.java        - catalog enable flag and JSON/zip source paths
 |   |   +-- UsageDataSourceConfig.java  - H2 in-memory runtime index + schema init
