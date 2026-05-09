@@ -98,8 +98,8 @@ class SchemaLintService extends SchemaContextSupport {
         String table = info.name();
         for (UniqueConstraint unique : info.uniqueConstraints()) {
             for (String columnName : unique.columns()) {
-                Map<String, Object> column = columnByName(info, columnName);
-                if (Boolean.TRUE.equals(column.get("nullable"))) {
+                Column column = columnByName(info, columnName);
+                if (column != null && Boolean.TRUE.equals(column.nullable())) {
                     addFinding(findings, limit, "MEDIUM", "nullableUniqueColumn", schema, table, columnName,
                             "Unique constraint includes a nullable column",
                             "Check database NULL semantics before relying on this for uniqueness.");
@@ -175,10 +175,11 @@ class SchemaLintService extends SchemaContextSupport {
                 List<String> left = fk.columns();
                 List<String> right = fk.referencedColumns();
                 for (int i = 0; i < Math.min(left.size(), right.size()); i++) {
-                    Map<String, Object> leftColumn = columnByName(info, left.get(i));
-                    Map<String, Object> rightColumn = columnByName(target, right.get(i));
-                    String leftType = str(leftColumn.get("typeName"));
-                    String rightType = str(rightColumn.get("typeName"));
+                    Column leftColumn = columnByName(info, left.get(i));
+                    Column rightColumn = columnByName(target, right.get(i));
+                    if (leftColumn == null || rightColumn == null) continue;
+                    String leftType = str(leftColumn.typeName());
+                    String rightType = str(rightColumn.typeName());
                     if (typesCompatible(leftType, rightType)) continue;
                     addFinding(findings, limit, "HIGH", "fkTypeMismatch", schema, table, left.get(i),
                             "Foreign key column type " + leftType + " differs from referenced type " + rightType,

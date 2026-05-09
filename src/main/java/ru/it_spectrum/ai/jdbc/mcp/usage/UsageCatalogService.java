@@ -13,6 +13,10 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryParameter;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.RebuildResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService.QueryModel;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
@@ -82,12 +86,9 @@ public class UsageCatalogService {
     //  Rebuild
     // ---------------------------------------------------------------------------------------
 
-    public Map<String, Object> rebuild(List<QueryUsage> records) {
+    public RebuildResult rebuild(List<QueryUsage> records) {
         if (!enabled()) {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("catalog_enabled", false);
-            body.put("recordsLoaded", 0);
-            return body;
+            return new RebuildResult(0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         List<QueryUsage> safeRecords = records == null ? List.of() : records;
         Counters counters = new Counters();
@@ -130,17 +131,17 @@ public class UsageCatalogService {
             throw new IllegalStateException("Failed to rebuild usage catalog index: " + e.getMessage(), e);
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("recordsLoaded", safeRecords.size());
-        out.put("parseFailed", parseFailed);
-        out.put("paramsStored", counters.paramsStored);
-        out.put("tablesExtracted", counters.tablesExtracted);
-        out.put("columnsExtracted", counters.columnsExtracted);
-        out.put("joinPairsExtracted", counters.joinPairsExtracted);
-        out.put("outputsStored", counters.outputsStored);
-        out.put("fieldUsagesStored", counters.fieldUsagesStored);
-        out.put("indexBuildMs", System.currentTimeMillis() - started);
-        return out;
+        return new RebuildResult(
+                safeRecords.size(),
+                parseFailed,
+                counters.paramsStored,
+                counters.tablesExtracted,
+                counters.columnsExtracted,
+                counters.joinPairsExtracted,
+                counters.outputsStored,
+                counters.fieldUsagesStored,
+                System.currentTimeMillis() - started
+        );
     }
 
     private void validateRequest(QueryUsage req) {
@@ -760,7 +761,7 @@ public class UsageCatalogService {
         return out;
     }
 
-    public Map<String, Object> listKnownTags(String dataSource) {
+    public KnownTagsResult listKnownTags(String dataSource) {
         StringBuilder sql = new StringBuilder("""
                 SELECT t.tag, COUNT(*) AS count
                 FROM query_tag t
@@ -773,18 +774,12 @@ public class UsageCatalogService {
             args.add(dataSource);
         }
         sql.append(" GROUP BY t.tag ORDER BY count DESC, t.tag");
-        List<Map<String, Object>> rows = queryList(sql.toString(), ps -> {
+        List<KnownTagsResult.TagEntry> entries = queryList(sql.toString(), ps -> {
             for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
-        }, rs -> {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("tag", rs.getString("tag"));
-            r.put("count", rs.getInt("count"));
-            return r;
-        });
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("dataSource", dataSource);
-        out.put("tags", rows);
-        return out;
+        }, rs -> new KnownTagsResult.TagEntry(
+                rs.getString("tag"),
+                rs.getInt("count")));
+        return new KnownTagsResult(dataSource, entries);
     }
 
     /**
@@ -852,12 +847,9 @@ public class UsageCatalogService {
      * </ul>
      * The same propagation is applied to {@code query_column} and to both sides of {@code query_join}.
      */
-    public Map<String, Object> reresolve(String dataSource, NameLookup lookup) {
+    public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
         if (!enabled()) {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("catalog_enabled", false);
-            body.put("resolved", 0);
-            return body;
+            return new ReresolveResult(dataSource, 0, 0, 0, 0);
         }
         Map<String, List<String[]>> nameLookups = new LinkedHashMap<>();
         Set<String> distinctNames = collectUnresolvedTableNames(dataSource);
@@ -904,13 +896,7 @@ public class UsageCatalogService {
             throw new IllegalStateException("Catalog write failed: " + e.getMessage(), e);
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("dataSource", dataSource);
-        out.put("namesLookedUp", distinctNames.size());
-        out.put("tablesResolved", resolved);
-        out.put("tablesAmbiguous", ambiguous);
-        out.put("tablesUnresolved", unresolved);
-        return out;
+        return new ReresolveResult(dataSource, distinctNames.size(), resolved, ambiguous, unresolved);
     }
 
     private Set<String> collectUnresolvedTableNames(String dataSource) {
@@ -986,7 +972,7 @@ public class UsageCatalogService {
         }
     }
 
-    public Map<String, Object> listKnownDomains(String dataSource) {
+    public KnownDomainsResult listKnownDomains(String dataSource) {
         StringBuilder sql = new StringBuilder("""
                 SELECT business_domain, COUNT(*) AS count
                 FROM query
@@ -998,18 +984,12 @@ public class UsageCatalogService {
             args.add(dataSource);
         }
         sql.append(" GROUP BY business_domain ORDER BY count DESC, business_domain");
-        List<Map<String, Object>> rows = queryList(sql.toString(), ps -> {
+        List<KnownDomainsResult.DomainEntry> entries = queryList(sql.toString(), ps -> {
             for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
-        }, rs -> {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("domain", rs.getString("business_domain"));
-            r.put("count", rs.getInt("count"));
-            return r;
-        });
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("dataSource", dataSource);
-        out.put("domains", rows);
-        return out;
+        }, rs -> new KnownDomainsResult.DomainEntry(
+                rs.getString("business_domain"),
+                rs.getInt("count")));
+        return new KnownDomainsResult(dataSource, entries);
     }
 
     /**

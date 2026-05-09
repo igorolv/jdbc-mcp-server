@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
 
@@ -25,13 +26,6 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-/**
- * Builds the runtime usage-catalog index from canonical QueryUsage JSON files.
- *
- * <p>Directories are scanned recursively for {@code *.json}; zip archives are scanned for JSON
- * entries. The files remain the source of truth. Rebuilds replace the in-memory relational index
- * in one transaction through {@link UsageCatalogService#rebuild(List)}.
- */
 @Service
 public class UsageCatalogIndexer implements ApplicationRunner {
 
@@ -41,12 +35,15 @@ public class UsageCatalogIndexer implements ApplicationRunner {
     private final UsageCatalogService service;
     private final ObjectMapper mapper = new ObjectMapper();
     private final AtomicBoolean indexing = new AtomicBoolean(false);
-    private volatile Map<String, Object> status;
+    private volatile IndexerStatusResponse status;
 
     public UsageCatalogIndexer(UsageProperties properties, UsageCatalogService service) {
         this.properties = properties;
         this.service = service;
-        this.status = initialStatus();
+        this.status = IndexerStatusResponse.initial(
+                properties.catalogEnabled(),
+                properties.resolvedCatalogPaths().stream().map(Path::toString).toList()
+        );
     }
 
     @Override
@@ -61,15 +58,15 @@ public class UsageCatalogIndexer implements ApplicationRunner {
         }
     }
 
-    public Map<String, Object> status() {
+    public IndexerStatusResponse status() {
         return status;
     }
 
-    public Map<String, Object> refresh() {
+    public IndexerStatusResponse refresh() {
         return properties.indexBackground() ? refreshAsync() : refreshBlocking();
     }
 
-    public Map<String, Object> refreshAsync() {
+    public IndexerStatusResponse refreshAsync() {
         if (!indexing.compareAndSet(false, true)) {
             return status;
         }
@@ -86,7 +83,7 @@ public class UsageCatalogIndexer implements ApplicationRunner {
         return status;
     }
 
-    public Map<String, Object> refreshBlocking() {
+    public IndexerStatusResponse refreshBlocking() {
         if (!indexing.compareAndSet(false, true)) {
             return status;
         }
@@ -102,34 +99,40 @@ public class UsageCatalogIndexer implements ApplicationRunner {
     private void rebuild() {
         long started = System.currentTimeMillis();
         LoadResult loaded = loadRecords();
+        var sources = properties.resolvedCatalogPaths().stream().map(Path::toString).toList();
+        var startedAt = Instant.ofEpochMilli(started).toString();
+        var diskCacheEnabled = properties.indexDiskCacheEnabled();
+        var diskCachePath = properties.resolvedIndexCachePath().toString();
         try {
-            Map<String, Object> rebuild = service.rebuild(loaded.records());
-            Map<String, Object> out = baseStatus("ready", started);
-            out.put("filesScanned", loaded.filesScanned());
-            out.put("recordsLoaded", loaded.records().size());
-            out.put("invalidFiles", loaded.errors().size());
-            out.put("duplicateUids", loaded.duplicateUids().size());
-            out.put("errors", loaded.errors());
-            out.put("duplicates", loaded.duplicateUids());
-            out.putAll(rebuild);
-            out.put("lastSuccessfulBuildAt", Instant.now().toString());
-            out.put("finishedAt", Instant.now().toString());
-            out.put("totalBuildMs", System.currentTimeMillis() - started);
-            status = Map.copyOf(out);
+            var rebuildResult = service.rebuild(loaded.records());
+            status = IndexerStatusResponse.ready(
+                    properties.catalogEnabled(), "ready", sources,
+                    startedAt, loaded.filesScanned(), loaded.records().size(),
+                    loaded.errors().size(), loaded.duplicateUids().size(),
+                    loaded.errors(), loaded.duplicateUids(),
+                    Instant.now().toString(), Instant.now().toString(),
+                    System.currentTimeMillis() - started,
+                    diskCacheEnabled, diskCachePath,
+                    rebuildResult.parseFailed(), rebuildResult.paramsStored(),
+                    rebuildResult.tablesExtracted(), rebuildResult.columnsExtracted(),
+                    rebuildResult.joinPairsExtracted(), rebuildResult.outputsStored(),
+                    rebuildResult.fieldUsagesStored(), rebuildResult.indexBuildMs()
+            );
             log.info("Usage catalog index built: records={}, invalid={}, duplicates={}, ms={}",
                     loaded.records().size(), loaded.errors().size(), loaded.duplicateUids().size(),
                     System.currentTimeMillis() - started);
         } catch (RuntimeException e) {
-            Map<String, Object> out = baseStatus("failed", started);
-            out.put("filesScanned", loaded.filesScanned());
-            out.put("recordsLoaded", loaded.records().size());
-            out.put("invalidFiles", loaded.errors().size());
-            out.put("duplicateUids", loaded.duplicateUids().size());
-            out.put("errors", appendError(loaded.errors(), "index rebuild failed: " + e.getMessage()));
-            out.put("duplicates", loaded.duplicateUids());
-            out.put("finishedAt", Instant.now().toString());
-            out.put("totalBuildMs", System.currentTimeMillis() - started);
-            status = Map.copyOf(out);
+            List<String> errors = appendError(loaded.errors(), "index rebuild failed: " + e.getMessage());
+            status = IndexerStatusResponse.ready(
+                    properties.catalogEnabled(), "failed", sources,
+                    startedAt, loaded.filesScanned(), loaded.records().size(),
+                    loaded.errors().size() + 1, loaded.duplicateUids().size(),
+                    errors, loaded.duplicateUids(),
+                    null, Instant.now().toString(),
+                    System.currentTimeMillis() - started,
+                    diskCacheEnabled, diskCachePath,
+                    null, null, null, null, null, null, null, null
+            );
             log.warn("Usage catalog index rebuild failed: {}", e.getMessage(), e);
         }
     }
@@ -217,35 +220,12 @@ public class UsageCatalogIndexer implements ApplicationRunner {
     }
 
     private void markIndexing() {
-        Map<String, Object> out = baseStatus("indexing", System.currentTimeMillis());
-        out.put("filesScanned", 0);
-        out.put("recordsLoaded", 0);
-        out.put("invalidFiles", 0);
-        out.put("duplicateUids", 0);
-        out.put("errors", List.of());
-        out.put("duplicates", List.of());
-        status = Map.copyOf(out);
-    }
-
-    private Map<String, Object> baseStatus(String state, long startedMs) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("catalog_enabled", properties.catalogEnabled());
-        out.put("state", state);
-        out.put("indexing", "indexing".equals(state));
-        out.put("sources", properties.resolvedCatalogPaths().stream().map(Path::toString).toList());
-        out.put("startedAt", Instant.ofEpochMilli(startedMs).toString());
-        out.put("diskCacheEnabled", properties.indexDiskCacheEnabled());
-        out.put("diskCachePath", properties.resolvedIndexCachePath().toString());
-        return out;
-    }
-
-    private Map<String, Object> initialStatus() {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("catalog_enabled", properties.catalogEnabled());
-        out.put("state", "not_started");
-        out.put("indexing", false);
-        out.put("sources", properties.resolvedCatalogPaths().stream().map(Path::toString).toList());
-        return Map.copyOf(out);
+        status = IndexerStatusResponse.indexing(
+                properties.catalogEnabled(),
+                properties.resolvedCatalogPaths().stream().map(Path::toString).toList(),
+                properties.indexDiskCacheEnabled(),
+                properties.resolvedIndexCachePath().toString()
+        );
     }
 
     private static List<String> appendError(List<String> errors, String error) {

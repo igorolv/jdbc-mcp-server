@@ -8,6 +8,10 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.RebuildResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
@@ -50,13 +54,13 @@ class UsageCatalogServiceTest {
                 """;
         QueryUsage req = baseRequest("SHOP", "app/dao/CustomerOrders.java", "findOrders", sql);
 
-        Map<String, Object> result = service.rebuild(List.of(req));
+        RebuildResult result = service.rebuild(List.of(req));
 
-        assertThat(result.get("recordsLoaded")).isEqualTo(1);
-        assertThat(result.get("parseFailed")).isEqualTo(0);
-        assertThat(result.get("tablesExtracted")).isEqualTo(2);
-        assertThat((Integer) result.get("columnsExtracted")).isGreaterThanOrEqualTo(4);
-        assertThat(result.get("joinPairsExtracted")).isEqualTo(1);
+        assertThat(result.recordsLoaded()).isEqualTo(1);
+        assertThat(result.parseFailed()).isEqualTo(0);
+        assertThat(result.tablesExtracted()).isEqualTo(2);
+        assertThat(result.columnsExtracted()).isGreaterThanOrEqualTo(4);
+        assertThat(result.joinPairsExtracted()).isEqualTo(1);
 
         Map<String, Object> stored = service.getQuery("SHOP/app/dao/CustomerOrders.java#findOrders");
         assertThat(asList(stored, "tables"))
@@ -300,9 +304,9 @@ class UsageCatalogServiceTest {
                         null, null, null)),
                 null);
 
-        Map<String, Object> result = service.rebuild(List.of(req));
+        RebuildResult result = service.rebuild(List.of(req));
 
-        assertThat(result.get("parseFailed")).isEqualTo(1);
+        assertThat(result.parseFailed()).isEqualTo(1);
         Map<String, Object> stored = service.getQuery("SHOP/broken.sql");
         assertThat(stored.get("parseStatus")).isEqualTo("failed");
         assertThat(stored.get("parseError")).isNotNull();
@@ -376,17 +380,17 @@ class UsageCatalogServiceTest {
                 "SELECT 1 FROM dual", null, null, null, null);
         service.rebuild(List.of(req1, req2));
 
-        Map<String, Object> tags = service.listKnownTags("SHOP");
-        assertThat(asList(tags, "tags"))
-                .extracting(r -> r.get("tag"))
+        KnownTagsResult tags = service.listKnownTags("SHOP");
+        assertThat(tags.tags())
+                .extracting(KnownTagsResult.TagEntry::tag)
                 .containsExactlyInAnyOrder("customer", "vip");
 
-        Map<String, Object> domains = service.listKnownDomains("SHOP");
-        assertThat(asList(domains, "domains"))
+        KnownDomainsResult domains = service.listKnownDomains("SHOP");
+        assertThat(domains.domains())
                 .singleElement()
                 .satisfies(d -> {
-                    assertThat(d.get("domain")).isEqualTo("Customers");
-                    assertThat(d.get("count")).isEqualTo(2);
+                    assertThat(d.domain()).isEqualTo("Customers");
+                    assertThat(d.count()).isEqualTo(2);
                 });
     }
 
@@ -437,7 +441,7 @@ class UsageCatalogServiceTest {
                 buildSimple("SHOP", "q2.sql",
                         "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id")));
 
-        Map<String, Object> result = service.reresolve("SHOP", name -> {
+        ReresolveResult result = service.reresolve("SHOP", name -> {
             List<String[]> matches = new java.util.ArrayList<>();
             if ("CUSTOMERS".equals(name) || "ORDERS".equals(name)) {
                 matches.add(new String[]{"app", name});
@@ -445,9 +449,9 @@ class UsageCatalogServiceTest {
             return matches;
         });
 
-        assertThat(result.get("tablesResolved")).isEqualTo(2);
-        assertThat(result.get("tablesAmbiguous")).isEqualTo(0);
-        assertThat(result.get("tablesUnresolved")).isEqualTo(0);
+        assertThat(result.tablesResolved()).isEqualTo(2);
+        assertThat(result.tablesAmbiguous()).isEqualTo(0);
+        assertThat(result.tablesUnresolved()).isEqualTo(0);
 
         Map<String, Object> stored = service.getQuery("SHOP/q2.sql");
         assertThat(asList(stored, "tables"))
@@ -469,14 +473,14 @@ class UsageCatalogServiceTest {
     void reresolveMarksAmbiguousWhenMultipleMatchesFound() {
         service.rebuild(List.of(buildSimple("SHOP", "q.sql", "SELECT id FROM orders")));
 
-        Map<String, Object> result = service.reresolve("SHOP", name -> {
+        ReresolveResult result = service.reresolve("SHOP", name -> {
             List<String[]> matches = new java.util.ArrayList<>();
             matches.add(new String[]{"app", name});
             matches.add(new String[]{"audit", name});
             return matches;
         });
 
-        assertThat(result.get("tablesAmbiguous")).isEqualTo(1);
+        assertThat(result.tablesAmbiguous()).isEqualTo(1);
         Map<String, Object> stored = service.getQuery("SHOP/q.sql");
         assertThat(asList(stored, "tables")).singleElement()
                 .satisfies(t -> {
@@ -489,9 +493,9 @@ class UsageCatalogServiceTest {
     void reresolveLeavesUnresolvedWhenLookupReturnsNothing() {
         service.rebuild(List.of(buildSimple("SHOP", "q.sql", "SELECT id FROM orders")));
 
-        Map<String, Object> result = service.reresolve("SHOP", name -> new java.util.ArrayList<>());
+        ReresolveResult result = service.reresolve("SHOP", name -> new java.util.ArrayList<>());
 
-        assertThat(result.get("tablesUnresolved")).isEqualTo(1);
+        assertThat(result.tablesUnresolved()).isEqualTo(1);
         Map<String, Object> stored = service.getQuery("SHOP/q.sql");
         assertThat(asList(stored, "tables")).singleElement()
                 .satisfies(t -> assertThat(t.get("resolutionStatus")).isEqualTo("unresolved"));

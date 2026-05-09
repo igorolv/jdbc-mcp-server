@@ -592,23 +592,13 @@ abstract class SchemaContextSupport {
         return usageCatalog != null && usageCatalog.enabled();
     }
 
-    protected Map<String, Object> columnByName(TableDescription table, String columnName) {
+    protected Column columnByName(TableDescription table, String columnName) {
         for (Column column : table.columns()) {
             if (columnName.equalsIgnoreCase(column.name())) {
-                Map<String, Object> out = new LinkedHashMap<>();
-                out.put("name", column.name());
-                out.put("typeName", column.typeName());
-                out.put("nullable", column.nullable());
-                out.put("ordinalPosition", column.ordinalPosition());
-                out.put("size", column.size());
-                out.put("decimalDigits", column.decimalDigits());
-                out.put("default", column.defaultValue());
-                out.put("remarks", column.remarks());
-                out.put("autoIncrement", column.autoIncrement());
-                return out;
+                return column;
             }
         }
-        return Map.of();
+        return null;
     }
 
     protected boolean isKnownKeyColumn(TableDescription table, String columnName) {

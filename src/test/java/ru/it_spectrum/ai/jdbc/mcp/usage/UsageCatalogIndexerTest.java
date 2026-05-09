@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 
@@ -50,11 +51,11 @@ class UsageCatalogIndexerTest {
         UsageCatalogService service = service(List.of(dir.toString(), zip.toString()));
         UsageCatalogIndexer indexer = indexer(service, List.of(dir.toString(), zip.toString()));
 
-        Map<String, Object> status = indexer.refreshBlocking();
+        IndexerStatusResponse status = indexer.refreshBlocking();
 
-        assertThat(status.get("state")).isEqualTo("ready");
-        assertThat(status.get("filesScanned")).isEqualTo(2);
-        assertThat(status.get("recordsLoaded")).isEqualTo(2);
+        assertThat(status.state()).isEqualTo("ready");
+        assertThat(status.filesScanned()).isEqualTo(2);
+        assertThat(status.recordsLoaded()).isEqualTo(2);
         assertThat(service.findQueriesByTable(null, "customers").get("count")).isEqualTo(2);
         assertThat(asList(service.observedRelationships(null, null, 1), "relationships"))
                 .singleElement()
@@ -79,11 +80,11 @@ class UsageCatalogIndexerTest {
         UsageCatalogService service = service(List.of(dir.toString()));
         UsageCatalogIndexer indexer = indexer(service, List.of(dir.toString()));
 
-        Map<String, Object> status = indexer.refreshBlocking();
+        IndexerStatusResponse status = indexer.refreshBlocking();
 
-        assertThat(status.get("state")).isEqualTo("ready");
-        assertThat(status.get("duplicateUids")).isEqualTo(1);
-        assertThat(status.get("recordsLoaded")).isEqualTo(1);
+        assertThat(status.state()).isEqualTo("ready");
+        assertThat(status.duplicateUids()).isEqualTo(1);
+        assertThat(status.recordsLoaded()).isEqualTo(1);
         assertThat(service.findQueriesByTable(null, "customers").get("count")).isEqualTo(1);
         assertThat(service.findQueriesByTable(null, "orders").get("count")).isEqualTo(0);
     }

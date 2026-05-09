@@ -147,7 +147,7 @@ class SchemaBriefService extends SchemaContextSupport {
             List<String> cols = constraint.columns();
             column = cols.isEmpty() ? null : cols.get(0);
         }
-        if (column == null || column.isBlank() || columnByName(table, column).isEmpty()) return null;
+        if (column == null || column.isBlank() || columnByName(table, column) == null) return null;
         String valuesRaw = def.substring(open + 1, close);
         List<String> values = new ArrayList<>();
         for (String part : valuesRaw.split(",")) {
@@ -166,7 +166,7 @@ class SchemaBriefService extends SchemaContextSupport {
         String before = definition.substring(0, anyPos)
                 .replace("CHECK", "").replace("(", "").replace("\"", "").trim();
         String column = before.contains(" ") ? before.substring(before.lastIndexOf(' ') + 1) : before;
-        if (column.isBlank() || columnByName(table, column).isEmpty()) return null;
+        if (column.isBlank() || columnByName(table, column) == null) return null;
 
         int open = definition.indexOf('[', arrayPos);
         int close = definition.indexOf(']', open + 1);
