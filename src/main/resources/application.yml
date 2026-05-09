@@ -51,3 +51,4 @@ usage:
   native-include-routines: ${JDBC_USAGE_NATIVE_INCLUDE_ROUTINES:true}
   native-include-triggers: ${JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS:true}
   native-max-objects: ${JDBC_USAGE_NATIVE_MAX_OBJECTS:10000}
+  native-catalog-lazy: ${JDBC_USAGE_NATIVE_CATALOG_LAZY:true}

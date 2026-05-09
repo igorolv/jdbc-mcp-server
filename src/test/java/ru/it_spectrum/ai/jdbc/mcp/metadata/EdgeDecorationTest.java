@@ -40,7 +40,7 @@ class EdgeDecorationTest {
         JdbcMcpProperties jdbcMcpProperties = new JdbcMcpProperties("");
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
         usageCatalog = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
-                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()));
+                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), null);
         probe = new DecorationProbe(usageCatalog);
     }
 

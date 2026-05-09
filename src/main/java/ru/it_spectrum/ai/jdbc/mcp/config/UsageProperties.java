@@ -36,7 +36,8 @@ public record UsageProperties(
         boolean nativeIncludeViews,
         boolean nativeIncludeRoutines,
         boolean nativeIncludeTriggers,
-        int nativeMaxObjects
+        int nativeMaxObjects,
+        boolean nativeCatalogLazy
 ) {
 
     @ConstructorBinding
@@ -63,7 +64,7 @@ public record UsageProperties(
                            String unused) {
         this(catalogEnabled, catalogPaths, indexOnStartup, indexBackground,
                 indexDiskCacheEnabled, "database",
-                false, List.of(), true, true, true, 1_000);
+                false, List.of(), true, true, true, 1_000, true);
     }
 
     /**

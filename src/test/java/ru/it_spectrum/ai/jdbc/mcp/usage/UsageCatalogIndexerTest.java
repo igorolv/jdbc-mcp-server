@@ -165,7 +165,7 @@ class UsageCatalogIndexerTest {
         JdbcMcpProperties jdbcMcpProperties = jdbcMcpProperties();
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
         return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
-                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()));
+                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), null);
     }
 
     private UsageCatalogIndexer indexer(UsageCatalogService service, List<String> paths) {

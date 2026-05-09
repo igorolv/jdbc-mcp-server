@@ -1,6 +1,8 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import net.sf.jsqlparser.JSQLParserException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedColumnUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedTableUsage;
@@ -48,6 +50,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Core service for the local usage catalog.
@@ -66,6 +69,7 @@ import java.util.Set;
 @Service
 public class UsageCatalogService {
 
+    private static final Logger log = LoggerFactory.getLogger(UsageCatalogService.class);
     private static final int DEFAULT_PROFILE_LIMIT = 10;
     private static final int QUERY_UID_PREVIEW_LIMIT = 20;
 
@@ -73,15 +77,19 @@ public class UsageCatalogService {
     private final DataSource catalogDs;
     private final QueryAnalysisService analysis;
     private final JsonResponses json;
+    private final DatabaseNativeUsageSourceProvider nativeProvider;
+    private final AtomicBoolean lazyTriggered = new AtomicBoolean(false);
 
     public UsageCatalogService(UsageProperties properties,
                                DataSource usageDataSource,
                                QueryAnalysisService analysis,
-                               JsonResponses json) {
+                               JsonResponses json,
+                               DatabaseNativeUsageSourceProvider nativeProvider) {
         this.properties = properties;
         this.catalogDs = usageDataSource;
         this.analysis = analysis;
         this.json = json;
+        this.nativeProvider = nativeProvider;
     }
 
     public boolean enabled() {
@@ -98,36 +106,12 @@ public class UsageCatalogService {
         }
         List<QueryUsage> safeRecords = records == null ? List.of() : records;
         Counters counters = new Counters();
-        int parseFailed = 0;
-        Set<String> seen = new LinkedHashSet<>();
         long started = System.currentTimeMillis();
         try (Connection conn = catalogDs.getConnection()) {
             conn.setAutoCommit(false);
             try {
                 clearAll(conn);
-                for (QueryUsage req : safeRecords) {
-                    validateRequest(req);
-                    QueryUsageSource src = req.source();
-                    String unit = src.unit() == null ? "" : src.unit();
-                    String uid = UsageUid.build(req.dataSource(), src.path(), unit);
-                    if (!seen.add(uid)) {
-                        throw new IllegalArgumentException("duplicate query uid: " + uid);
-                    }
-
-                    QueryModel model;
-                    String parseStatus;
-                    String parseError = null;
-                    try {
-                        model = analysis.model(req.sql());
-                        parseStatus = "parsed";
-                    } catch (JSQLParserException | RuntimeException e) {
-                        model = new QueryModel();
-                        parseStatus = "failed";
-                        parseError = rootMessage(e);
-                        parseFailed++;
-                    }
-                    insertAnalyzed(conn, uid, req, src, unit, model, parseStatus, parseError, counters);
-                }
+                insertAll(conn, safeRecords, counters, true);
                 conn.commit();
             } catch (SQLException | RuntimeException e) {
                 conn.rollback();
@@ -139,7 +123,7 @@ public class UsageCatalogService {
 
         return new RebuildResult(
                 safeRecords.size(),
-                parseFailed,
+                counters.parseFailed,
                 counters.paramsStored,
                 counters.tablesExtracted,
                 counters.columnsExtracted,
@@ -148,6 +132,91 @@ public class UsageCatalogService {
                 counters.fieldUsagesStored,
                 System.currentTimeMillis() - started
         );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    //  Lazy native indexing
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Append native catalog records (views, routines, triggers) into the H2 index without clearing
+     * existing file-based records. Duplicate UIDs are silently skipped. Called once from
+     * {@link #ensureNativeIndexed()} when lazy native indexing is enabled.
+     */
+    public int appendNativeRecords(List<QueryUsage> records) {
+        if (!enabled() || records == null || records.isEmpty()) return 0;
+        Counters counters = new Counters();
+        try (Connection conn = catalogDs.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                insertAll(conn, records, counters, false);
+                conn.commit();
+            } catch (SQLException | RuntimeException e) {
+                conn.rollback();
+                throw e;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to append native records: " + e.getMessage(), e);
+        }
+        return records.size();
+    }
+
+    /**
+     * Trigger lazy native indexing on first access. Safe to call from every read-side method —
+     * the {@link AtomicBoolean} ensures it runs exactly once.
+     */
+    private void ensureNativeIndexed() {
+        if (!enabled() || lazyTriggered.get()) return;
+        if (nativeProvider == null) return;
+        if (properties.nativeCatalogEnabled()) return; // already indexed at startup
+        if (!properties.nativeCatalogLazy()) return;
+        if (lazyTriggered.compareAndSet(false, true)) {
+            try {
+                List<QueryUsage> nativeRecords = nativeProvider.forceLoad();
+                if (!nativeRecords.isEmpty()) {
+                    int count = appendNativeRecords(nativeRecords);
+                    log.info("Lazy native catalog index complete: {} records (views/routines/triggers)", count);
+                }
+            } catch (Exception e) {
+                log.warn("Lazy native catalog indexing failed: {}", e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Insert a batch of records into the H2 index. When {@code throwOnDuplicate} is {@code true},
+     * a duplicate uid raises an {@link IllegalArgumentException}; when {@code false}, duplicates
+     * are silently skipped.
+     */
+    private void insertAll(Connection conn, List<QueryUsage> records, Counters counters,
+                           boolean throwOnDuplicate) throws SQLException {
+        Set<String> seen = new LinkedHashSet<>();
+        for (QueryUsage req : records) {
+            validateRequest(req);
+            QueryUsageSource src = req.source();
+            String unit = src.unit() == null ? "" : src.unit();
+            String uid = UsageUid.build(req.dataSource(), src.path(), unit);
+            if (!seen.add(uid)) {
+                if (throwOnDuplicate) {
+                    throw new IllegalArgumentException("duplicate query uid: " + uid);
+                }
+                continue;
+            }
+
+            QueryModel model;
+            String parseStatus;
+            String parseError = null;
+            try {
+                model = analysis.model(req.sql());
+                parseStatus = "parsed";
+            } catch (JSQLParserException | RuntimeException e) {
+                model = new QueryModel();
+                parseStatus = "failed";
+                parseError = rootMessage(e);
+                counters.parseFailed++;
+            }
+            insertAnalyzed(conn, uid, req, src, unit, model, parseStatus, parseError, counters);
+        }
     }
 
     private void validateRequest(QueryUsage req) {
@@ -517,8 +586,9 @@ public class UsageCatalogService {
     //  Read side
     // ---------------------------------------------------------------------------------------
 
-    public CatalogQueryDetail getQuery(String uid) {
+public CatalogQueryDetail getQuery(String uid) {
         if (uid == null || uid.isBlank()) throw new IllegalArgumentException("uid is required");
+        ensureNativeIndexed();
         CatalogQueryDetail head = querySingle(
                 "SELECT * FROM query WHERE uid = ?",
                 ps -> ps.setString(1, uid),
@@ -561,9 +631,10 @@ public class UsageCatalogService {
                 tags, params, tables, columns, joinPairs, outputs, fieldUsages);
     }
 
-    public ListQueriesResult listQueries(String dataSource, String sourcePath, String sourceKind,
+public ListQueriesResult listQueries(String dataSource, String sourcePath, String sourceKind,
                                           String businessDomain, String tag, String parseStatus,
                                           Integer limit, Integer offset) {
+        ensureNativeIndexed();
         StringBuilder sql = new StringBuilder("""
                 SELECT DISTINCT q.uid, q.data_source, q.source_kind, q.source_path, q.source_unit,
                        q.business_label, q.business_domain, q.parse_status, q.ingested_at
@@ -619,8 +690,9 @@ public class UsageCatalogService {
         return new ListQueriesResult(entries, safeLimit, safeOffset, entries.size());
     }
 
-    public FindQueriesByTableResult findQueriesByTable(String schema, String table) {
+public FindQueriesByTableResult findQueriesByTable(String schema, String table) {
         if (table == null || table.isBlank()) throw new IllegalArgumentException("table is required");
+        ensureNativeIndexed();
         String tableUpper = table.toUpperCase(Locale.ROOT);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
         String sql = """
@@ -653,8 +725,9 @@ public class UsageCatalogService {
         return new FindQueriesByTableResult(schemaUpper, tableUpper, matches, matches.size());
     }
 
-    public FindQueriesByColumnResult findQueriesByColumn(String schema, String table, String column) {
+public FindQueriesByColumnResult findQueriesByColumn(String schema, String table, String column) {
         if (column == null || column.isBlank()) throw new IllegalArgumentException("column is required");
+        ensureNativeIndexed();
         String columnUpper = column.toUpperCase(Locale.ROOT);
         String tableUpper = table == null || table.isBlank() ? null : table.toUpperCase(Locale.ROOT);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
@@ -689,6 +762,7 @@ public class UsageCatalogService {
     }
 
     public ObservedRelationshipsResult observedRelationships(String schema, String table, int minSupport) {
+        ensureNativeIndexed();
         int support = Math.max(1, minSupport);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
         String tableUpper = table == null || table.isBlank() ? null : table.toUpperCase(Locale.ROOT);
@@ -730,6 +804,7 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
     }
 
     public KnownTagsResult listKnownTags(String dataSource) {
+        ensureNativeIndexed();
         StringBuilder sql = new StringBuilder("""
                 SELECT t.tag, COUNT(*) AS count
                 FROM query_tag t
@@ -758,8 +833,9 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
      * cheaper to consume than untyped maps. Pass {@code tableFilter} (uppercased names) to limit
      * results; an empty/null filter returns every observed pair in the catalog.
      */
-    public List<ObservedEdge> observedEdges(Set<String> tableFilter, int minSupport) {
+public List<ObservedEdge> observedEdges(Set<String> tableFilter, int minSupport) {
         if (!enabled()) return List.of();
+        ensureNativeIndexed();
         int support = Math.max(1, minSupport);
         String sql = """
                 SELECT
@@ -815,10 +891,11 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
      * </ul>
      * The same propagation is applied to {@code query_column} and to both sides of {@code query_join}.
      */
-    public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
+public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
         if (!enabled()) {
             return new ReresolveResult(dataSource, 0, 0, 0, 0);
         }
+        ensureNativeIndexed();
         Map<String, List<String[]>> nameLookups = new LinkedHashMap<>();
         Set<String> distinctNames = collectUnresolvedTableNames(dataSource);
         for (String name : distinctNames) {
@@ -941,6 +1018,7 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
     }
 
     public KnownDomainsResult listKnownDomains(String dataSource) {
+        ensureNativeIndexed();
         StringBuilder sql = new StringBuilder("""
                 SELECT business_domain, COUNT(*) AS count
                 FROM query
@@ -966,8 +1044,9 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
      * {@code observedQuery} describes how the table/columns are referenced, while
      * {@code semanticUsage} carries business labels, domains, tags and field usages.
      */
-    public TableEvidenceProfile tableEvidenceProfile(String schema, String table) {
+public TableEvidenceProfile tableEvidenceProfile(String schema, String table) {
         if (table == null || table.isBlank()) throw new IllegalArgumentException("table is required");
+        ensureNativeIndexed();
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
         String tableUpper = table.toUpperCase(Locale.ROOT);
         List<String> queryUids = tableQueryUids(schemaUpper, tableUpper);
@@ -1000,11 +1079,12 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
      * decoration on edges that already exist via declared FKs or observed equi-joins.
      * Returns {@code null} when the catalog is disabled or table inputs are blank.
      */
-    public SemanticEdgeEvidence semanticEdgeEvidence(String leftSchema, String leftTable,
+public SemanticEdgeEvidence semanticEdgeEvidence(String leftSchema, String leftTable,
                                                       String rightSchema, String rightTable) {
         if (!enabled()) return null;
         if (leftTable == null || leftTable.isBlank()) return null;
         if (rightTable == null || rightTable.isBlank()) return null;
+        ensureNativeIndexed();
         String leftSchemaUpper = leftSchema == null || leftSchema.isBlank()
                 ? null : leftSchema.toUpperCase(Locale.ROOT);
         String rightSchemaUpper = rightSchema == null || rightSchema.isBlank()
@@ -1082,8 +1162,9 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
      * natural-language terms. This is deliberately a usage-catalog lookup: live database metadata
      * remains the authority for whether the candidate table can actually be described.
      */
-    public List<SemanticTableCandidate> semanticTableCandidates(String schema, String terms, int limit) {
+public List<SemanticTableCandidate> semanticTableCandidates(String schema, String terms, int limit) {
         if (!enabled()) return List.of();
+        ensureNativeIndexed();
         List<String> tokens = semanticTokens(terms);
         if (tokens.isEmpty()) return List.of();
         int safeLimit = Math.max(1, Math.min(limit, 50));
@@ -1634,6 +1715,7 @@ rs.getString("confidence"));
     }
 
     private static class Counters {
+        int parseFailed;
         int paramsStored;
         int tablesExtracted;
         int columnsExtracted;

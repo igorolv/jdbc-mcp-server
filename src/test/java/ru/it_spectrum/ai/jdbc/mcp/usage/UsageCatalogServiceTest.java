@@ -48,7 +48,7 @@ class UsageCatalogServiceTest {
         JdbcMcpProperties jdbcMcpProperties = new JdbcMcpProperties("");
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
         service = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
-                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()));
+                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), null);
     }
 
     @Test

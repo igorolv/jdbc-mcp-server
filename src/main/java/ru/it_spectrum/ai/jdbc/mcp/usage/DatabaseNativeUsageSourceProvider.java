@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,6 +36,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
     private final UsageProperties properties;
     private final MetadataService metadata;
     private final ProceduralSqlExtractor proceduralSqlExtractor;
+    private final AtomicBoolean forceLazy = new AtomicBoolean(false);
 
     public DatabaseNativeUsageSourceProvider(UsageProperties properties, MetadataService metadata) {
         this(properties, metadata, new ProceduralSqlExtractor());
@@ -53,9 +55,9 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
         return "database-native";
     }
 
-    @Override
+@Override
     public List<QueryUsage> load() throws Exception {
-        if (!properties.catalogEnabled() || !properties.nativeCatalogEnabled()) {
+        if (!properties.catalogEnabled() || (!properties.nativeCatalogEnabled() && !forceLazy.get())) {
             return List.of();
         }
         List<QueryUsage> out = new ArrayList<>();
@@ -71,6 +73,19 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Load native records bypassing the {@code nativeCatalogEnabled} guard. Used by the lazy
+     * init path when the property is {@code false} but {@code nativeCatalogLazy} is {@code true}.
+     */
+    public List<QueryUsage> forceLoad() throws Exception {
+        forceLazy.set(true);
+        try {
+            return load();
+        } finally {
+            forceLazy.set(false);
+        }
     }
 
     private List<String> schemas() throws Exception {

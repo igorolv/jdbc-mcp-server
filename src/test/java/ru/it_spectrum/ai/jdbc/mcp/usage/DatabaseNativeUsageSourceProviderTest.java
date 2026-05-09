@@ -101,7 +101,8 @@ class DatabaseNativeUsageSourceProviderTest {
                 views,
                 routines,
                 triggers,
-                100
+                100,
+                false
         );
     }
 }
