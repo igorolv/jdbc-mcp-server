@@ -14,19 +14,19 @@ is stored as a pair of directories on disk:
 ### Source layout example
 
 ```
-RTK/
-  Notif/
-    Stated.xdo/
+Reports/
+  Notifications/
+    Notice.xdo/
       _report.xdo
-      Stated_ru.rtf
-      Stated_en.rtf
-    Stated.xdm/
+      Notice_ru.rtf
+      Notice_en.rtf
+    Notice.xdm/
       _datamodel.xdm
-    ACT.xdo/
+    Act.xdo/
       _report.xdo
-      Agr_ru.rtf
+      Agreement_ru.rtf
       Act_ru.rtf
-    ACT.xdm/
+    Act.xdm/
       _datamodel.xdm
 ```
 
@@ -45,7 +45,7 @@ files, and emits one **QueryUsageRecord** per SQL dataset. The output conforms t
 | `source.path` | Relative path to the `.xdo` directory |
 | `source.unit` | Dataset name from `_datamodel.xdm` |
 | `businessLabel` | Report description + ` / ` + dataset name |
-| `businessDomain` | Top-level module directory (e.g. `GPN`, `RTK`, `SSV`) |
+| `businessDomain` | Top-level module directory (e.g. `Reports`, `HR`, `Finance`) |
 | `sql` | SQL text from `<dataSet><sql>` in `_datamodel.xdm` |
 | `parameters` | Report-level parameters + bind parameters detected from SQL |
 | `outputs` | Data structure elements (`<group><element name="..." value="...">`) |
@@ -70,10 +70,10 @@ pip install -r requirements.txt
 python convert.py /path/to/bi-publisher/sources --output records.json
 
 # Convert a single module
-python convert.py /path/to/RTK --output rtk_records.json
+python convert.py /path/to/Reports/Notifications --output notifications.json
 
 # Convert a single report
-python convert.py /path/to/RTK/Notif/Stated.xdo --output stated.json
+python convert.py /path/to/Reports/Notifications/Notice.xdo --output notice.json
 ```
 
 ### Output
@@ -84,15 +84,15 @@ A JSON array of QueryUsageRecord objects:
 [
   {
     "schemaVersion": 1,
-    "dataSource": "SSKV",
+    "dataSource": "APP",
     "source": {
       "kind": "bi-publisher-report",
-      "path": "RTK/Notif/Stated.xdo",
+      "path": "Reports/Notifications/Notice.xdo",
       "unit": "MAIN"
     },
-    "businessLabel": "Уведомление (общее) / MAIN",
-    "businessDomain": "RTK",
-    "businessTags": ["RTK", "SSKV", "bi-publisher", "complex"],
+    "businessLabel": "Notice (general) / MAIN",
+    "businessDomain": "Reports",
+    "businessTags": ["Reports", "APP", "bi-publisher", "complex"],
     "sql": "SELECT ... FROM ... WHERE ...",
     "parameters": [
       {"name": "pBankruptId", "dataType": "xsd:string"},
@@ -104,24 +104,24 @@ A JSON array of QueryUsageRecord objects:
     ],
     "fieldUsages": [
       {
-        "businessObject": "Уведомление (общее)",
+        "businessObject": "Notice (general)",
         "transformation": {"kind": "identity"},
         "location": {
           "kind": "excel-cell",
           "details": {"sheet": "Main", "cell": "B3"}
         },
-        "headers": ["Фамилия"],
+        "headers": ["Surname"],
         "confidence": "high"
       }
     ],
     "sourceMeta": {
       "adapter": "bi-publisher",
       "adapterVersion": "1.0.0",
-      "report": "Stated",
+      "report": "Notice",
       "dataset": "MAIN",
-      "module": "RTK",
+      "module": "Reports",
       "templates": [
-        {"label": "Уведомление", "type": "rtf", "url": "Stated.rtf"}
+        {"label": "Notice", "type": "rtf", "url": "Notice.rtf"}
       ]
     }
   }
