@@ -1418,7 +1418,7 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
 
     private CatalogQueryDetail.FieldUsage fieldUsageRow(ResultSet rs) throws SQLException {
         return new CatalogQueryDetail.FieldUsage(
-                rs.getObject("query_output_id"),
+                rs.getObject("query_output_id", Long.class),
                 rs.getString("business_object"),
                 new CatalogQueryDetail.FieldUsage.Transformation(
                         rs.getString("transformation_kind"),

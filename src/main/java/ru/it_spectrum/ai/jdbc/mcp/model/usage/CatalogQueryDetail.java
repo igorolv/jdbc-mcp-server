@@ -76,7 +76,7 @@ public record CatalogQueryDetail(
     }
 
     public record FieldUsage(
-            Object outputId,
+            Long outputId,
             String businessObject,
             Transformation transformation,
             Location location,

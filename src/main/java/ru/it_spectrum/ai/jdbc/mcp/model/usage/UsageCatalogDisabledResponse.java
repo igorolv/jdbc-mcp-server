@@ -8,11 +8,11 @@ public record UsageCatalogDisabledResponse(
         String tool,
         Boolean catalog_enabled,
         Integer count,
-        List<Object> queries,
-        List<Object> matches,
-        List<Object> relationships,
-        List<Object> tags,
-        List<Object> domains
+        List<?> queries,
+        List<?> matches,
+        List<?> relationships,
+        List<?> tags,
+        List<?> domains
 ) {
     private static final String DISABLED_ERROR =
             "usage catalog is disabled (set JDBC_USAGE_CATALOG_ENABLED=true to enable)";
@@ -25,7 +25,7 @@ public record UsageCatalogDisabledResponse(
     }
 
     public static UsageCatalogDisabledResponse withRows(String tool, String collectionField) {
-        List<Object> empty = List.of();
+        List<?> empty = List.of();
         return switch (collectionField) {
             case "queries" -> rows(tool, empty, null, null, null, null);
             case "matches" -> rows(tool, null, empty, null, null, null);
@@ -38,11 +38,11 @@ public record UsageCatalogDisabledResponse(
 
     private static UsageCatalogDisabledResponse rows(
             String tool,
-            List<Object> queries,
-            List<Object> matches,
-            List<Object> relationships,
-            List<Object> tags,
-            List<Object> domains
+            List<?> queries,
+            List<?> matches,
+            List<?> relationships,
+            List<?> tags,
+            List<?> domains
     ) {
         return new UsageCatalogDisabledResponse(
                 null, null, tool, false, 0,

@@ -5,7 +5,7 @@ import java.util.List;
 public record QueryContextConstraint(
         String name,
         String type,
-        Object definition,
+        String definition,
         String allowedValuesColumn,
         List<String> allowedValues
 ) {
