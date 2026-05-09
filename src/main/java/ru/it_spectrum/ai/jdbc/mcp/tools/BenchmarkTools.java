@@ -35,9 +35,13 @@ public class BenchmarkTools {
             "named -> sql='SELECT * FROM events WHERE status = :status', namedParams={status: 'OK'}. ";
 
     private final BenchmarkService benchmarks;
+    private final JsonResponses json;
+    private final ToolErrors errors;
 
-    public BenchmarkTools(BenchmarkService benchmarks) {
+    public BenchmarkTools(BenchmarkService benchmarks, JsonResponses json, ToolErrors errors) {
         this.benchmarks = benchmarks;
+        this.json = json;
+        this.errors = errors;
     }
 
     @McpTool(description = "Benchmark a read-only SQL statement by running it repeatedly and reporting " +
@@ -58,19 +62,19 @@ public class BenchmarkTools {
             @McpToolParam(description = "Number of cold runs (default 1). Executed first.", required = false) Integer coldRuns,
             @McpToolParam(description = "Number of warm runs (default 3). Aggregated into min/median/max.", required = false) Integer warmRuns
     ) {
-        if (limit == null) return ToolErrors.argument("limit is required");
-        if (timeoutSeconds == null) return ToolErrors.argument("timeoutSeconds is required");
+        if (limit == null) return errors.argument("limit is required");
+        if (timeoutSeconds == null) return errors.argument("timeoutSeconds is required");
         int cold = coldRuns == null ? 1 : coldRuns;
         int warm = warmRuns == null ? 3 : warmRuns;
         try {
             Map<String, Object> result = benchmarks.benchmark(sql, params, namedParams, limit, timeoutSeconds, cold, warm);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SqlNotAllowedException e) {
-            return ToolErrors.rejected(e);
+            return errors.rejected(e);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -91,13 +95,13 @@ public class BenchmarkTools {
     ) {
         try {
             Map<String, Object> result = benchmarks.timed(sql, params, namedParams, limit, timeoutSeconds);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SqlNotAllowedException e) {
-            return ToolErrors.rejected(e);
+            return errors.rejected(e);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 }

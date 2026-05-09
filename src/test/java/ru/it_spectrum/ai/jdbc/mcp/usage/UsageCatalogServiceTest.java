@@ -2,11 +2,13 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageConfidence;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageFieldUsage;
@@ -33,7 +35,8 @@ class UsageCatalogServiceTest {
     void setUp() throws Exception {
         UsageProperties properties = new UsageProperties(true, List.of(), false, false, false, "");
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties);
-        service = new UsageCatalogService(properties, ds, new QueryAnalysisService());
+        service = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
+                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()));
     }
 
     @Test

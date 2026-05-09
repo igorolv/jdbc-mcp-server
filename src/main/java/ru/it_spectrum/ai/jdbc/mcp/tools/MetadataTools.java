@@ -23,9 +23,13 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 public class MetadataTools {
 
     private final MetadataService metadata;
+    private final JsonResponses json;
+    private final ToolErrors errors;
 
-    public MetadataTools(MetadataService metadata) {
+    public MetadataTools(MetadataService metadata, JsonResponses json, ToolErrors errors) {
         this.metadata = metadata;
+        this.json = json;
+        this.errors = errors;
     }
 
     @McpTool(description = "List all schemas visible to the current user. " +
@@ -37,7 +41,7 @@ public class MetadataTools {
             List<String> schemas = metadata.listSchemas(Boolean.TRUE.equals(includeSystem));
             return toJsonArray(schemas);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -64,7 +68,7 @@ public class MetadataTools {
             }
             return ResultFormatter.toJson(toResult(List.of("schema", "name", "type", "remarks"), rows));
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -77,11 +81,11 @@ public class MetadataTools {
     ) {
         try {
             TableDescription info = metadata.describeTable(schema, table);
-            return JsonWriter.write(info);
+            return json.write(info);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -93,11 +97,11 @@ public class MetadataTools {
     ) {
         try {
             String def = metadata.triggerDefinition(schema, table, trigger);
-            return def == null || def.isBlank() ? ToolErrors.notFound("trigger", trigger) : def;
+            return def == null || def.isBlank() ? errors.notFound("trigger", trigger) : def;
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -108,9 +112,9 @@ public class MetadataTools {
     ) {
         try {
             String def = metadata.viewDefinition(schema, name);
-            return def == null ? ToolErrors.notFound("view", name) : def;
+            return def == null ? errors.notFound("view", name) : def;
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -124,7 +128,7 @@ public class MetadataTools {
             QueryResult r = metadata.listRoutines(schema, namePattern);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -136,9 +140,9 @@ public class MetadataTools {
     ) {
         try {
             String source = metadata.routineSource(schema, name);
-            return source == null || source.isEmpty() ? ToolErrors.notFound("routine", name) : source;
+            return source == null || source.isEmpty() ? errors.notFound("routine", name) : source;
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -150,7 +154,7 @@ public class MetadataTools {
             QueryResult r = metadata.listSequences(schema);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -165,7 +169,7 @@ public class MetadataTools {
             QueryResult r = metadata.searchObjects(namePattern);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 

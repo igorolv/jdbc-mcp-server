@@ -1,7 +1,5 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.stats;
 
-import ru.it_spectrum.ai.jdbc.mcp.model.JsonKey;
-
 import java.util.List;
 
 public record UnusedIndexes(
@@ -13,10 +11,10 @@ public record UnusedIndexes(
 ) {
     public record UnusedIndexEntry(
             String schema,
-            @JsonKey("table") String tableName,
-            @JsonKey("index") String indexName,
+            String tableName,
+            String indexName,
             String columns,
-            @JsonKey("size_bytes") long sizeBytes,
-            @JsonKey("index_type") String indexType
+            long sizeBytes,
+            String indexType
     ) {}
 }

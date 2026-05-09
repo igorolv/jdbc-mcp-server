@@ -21,13 +21,13 @@ class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrat
     @Test
     void distributionAndHistogramExposeSkew() {
         ObjectNode distribution = object(distributionTools().columnDistribution(schema(), "EVENTS", "STATUS", 5));
-        assertThat(field(distribution, "total_rows").asInt()).isEqualTo(100);
+        assertThat(field(distribution, "totalRows").asInt()).isEqualTo(100);
         ObjectNode ok = (ObjectNode) findByField((ArrayNode) field(distribution, "values"), "value", "OK");
         assertThat(ok).isNotNull();
         assertThat(field(ok, "frequency").asInt()).isEqualTo(90);
 
         ObjectNode histogram = object(distributionTools().columnHistogram(schema(), "EVENTS", "AMOUNT"));
-        assertThat(field(histogram, "percentile_function").asText()).isEqualTo("percentile_cont");
+        assertThat(field(histogram, "percentileFunction").asText()).isEqualTo("percentile_cont");
         assertThat(field(histogram, "p50").asDouble())
                 .isBetween(field(histogram, "min").asDouble(), field(histogram, "max").asDouble());
     }
@@ -37,18 +37,18 @@ class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrat
         ObjectNode nullRatio = object(distributionTools().nullRatio(schema(), "EVENTS"));
         ObjectNode category = (ObjectNode) findByField((ArrayNode) field(nullRatio, "columns"), "column", "CATEGORY");
         assertThat(category).isNotNull();
-        assertThat(field(category, "null_rows").asInt()).isEqualTo(10);
+        assertThat(field(category, "nullRows").asInt()).isEqualTo(10);
 
         ObjectNode selectivity = object(distributionTools().estimateSelectivity(
                 schema(), "EVENTS", "status = 'FAIL'"));
-        assertThat(field(selectivity, "estimated_rows").asLong())
-                .isLessThanOrEqualTo(field(selectivity, "baseline_rows").asLong());
+        assertThat(field(selectivity, "estimatedRows").asLong())
+                .isLessThanOrEqualTo(field(selectivity, "baselineRows").asLong());
 
         ObjectNode join = object(distributionTools().joinCardinality(
                 schema(), "CUSTOMERS", "ID",
                 schema(), "ORDERS", "CUSTOMER_ID", "INNER"));
-        assertThat(field(join, "join_type").asText()).isEqualTo("INNER");
-        assertThat(field(join, "estimated_rows").asLong()).isGreaterThan(0L);
+        assertThat(field(join, "joinType").asText()).isEqualTo("INNER");
+        assertThat(field(join, "estimatedRows").asLong()).isGreaterThan(0L);
     }
 
     @Test

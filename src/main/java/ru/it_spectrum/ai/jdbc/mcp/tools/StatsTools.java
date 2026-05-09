@@ -20,9 +20,13 @@ import java.util.Map;
 public class StatsTools {
 
     private final StatsService stats;
+    private final JsonResponses json;
+    private final ToolErrors errors;
 
-    public StatsTools(StatsService stats) {
+    public StatsTools(StatsService stats, JsonResponses json, ToolErrors errors) {
         this.stats = stats;
+        this.json = json;
+        this.errors = errors;
     }
 
     @McpTool(description = "Return per-table storage and activity statistics: estimated row count, " +
@@ -36,11 +40,11 @@ public class StatsTools {
     ) {
         try {
             Map<String, Object> info = stats.tableStats(schema, table);
-            return JsonWriter.write(info);
+            return json.write(info);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -57,7 +61,7 @@ public class StatsTools {
             QueryResult r = stats.indexStats(schema, table);
             return ResultFormatter.toJson(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -73,9 +77,9 @@ public class StatsTools {
     ) {
         try {
             var result = stats.unusedIndexes(schema, minSizeBytes);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -89,9 +93,9 @@ public class StatsTools {
     ) {
         try {
             var result = stats.redundantIndexes(schema, table);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 
@@ -106,9 +110,9 @@ public class StatsTools {
     ) {
         try {
             var result = stats.fkIndexCoverage(schema, table);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 }

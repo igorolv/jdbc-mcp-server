@@ -2,7 +2,9 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageDataSourceConfig;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageProperties;
@@ -33,7 +35,8 @@ class EdgeDecorationTest {
     void setUp() throws Exception {
         UsageProperties properties = new UsageProperties(true, List.of(), false, false, false, "");
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties);
-        usageCatalog = new UsageCatalogService(properties, ds, new QueryAnalysisService());
+        usageCatalog = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
+                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()));
         probe = new DecorationProbe(usageCatalog);
     }
 

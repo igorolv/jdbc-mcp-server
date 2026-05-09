@@ -26,21 +26,21 @@ class ResultFormatterTest {
     @Test
     void jsonPreservesColumnOrder() {
         String out = ResultFormatter.toJson(sample());
-        assertThat(out).contains("\"columns\": [\"id\", \"name\"]");
-        assertThat(out.indexOf("\"id\": 1")).isLessThan(out.indexOf("\"name\": \"Alice\""));
+        assertThat(out).contains("\"columns\":[\"id\",\"name\"]");
+        assertThat(out.indexOf("\"id\":1")).isLessThan(out.indexOf("\"name\":\"Alice\""));
     }
 
     @Test
     void jsonEscapesQuotes() {
         String out = ResultFormatter.toJson(sample());
-        assertThat(out).contains("\"name\": \"Bo\\\"b\"");
+        assertThat(out).contains("\"name\":\"Bo\\\"b\"");
     }
 
     @Test
     void jsonReportsTruncation() {
         QueryResult truncated = new QueryResult(
                 List.of("x"), List.of("int"), List.of(Map.of("x", 1)), true, 1);
-        assertThat(ResultFormatter.toJson(truncated)).contains("\"truncated\": true");
+        assertThat(ResultFormatter.toJson(truncated)).contains("\"truncated\":true");
     }
 
     @Test

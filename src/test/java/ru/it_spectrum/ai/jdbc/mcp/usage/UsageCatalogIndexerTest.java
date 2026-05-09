@@ -2,7 +2,9 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 
 import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
@@ -89,7 +91,8 @@ class UsageCatalogIndexerTest {
     private UsageCatalogService service(List<String> paths) throws Exception {
         UsageProperties properties = properties(paths);
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties);
-        return new UsageCatalogService(properties, ds, new QueryAnalysisService());
+        return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
+                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()));
     }
 
     private UsageCatalogIndexer indexer(UsageCatalogService service, List<String> paths) {

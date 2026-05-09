@@ -25,23 +25,23 @@ class PostgresIntegrationStatsToolsTest extends AbstractPostgresToolsIntegration
     @Test
     void fkCoverageAndRedundantIndexesAreReported() {
         ObjectNode fkCoverage = object(statsTools().fkIndexCoverage("public", "orders"));
-        assertThat(field(fkCoverage, "uncovered_count").asInt()).isGreaterThanOrEqualTo(1);
-        ObjectNode uncovered = (ObjectNode) findByField((ArrayNode) field(fkCoverage, "uncovered"), "table", "orders");
+        assertThat(field(fkCoverage, "uncoveredCount").asInt()).isGreaterThanOrEqualTo(1);
+        ObjectNode uncovered = (ObjectNode) findByField((ArrayNode) field(fkCoverage, "uncovered"), "tableName", "orders");
         assertThat(uncovered).isNotNull();
-        assertThat(textValues((ArrayNode) field(uncovered, "fk_columns"))).contains("customer_id");
+        assertThat(textValues((ArrayNode) field(uncovered, "fkColumns"))).contains("customer_id");
 
         ObjectNode redundant = object(statsTools().redundantIndexes("public", "line_items"));
         ObjectNode finding = (ObjectNode) findByField((ArrayNode) field(redundant, "findings"),
-                "shadowed_index", "idx_li_order");
+                "shadowedIndex", "idx_li_order");
         assertThat(finding).isNotNull();
-        assertThat(field(finding, "covered_by_index").asText()).isEqualTo("idx_li_order_sku");
+        assertThat(field(finding, "coveredByIndex").asText()).isEqualTo("idx_li_order_sku");
     }
 
     @Test
     void unusedIndexesReturnsCandidates() {
         ObjectNode unused = object(statsTools().unusedIndexes("public", null));
         assertThat(field(unused, "supported").asBoolean()).isTrue();
-        assertThat(findByField((ArrayNode) field(unused, "indexes"), "index", "idx_customer_notes_note"))
+        assertThat(findByField((ArrayNode) field(unused, "indexes"), "indexName", "idx_customer_notes_note"))
                 .isNotNull();
     }
 }

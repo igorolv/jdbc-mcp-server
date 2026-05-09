@@ -12,7 +12,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService.QueryModel;
-import ru.it_spectrum.ai.jdbc.mcp.tools.JsonWriter;
+import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageFieldUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutput;
@@ -59,13 +59,16 @@ public class UsageCatalogService {
     private final UsageProperties properties;
     private final DataSource catalogDs;
     private final QueryAnalysisService analysis;
+    private final JsonResponses json;
 
     public UsageCatalogService(UsageProperties properties,
                                DataSource usageDataSource,
-                               QueryAnalysisService analysis) {
+                               QueryAnalysisService analysis,
+                               JsonResponses json) {
         this.properties = properties;
         this.catalogDs = usageDataSource;
         this.analysis = analysis;
+        this.json = json;
     }
 
     public boolean enabled() {
@@ -212,7 +215,7 @@ public class UsageCatalogService {
             ps.setString(9, model.normalizedSql);
             ps.setString(10, parseStatus);
             ps.setString(11, parseError);
-            ps.setString(12, req.sourceMeta() == null ? null : JsonWriter.write(req.sourceMeta()));
+            ps.setString(12, req.sourceMeta() == null ? null : json.write(req.sourceMeta()));
             ps.setString(13, Instant.now().toString());
             ps.executeUpdate();
         }
@@ -489,8 +492,8 @@ public class UsageCatalogService {
                 ps.setString(5, fu.transformation().description());
                 ps.setString(6, fu.location() == null ? null : fu.location().kind());
                 ps.setString(7, fu.location() == null || fu.location().details() == null
-                        ? null : JsonWriter.write(fu.location().details()));
-                ps.setString(8, fu.headers() == null ? null : JsonWriter.write(fu.headers()));
+                        ? null : json.write(fu.location().details()));
+                ps.setString(8, fu.headers() == null ? null : json.write(fu.headers()));
                 ps.setString(9, fu.confidence() == null ? null : fu.confidence().json());
                 ps.addBatch();
                 count++;

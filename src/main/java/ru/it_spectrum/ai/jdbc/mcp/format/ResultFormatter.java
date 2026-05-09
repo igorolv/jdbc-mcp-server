@@ -1,5 +1,8 @@
 package ru.it_spectrum.ai.jdbc.mcp.format;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import ru.it_spectrum.ai.jdbc.mcp.config.JsonMapperFactory;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 
 import java.util.ArrayList;
@@ -8,11 +11,10 @@ import java.util.Map;
 
 /**
  * Renders a {@link QueryResult} as JSON, Markdown table, or CSV.
- *
- * <p>Implementation is intentionally dependency-free (no Jackson) so that the output is
- * deterministic and we can guarantee LLM-friendly stable formatting.
  */
 public final class ResultFormatter {
+
+    private static final ObjectMapper JSON = JsonMapperFactory.create();
 
     private ResultFormatter() {
     }
@@ -28,86 +30,11 @@ public final class ResultFormatter {
     // ---------------- JSON ----------------
 
     public static String toJson(QueryResult result) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\n");
-        sb.append("  \"columns\": ");
-        appendJsonStringArray(sb, result.columns());
-        sb.append(",\n  \"columnTypes\": ");
-        appendJsonStringArray(sb, result.columnTypes());
-        sb.append(",\n  \"rowCount\": ").append(result.rowCount());
-        sb.append(",\n  \"truncated\": ").append(result.truncated());
-        sb.append(",\n  \"rows\": [");
-        List<Map<String, Object>> rows = result.rows();
-        for (int i = 0; i < rows.size(); i++) {
-            if (i > 0) sb.append(',');
-            sb.append("\n    ");
-            appendJsonObject(sb, rows.get(i));
+        try {
+            return JSON.writeValueAsString(result);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize query result", e);
         }
-        if (!rows.isEmpty()) sb.append("\n  ");
-        sb.append("]\n}");
-        return sb.toString();
-    }
-
-    private static void appendJsonStringArray(StringBuilder sb, List<String> values) {
-        sb.append('[');
-        for (int i = 0; i < values.size(); i++) {
-            if (i > 0) sb.append(", ");
-            appendJsonString(sb, values.get(i));
-        }
-        sb.append(']');
-    }
-
-    private static void appendJsonObject(StringBuilder sb, Map<String, Object> obj) {
-        sb.append('{');
-        boolean first = true;
-        for (Map.Entry<String, Object> e : obj.entrySet()) {
-            if (!first) sb.append(", ");
-            first = false;
-            appendJsonString(sb, e.getKey());
-            sb.append(": ");
-            appendJsonValue(sb, e.getValue());
-        }
-        sb.append('}');
-    }
-
-    private static void appendJsonValue(StringBuilder sb, Object v) {
-        if (v == null) {
-            sb.append("null");
-            return;
-        }
-        if (v instanceof Number || v instanceof Boolean) {
-            sb.append(v.toString());
-            return;
-        }
-        appendJsonString(sb, v.toString());
-    }
-
-    private static void appendJsonString(StringBuilder sb, String s) {
-        if (s == null) {
-            sb.append("null");
-            return;
-        }
-        sb.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\' -> sb.append("\\\\");
-                case '"' -> sb.append("\\\"");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                case '\b' -> sb.append("\\b");
-                case '\f' -> sb.append("\\f");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        sb.append('"');
     }
 
     // ---------------- Markdown ----------------

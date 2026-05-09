@@ -20,9 +20,13 @@ import java.sql.SQLException;
 public class DistributionTools {
 
     private final DistributionService distribution;
+    private final JsonResponses json;
+    private final ToolErrors errors;
 
-    public DistributionTools(DistributionService distribution) {
+    public DistributionTools(DistributionService distribution, JsonResponses json, ToolErrors errors) {
         this.distribution = distribution;
+        this.json = json;
+        this.errors = errors;
     }
 
     @McpTool(description = "Return basic statistics for a column: total row count, non-null count, " +
@@ -37,9 +41,9 @@ public class DistributionTools {
             QueryResult r = distribution.columnStats(schema, table, column);
             return ResultFormatter.format(r, OutputFormat.JSON);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -56,11 +60,11 @@ public class DistributionTools {
     ) {
         try {
             var r = distribution.columnDistribution(schema, table, column, topN);
-            return JsonWriter.write(r);
+            return json.write(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -76,11 +80,11 @@ public class DistributionTools {
     ) {
         try {
             var r = distribution.columnHistogram(schema, table, column);
-            return JsonWriter.write(r);
+            return json.write(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -94,11 +98,11 @@ public class DistributionTools {
     ) {
         try {
             var r = distribution.nullRatio(schema, table);
-            return JsonWriter.write(r);
+            return json.write(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -116,11 +120,11 @@ public class DistributionTools {
     ) {
         try {
             var r = distribution.estimateSelectivity(schema, table, predicate);
-            return JsonWriter.write(r);
+            return json.write(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -141,11 +145,11 @@ public class DistributionTools {
         try {
             var r = distribution.joinCardinality(fromSchema, fromTable, leftColumn,
                     toSchema, toTable, rightColumn, joinType);
-            return JsonWriter.write(r);
+            return json.write(r);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 }

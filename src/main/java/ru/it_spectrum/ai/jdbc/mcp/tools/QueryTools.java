@@ -57,12 +57,16 @@ public class QueryTools {
     private final PlanParser planParser;
     private final QueryAnalysisService analysis;
     private final QueryLintService lint;
+    private final JsonResponses json;
+    private final ToolErrors errors;
 
     public QueryTools(SqlExecutor executor, SqlDialect dialect,
                       JdbcProperties properties, ReadOnlyGuard guard,
                       PlanParser planParser,
                       QueryAnalysisService analysis,
-                      QueryLintService lint) {
+                      QueryLintService lint,
+                      JsonResponses json,
+                      ToolErrors errors) {
         this.executor = executor;
         this.dialect = dialect;
         this.properties = properties;
@@ -70,6 +74,8 @@ public class QueryTools {
         this.planParser = planParser;
         this.analysis = analysis;
         this.lint = lint;
+        this.json = json;
+        this.errors = errors;
     }
 
     @McpTool(description = "Execute a read-only SQL SELECT / WITH / EXPLAIN statement and return the result. " +
@@ -93,11 +99,11 @@ public class QueryTools {
             QueryResult result = query(normalizedSql, params, namedParams, limit, timeoutSeconds);
             return ResultFormatter.format(result, fmt);
         } catch (SqlNotAllowedException e) {
-            return ToolErrors.rejected(e);
+            return errors.rejected(e);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -152,11 +158,11 @@ public class QueryTools {
                 return rowsAsText(planRows);
             }, displaySql == null);
         } catch (SqlNotAllowedException e) {
-            return ToolErrors.rejected(e);
+            return errors.rejected(e);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (Exception e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -183,7 +189,7 @@ public class QueryTools {
             boolean doAnalyze = analyze != null && analyze;
             if (dialect.kind() == DatabaseKind.MSSQL) {
                 ParsedPlan parsed = structuredSqlServerPlan(normalizedSql, params, namedParams);
-                return JsonWriter.write(PlanAnalyzer.summarize(parsed));
+                return json.write(PlanAnalyzer.summarize(parsed));
             }
             String statementId = newExplainStatementId();
             String explainSql = dialect.buildStructuredExplain(normalizedSql, doAnalyze, statementId);
@@ -215,15 +221,15 @@ public class QueryTools {
                 }
                 return planParser.parse(planRows, doAnalyze);
             }, displaySql == null);
-            return JsonWriter.write(PlanAnalyzer.summarize(parsed));
+            return json.write(PlanAnalyzer.summarize(parsed));
         } catch (SqlNotAllowedException e) {
-            return ToolErrors.rejected(e);
+            return errors.rejected(e);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.planParse(e);
+            return errors.planParse(e);
         } catch (Exception e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -270,7 +276,7 @@ public class QueryTools {
                     body.put("parameters", paramCount);
                     body.put("columns", colCount);
                     body.put("inspection", analysis.inspect(normalizedSql));
-                    return JsonWriter.write(body);
+                    return json.write(body);
                 }
             });
         } catch (RuntimeException e) {
@@ -287,7 +293,7 @@ public class QueryTools {
     public String inspectQuery(
             @McpToolParam(description = "SQL statement to inspect") String sql
     ) {
-        return JsonWriter.write(analysis.inspect(normalizeSql(sql)));
+        return json.write(analysis.inspect(normalizeSql(sql)));
     }
 
     @McpTool(description = "Parse SQL and run metadata-aware lint checks for LLM query authoring. " +
@@ -299,21 +305,21 @@ public class QueryTools {
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema
     ) {
         try {
-            return JsonWriter.write(lint.lint(normalizeSql(sql), schema));
+            return json.write(lint.lint(normalizeSql(sql), schema));
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
-    private static String validationFailure(String stage, String message, Map<String, Object> inspection) {
+    private String validationFailure(String stage, String message, Map<String, Object> inspection) {
         java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("valid", false);
         body.put("stage", stage);
         body.put("error", message);
         body.put("inspection", inspection);
-        return JsonWriter.write(body);
+        return json.write(body);
     }
 
     // ---------------- helpers ----------------

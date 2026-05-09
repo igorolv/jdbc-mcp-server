@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.springframework.stereotype.Component;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlNotAllowedException;
 
 import java.sql.SQLException;
@@ -16,52 +17,56 @@ import java.util.Map;
  * format stays consistent across QueryTools, MetadataTools, StatsTools, DistributionTools,
  * SchemaContextTools, BenchmarkTools and SnapshotTools.
  */
-public final class ToolErrors {
+@Component
+public class ToolErrors {
 
-    private ToolErrors() {
+    private final JsonResponses json;
+
+    public ToolErrors(JsonResponses json) {
+        this.json = json;
     }
 
-    public static String sql(SQLException e) {
+    public String sql(SQLException e) {
         return error("sql", e.getMessage());
     }
 
-    public static String argument(IllegalArgumentException e) {
+    public String argument(IllegalArgumentException e) {
         return error("argument", e.getMessage());
     }
 
-    public static String argument(String message) {
+    public String argument(String message) {
         return error("argument", message);
     }
 
-    public static String rejected(SqlNotAllowedException e) {
+    public String rejected(SqlNotAllowedException e) {
         return error("rejected", e.getMessage());
     }
 
-    public static String notFound(String kind, String name) {
+    public String notFound(String kind, String name) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", kind + " '" + name + "' not found");
         body.put("kind", "not_found");
         body.put("missing", kind);
         body.put("name", name);
-        return JsonWriter.write(body);
+        return json.write(body);
     }
 
-    public static String driver(String message) {
+    public String driver(String message) {
         return error("driver", message);
     }
 
-    public static String unexpected(Throwable e) {
+    public String unexpected(Throwable e) {
         return error("unexpected", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
 
-    public static String planParse(IllegalArgumentException e) {
+    public String planParse(IllegalArgumentException e) {
         return error("plan_parse", e.getMessage());
     }
 
-    private static String error(String kind, String message) {
+    private String error(String kind, String message) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", message);
         body.put("kind", kind);
-        return JsonWriter.write(body);
+        return json.write(body);
     }
 }

@@ -24,16 +24,16 @@ class OracleIntegrationStatsToolsTest extends AbstractOracleToolsIntegrationTest
     @Test
     void fkCoverageAndRedundantIndexesAreReported() {
         ObjectNode fkCoverage = object(statsTools().fkIndexCoverage(schema(), "ORDERS"));
-        assertThat(field(fkCoverage, "uncovered_count").asInt()).isGreaterThanOrEqualTo(1);
-        ObjectNode uncovered = (ObjectNode) findByField((ArrayNode) field(fkCoverage, "uncovered"), "table", "ORDERS");
+        assertThat(field(fkCoverage, "uncoveredCount").asInt()).isGreaterThanOrEqualTo(1);
+        ObjectNode uncovered = (ObjectNode) findByField((ArrayNode) field(fkCoverage, "uncovered"), "tableName", "ORDERS");
         assertThat(uncovered).isNotNull();
-        assertThat(textValues((ArrayNode) field(uncovered, "fk_columns"))).contains("CUSTOMER_ID");
+        assertThat(textValues((ArrayNode) field(uncovered, "fkColumns"))).contains("CUSTOMER_ID");
 
         ObjectNode redundant = object(statsTools().redundantIndexes(schema(), "LINE_ITEMS"));
         ObjectNode finding = (ObjectNode) findByField((ArrayNode) field(redundant, "findings"),
-                "shadowed_index", "IDX_LI_ORDER");
+                "shadowedIndex", "IDX_LI_ORDER");
         assertThat(finding).isNotNull();
-        assertThat(field(finding, "covered_by_index").asText()).isEqualTo("IDX_LI_ORDER_SKU");
+        assertThat(field(finding, "coveredByIndex").asText()).isEqualTo("IDX_LI_ORDER_SKU");
     }
 
     @Test

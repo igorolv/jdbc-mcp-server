@@ -26,10 +26,14 @@ public class SnapshotTools {
 
     private final MetadataService metadata;
     private final SchemaSnapshotCache cache;
+    private final JsonResponses json;
+    private final ToolErrors errors;
 
-    public SnapshotTools(MetadataService metadata, SchemaSnapshotCache cache) {
+    public SnapshotTools(MetadataService metadata, SchemaSnapshotCache cache, JsonResponses json, ToolErrors errors) {
         this.metadata = metadata;
         this.cache = cache;
+        this.json = json;
+        this.errors = errors;
     }
 
     @McpTool(description = "Return meta-information about the in-memory metadata snapshot cache: " +
@@ -39,7 +43,7 @@ public class SnapshotTools {
     public String getSchemaSnapshot(
             @McpToolParam(description = "Schema name (optional — omit to see all cached schemas)", required = false) String schema
     ) {
-        return JsonWriter.write(cache.snapshotInfo(schema));
+        return json.write(cache.snapshotInfo(schema));
     }
 
     @McpTool(description = "Invalidate cached metadata and (by default) eagerly rebuild it. " +
@@ -93,14 +97,14 @@ public class SnapshotTools {
                 result.put("clearedAll", true);
             }
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
         result.put("durationMs", System.currentTimeMillis() - startedAt);
         result.put("ttlSeconds", cache.ttlMs() / 1000L);
         result.put("enabled", cache.enabled());
-        return JsonWriter.write(result);
+        return json.write(result);
     }
 
     @McpTool(description = "Invalidate cached metadata without re-warming. " +
@@ -124,6 +128,6 @@ public class SnapshotTools {
             cache.invalidateAll();
             result.put("invalidated", "all");
         }
-        return JsonWriter.write(result);
+        return json.write(result);
     }
 }

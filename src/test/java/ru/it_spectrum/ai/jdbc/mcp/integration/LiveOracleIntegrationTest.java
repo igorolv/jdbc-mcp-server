@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
+import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.OracleDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
@@ -15,7 +16,9 @@ import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
+import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.ToolErrors;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
@@ -94,7 +97,9 @@ class LiveOracleIntegrationTest {
         stats = new StatsService(executor, dialect, props);
         QueryAnalysisService analysis = new QueryAnalysisService();
         QueryLintService lint = new QueryLintService(analysis, metadata, stats);
-        queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lint);
+        JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
+        ToolErrors errors = new ToolErrors(json);
+        queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lint, json, errors);
     }
 
     private DataSource buildPool(JdbcProperties p) {

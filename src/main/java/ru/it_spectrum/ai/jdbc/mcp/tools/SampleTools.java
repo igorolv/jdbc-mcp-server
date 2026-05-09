@@ -21,10 +21,12 @@ public class SampleTools {
 
     private final SqlExecutor executor;
     private final SqlDialect dialect;
+    private final ToolErrors errors;
 
-    public SampleTools(SqlExecutor executor, SqlDialect dialect) {
+    public SampleTools(SqlExecutor executor, SqlDialect dialect, ToolErrors errors) {
         this.executor = executor;
         this.dialect = dialect;
+        this.errors = errors;
     }
 
     @McpTool(description = "Return a small sample of rows from a table or view. " +
@@ -34,7 +36,7 @@ public class SampleTools {
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Number of rows to return (default 10, max 100)", required = false) Integer limit
     ) {
-        if (table == null || table.isBlank()) return ToolErrors.argument("table must be provided");
+        if (table == null || table.isBlank()) return errors.argument("table must be provided");
         int n = limit == null ? 10 : Math.max(1, Math.min(limit, 100));
         String qualified = qualify(schema, table);
         String sql = dialect.limitQuery("SELECT * FROM " + qualified, n);
@@ -42,7 +44,7 @@ public class SampleTools {
             QueryResult r = executor.queryInternal(sql, Collections.emptyList(), n);
             return ResultFormatter.format(r, OutputFormat.JSON);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         }
     }
 

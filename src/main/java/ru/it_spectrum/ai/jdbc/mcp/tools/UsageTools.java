@@ -24,25 +24,30 @@ public class UsageTools {
     private final UsageCatalogService service;
     private final MetadataService metadata;
     private final UsageCatalogIndexer indexer;
+    private final JsonResponses json;
+    private final ToolErrors errors;
 
-    public UsageTools(UsageCatalogService service, MetadataService metadata, UsageCatalogIndexer indexer) {
+    public UsageTools(UsageCatalogService service, MetadataService metadata, UsageCatalogIndexer indexer,
+                      JsonResponses json, ToolErrors errors) {
         this.service = service;
         this.metadata = metadata;
         this.indexer = indexer;
+        this.json = json;
+        this.errors = errors;
     }
 
     @McpTool(description = "Return the runtime usage-catalog index status: configured JSON/zip sources, indexing state, record counts, parse failures, duplicate UIDs and load errors.")
     public String usageCatalogStatus() {
-        return JsonWriter.write(indexer.status());
+        return json.write(indexer.status());
     }
 
     @McpTool(description = "Refresh the runtime usage-catalog index from the configured directories, JSON files, and zip archives. When background indexing is enabled this starts a rebuild and returns the current status immediately.")
     public String refreshUsageCatalog() {
         if (!service.enabled()) return disabled("refreshUsageCatalog");
         try {
-            return JsonWriter.write(indexer.refresh());
+            return json.write(indexer.refresh());
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -52,11 +57,11 @@ public class UsageTools {
     ) {
         if (!service.enabled()) return disabled("getQuery");
         try {
-            return JsonWriter.write(service.getQuery(uid));
+            return json.write(service.getQuery(uid));
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -73,12 +78,12 @@ public class UsageTools {
     ) {
         if (!service.enabled()) return disabledWithRows("listQueries", "queries");
         try {
-            return JsonWriter.write(service.listQueries(
+            return json.write(service.listQueries(
                     dataSource, sourcePath, sourceKind, businessDomain, tag, parseStatus, limit, offset));
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -89,11 +94,11 @@ public class UsageTools {
     ) {
         if (!service.enabled()) return disabledWithRows("findQueriesByTable", "matches");
         try {
-            return JsonWriter.write(service.findQueriesByTable(schema, table));
+            return json.write(service.findQueriesByTable(schema, table));
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -105,11 +110,11 @@ public class UsageTools {
     ) {
         if (!service.enabled()) return disabledWithRows("findQueriesByColumn", "matches");
         try {
-            return JsonWriter.write(service.findQueriesByColumn(schema, table, column));
+            return json.write(service.findQueriesByColumn(schema, table, column));
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -121,11 +126,11 @@ public class UsageTools {
     ) {
         if (!service.enabled()) return disabledWithRows("observedRelationships", "relationships");
         try {
-            return JsonWriter.write(service.observedRelationships(schema, table, minSupport == null ? 1 : minSupport));
+            return json.write(service.observedRelationships(schema, table, minSupport == null ? 1 : minSupport));
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -140,7 +145,7 @@ public class UsageTools {
     ) {
         if (!service.enabled()) return disabled("reresolveQueries");
         try {
-            return JsonWriter.write(service.reresolve(dataSource, name -> {
+            return json.write(service.reresolve(dataSource, name -> {
                 List<TableEntry> matches = metadata.findTablesByName(name);
                 List<String[]> out = new ArrayList<>(matches.size());
                 for (TableEntry row : matches) {
@@ -149,9 +154,9 @@ public class UsageTools {
                 return out;
             }));
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -161,9 +166,9 @@ public class UsageTools {
     ) {
         if (!service.enabled()) return disabledWithRows("listKnownTags", "tags");
         try {
-            return JsonWriter.write(service.listKnownTags(dataSource));
+            return json.write(service.listKnownTags(dataSource));
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -173,9 +178,9 @@ public class UsageTools {
     ) {
         if (!service.enabled()) return disabledWithRows("listKnownDomains", "domains");
         try {
-            return JsonWriter.write(service.listKnownDomains(dataSource));
+            return json.write(service.listKnownDomains(dataSource));
         } catch (RuntimeException e) {
-            return ToolErrors.unexpected(e);
+            return errors.unexpected(e);
         }
     }
 
@@ -183,20 +188,20 @@ public class UsageTools {
     //  Disabled-catalog responses
     // ---------------------------------------------------------------------------------------
 
-    private static String disabled(String tool) {
+    private String disabled(String tool) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "usage catalog is disabled (set JDBC_USAGE_CATALOG_ENABLED=true to enable)");
         body.put("kind", "disabled");
         body.put("tool", tool);
-        return JsonWriter.write(body);
+        return json.write(body);
     }
 
-    private static String disabledWithRows(String tool, String collectionField) {
+    private String disabledWithRows(String tool, String collectionField) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("catalog_enabled", false);
         body.put("tool", tool);
         body.put(collectionField, List.of());
         body.put("count", 0);
-        return JsonWriter.write(body);
+        return json.write(body);
     }
 }

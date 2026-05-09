@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.testcontainers.oracle.OracleContainer;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
+import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.OracleDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
@@ -19,12 +20,14 @@ import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.tools.BenchmarkTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.DistributionTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SampleTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SnapshotTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.ToolErrors;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -65,17 +68,19 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
             QueryAnalysisService analysis = new QueryAnalysisService();
             QueryLintService lint = new QueryLintService(analysis, metadata, stats);
+            JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
+            ToolErrors errors = new ToolErrors(json);
 
             return new IntegrationTestContext(
                     schema,
-                    new QueryTools(executor, dialect, properties, guard, new OraclePlanParser(), analysis, lint),
-                    new MetadataTools(metadata),
-                    new SampleTools(executor, dialect),
-                    new StatsTools(stats),
-                    new SchemaContextTools(schemaContext),
-                    new DistributionTools(distribution),
-                    new BenchmarkTools(benchmarks),
-                    new SnapshotTools(metadata, cache)
+                    new QueryTools(executor, dialect, properties, guard, new OraclePlanParser(), analysis, lint, json, errors),
+                    new MetadataTools(metadata, json, errors),
+                    new SampleTools(executor, dialect, errors),
+                    new StatsTools(stats, json, errors),
+                    new SchemaContextTools(schemaContext, json, errors),
+                    new DistributionTools(distribution, json, errors),
+                    new BenchmarkTools(benchmarks, json, errors),
+                    new SnapshotTools(metadata, cache, json, errors)
             );
         } catch (Exception e) {
             throw new ExceptionInInitializerError(e);

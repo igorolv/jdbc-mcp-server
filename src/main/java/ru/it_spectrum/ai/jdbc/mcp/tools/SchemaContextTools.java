@@ -14,9 +14,13 @@ import java.sql.SQLException;
 public class SchemaContextTools {
 
     private final SchemaContextService schemaContext;
+    private final JsonResponses json;
+    private final ToolErrors errors;
 
-    public SchemaContextTools(SchemaContextService schemaContext) {
+    public SchemaContextTools(SchemaContextService schemaContext, JsonResponses json, ToolErrors errors) {
         this.schemaContext = schemaContext;
+        this.json = json;
+        this.errors = errors;
     }
 
     @McpTool(description = "Return a compact schema snapshot for writing SQL: tables/views, columns, " +
@@ -34,11 +38,11 @@ public class SchemaContextTools {
         try {
             var result = schemaContext.schemaOverview(
                     schema, namePattern, includeViews, includeStats, includeObserved, maxTables);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -57,11 +61,11 @@ public class SchemaContextTools {
         try {
             var result = schemaContext.tableContext(
                     schema, table, depth, includeIncoming, includeStats, includeObserved);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -83,11 +87,11 @@ public class SchemaContextTools {
             var result = schemaContext.findJoinPaths(
                     fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, scanLimit,
                     includeObserved);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -106,11 +110,11 @@ public class SchemaContextTools {
         try {
             var result = schemaContext.schemaLint(
                     schema, table, checks, maxTables, maxFindings);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -126,9 +130,9 @@ public class SchemaContextTools {
         try {
             return schemaContext.schemaBrief(schema, terms, maxTables);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -145,11 +149,11 @@ public class SchemaContextTools {
         try {
             var result = schemaContext.schemaGraph(
                     schema, maxTables, fromTable, toTable, maxDepth);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -166,11 +170,11 @@ public class SchemaContextTools {
         try {
             var result = schemaContext.queryContext(
                     schema, terms, tables, includeSamples, maxTables);
-            return JsonWriter.write(result);
+            return json.write(result);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 
@@ -185,9 +189,9 @@ public class SchemaContextTools {
         try {
             return schemaContext.schemaGraphDot(schema, tables);
         } catch (SQLException e) {
-            return ToolErrors.sql(e);
+            return errors.sql(e);
         } catch (IllegalArgumentException e) {
-            return ToolErrors.argument(e);
+            return errors.argument(e);
         }
     }
 }

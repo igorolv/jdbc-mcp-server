@@ -22,14 +22,14 @@ class SqlServerIntegrationDistributionToolsTest extends AbstractSqlServerToolsIn
     @Test
     void distributionAndHistogramExposeSkew() {
         ObjectNode distribution = object(distributionTools().columnDistribution("dbo", "events", "status", 5));
-        assertThat(field(distribution, "total_rows").asInt()).isEqualTo(100);
+        assertThat(field(distribution, "totalRows").asInt()).isEqualTo(100);
         ObjectNode ok = (ObjectNode) findByField((ArrayNode) field(distribution, "values"), "value", "OK");
         assertThat(ok).isNotNull();
         assertThat(field(ok, "frequency").asInt()).isEqualTo(90);
         assertThat(field(ok, "ratio").asDouble()).isCloseTo(0.9, within(1e-6));
 
         ObjectNode histogram = object(distributionTools().columnHistogram("dbo", "events", "amount"));
-        assertThat(field(histogram, "percentile_function").asText()).isEqualTo("percentile_cont");
+        assertThat(field(histogram, "percentileFunction").asText()).isEqualTo("percentile_cont");
         assertThat(field(histogram, "p50").asDouble())
                 .isBetween(field(histogram, "min").asDouble(), field(histogram, "max").asDouble());
     }
@@ -39,18 +39,18 @@ class SqlServerIntegrationDistributionToolsTest extends AbstractSqlServerToolsIn
         ObjectNode nullRatio = object(distributionTools().nullRatio("dbo", "events"));
         ObjectNode category = (ObjectNode) findByField((ArrayNode) field(nullRatio, "columns"), "column", "category");
         assertThat(category).isNotNull();
-        assertThat(field(category, "null_rows").asInt()).isEqualTo(10);
+        assertThat(field(category, "nullRows").asInt()).isEqualTo(10);
 
         ObjectNode selectivity = object(distributionTools().estimateSelectivity(
                 "dbo", "events", "status = 'FAIL'"));
-        assertThat(field(selectivity, "estimated_rows").asLong())
-                .isLessThan(field(selectivity, "baseline_rows").asLong());
+        assertThat(field(selectivity, "estimatedRows").asLong())
+                .isLessThan(field(selectivity, "baselineRows").asLong());
         assertThat(field(selectivity, "selectivity").asDouble()).isBetween(0.0, 1.0);
 
         ObjectNode join = object(distributionTools().joinCardinality(
                 "dbo", "customers", "id",
                 "dbo", "orders", "customer_id", "INNER"));
-        assertThat(field(join, "join_type").asText()).isEqualTo("INNER");
-        assertThat(field(join, "estimated_rows").asLong()).isGreaterThan(0L);
+        assertThat(field(join, "joinType").asText()).isEqualTo("INNER");
+        assertThat(field(join, "estimatedRows").asLong()).isGreaterThan(0L);
     }
 }
