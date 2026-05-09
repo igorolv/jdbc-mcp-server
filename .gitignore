@@ -7,6 +7,10 @@ build/
 *.war
 *.log
 
+# Python smoke scripts
+__pycache__/
+*.py[cod]
+
 # IDE
 .idea/
 *.iml
