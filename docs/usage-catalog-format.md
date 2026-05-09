@@ -4,8 +4,13 @@ This project consumes a canonical **query usage record** format. It describes a 
 its parameters, optional output semantics, and optional evidence of where the output is used.
 
 The format is intentionally source-agnostic. Adapters for BI Publisher, DAO source code,
-dashboard exports, stored report definitions, or any other source are responsible for converting
-their native data into this shape. The JDBC MCP server does not parse those native formats.
+dashboard exports, stored report definitions, or any other external source are responsible for
+converting their native data into this shape.
+
+The server also derives records automatically from connected database metadata. Views, routines
+and triggers are indexed with `source.kind` values such as `database-view`,
+`database-function`, `database-procedure` and `database-trigger`; these records use the same
+canonical shape as file-backed records.
 
 The JSON Schema is published at:
 

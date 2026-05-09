@@ -70,6 +70,10 @@ public class MetadataService {
         return cache;
     }
 
+    public String defaultSchema() throws SQLException {
+        return resolveSchema(null);
+    }
+
     // ---------- Schemas / tables ----------
 
     public List<String> listSchemas(boolean includeSystem) throws SQLException {
@@ -487,6 +491,14 @@ public class MetadataService {
             if (value != null) sb.append(value);
         }
         return sb.toString();
+    }
+
+    public List<Trigger> tableTriggers(String schema, String table, boolean includeDefinition)
+            throws SQLException {
+        if (table == null || table.isBlank()) {
+            throw new IllegalArgumentException("table must be provided");
+        }
+        return fetchTriggers(resolveSchema(schema), table, includeDefinition);
     }
 
     // ---------- helpers ----------

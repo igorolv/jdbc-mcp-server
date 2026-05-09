@@ -189,13 +189,16 @@ physical `CUSTOMERS` table when existing reports expose `customers.name` as "Pay
 
 ### Usage Catalog
 
-A file-backed catalog of *known* SQL queries used by applications and reports against the
-inspected database, together with their **business context**: parameters with descriptions,
-output columns with their meaning, and where each output is displayed in the consuming artifact
-(Excel cell in a BI Publisher report, dashboard widget, etc.). The source of truth is one or more
-directories / JSON files / zip archives containing canonical QueryUsage JSON records. At runtime
-the server parses those files and builds an in-memory H2 index with extracted tables / columns /
-equi-join pairs as facts; the JSON files remain authoritative.
+A catalog of *known* SQL usage against the inspected database, together with optional
+**business context**: parameters with descriptions, output columns with their meaning, and where
+each output is displayed in the consuming artifact (Excel cell in a BI Publisher report,
+dashboard widget, etc.).
+
+There are two sources. File-backed usage comes from directories / JSON files / zip archives
+containing canonical QueryUsage JSON records. Database-native usage is derived automatically from
+the connected schema's views, routines and triggers. At runtime the server parses these records and
+builds an in-memory H2 index with extracted tables / columns / equi-join pairs as facts. JSON files
+remain authoritative for file-backed records; native records are refreshed from live metadata.
 
 **Why this exists.** The metadata tools answer "what tables and columns exist". The usage catalog
 answers "how are they actually used by applications". With both, an LLM can replace guesses about
@@ -227,6 +230,20 @@ directories, `.json` files, or `.zip` archives. Directories are scanned recursiv
 zip archives are scanned for JSON entries. Set `JDBC_USAGE_CATALOG_ENABLED=false` to disable the
 catalog: lookup tools return empty results with `catalog_enabled: false` so the agent can degrade
 gracefully.
+
+**Database-native usage.** By default, the catalog also indexes supported database objects from the
+default schema:
+
+- views / materialized views as `source.kind="database-view"` or
+  `source.kind="database-materialized-view"`;
+- functions and procedures as `source.kind="database-function"` /
+  `source.kind="database-procedure"` where the engine reports that distinction;
+- triggers as `source.kind="database-trigger"`.
+
+Views usually contribute fully parsed table, column and join evidence. Routine and trigger bodies
+are engine-specific, so the indexer extracts SELECT-like fragments when possible and otherwise
+keeps the object as a provenance record. Set `JDBC_USAGE_NATIVE_CATALOG_ENABLED=false` to disable
+this source, or `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to scan explicit schemas.
 
 **Runtime index.** By default the server starts quickly and builds the usage index in the
 background (`JDBC_USAGE_INDEX_ON_STARTUP=true`, `JDBC_USAGE_INDEX_BACKGROUND=true`). The index is
@@ -510,10 +527,17 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
 | `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog (see *Usage Catalog* above), default `true`. When `false`, lookup tools return empty results with `catalog_enabled: false` |
 | `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |
+| `JDBC_USAGE_DATA_SOURCE_ID` | no | Logical `dataSource` used for automatically derived database-native usage records, default `database`. `/` and `#` are normalized to `_` |
 | `JDBC_USAGE_INDEX_ON_STARTUP` | no | Build the runtime usage index on startup, default `true` |
 | `JDBC_USAGE_INDEX_BACKGROUND` | no | Build/refresh the runtime usage index in a background thread, default `true` |
 | `JDBC_USAGE_INDEX_DISK_CACHE_ENABLED` | no | Reserved for derived index cache, default `false` |
 | `JDBC_USAGE_INDEX_CACHE_PATH` | no | Reserved cache location, default `${user.home}/.jdbc-mcp/usage-index-cache` |
+| `JDBC_USAGE_NATIVE_CATALOG_ENABLED` | no | Include database-native usage records from views, routines and triggers, default `true` |
+| `JDBC_USAGE_NATIVE_SCHEMAS` | no | Comma-separated schemas to scan for native usage. When omitted, the resolved default schema is scanned |
+| `JDBC_USAGE_NATIVE_INCLUDE_VIEWS` | no | Include views/materialized views in native usage, default `true` |
+| `JDBC_USAGE_NATIVE_INCLUDE_ROUTINES` | no | Include functions/procedures in native usage, default `true` |
+| `JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS` | no | Include triggers in native usage, default `true` |
+| `JDBC_USAGE_NATIVE_MAX_OBJECTS` | no | Maximum native usage records to add per index build, default `1000` |
 
 The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL,
 `jdbc:oracle:` for Oracle, and `jdbc:sqlserver:` for SQL Server.

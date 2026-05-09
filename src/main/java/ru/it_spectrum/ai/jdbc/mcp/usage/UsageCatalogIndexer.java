@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -35,16 +36,24 @@ public class UsageCatalogIndexer implements ApplicationRunner {
     private final UsageProperties properties;
     private final UsageCatalogService service;
     private final ObjectMapper mapper;
+    private final List<UsageCatalogSource> catalogSources;
     private final AtomicBoolean indexing = new AtomicBoolean(false);
     private volatile IndexerStatusResponse status;
 
     public UsageCatalogIndexer(UsageProperties properties, UsageCatalogService service, ObjectMapper mapper) {
+        this(properties, service, mapper, List.of());
+    }
+
+    @Autowired
+    public UsageCatalogIndexer(UsageProperties properties, UsageCatalogService service, ObjectMapper mapper,
+                               List<UsageCatalogSource> catalogSources) {
         this.properties = properties;
         this.service = service;
         this.mapper = mapper;
+        this.catalogSources = catalogSources == null ? List.of() : List.copyOf(catalogSources);
         this.status = IndexerStatusResponse.initial(
                 properties.catalogEnabled(),
-                properties.resolvedCatalogPaths().stream().map(Path::toString).toList()
+                configuredSources()
         );
     }
 
@@ -101,7 +110,7 @@ public class UsageCatalogIndexer implements ApplicationRunner {
     private void rebuild() {
         long started = System.currentTimeMillis();
         LoadResult loaded = loadRecords();
-        var sources = properties.resolvedCatalogPaths().stream().map(Path::toString).toList();
+        var sources = configuredSources();
         var startedAt = Instant.ofEpochMilli(started).toString();
         var diskCacheEnabled = properties.indexDiskCacheEnabled();
         var diskCachePath = properties.resolvedIndexCachePath().toString();
@@ -149,6 +158,15 @@ public class UsageCatalogIndexer implements ApplicationRunner {
                 loadSource(source, records, duplicateUids, errors, filesScanned);
             } catch (RuntimeException | IOException e) {
                 errors.add(source + ": " + e.getMessage());
+            }
+        }
+        for (UsageCatalogSource source : catalogSources) {
+            try {
+                for (QueryUsage usage : source.load()) {
+                    addRecord(source.name(), usage, records, duplicateUids, errors);
+                }
+            } catch (Exception e) {
+                errors.add(source.name() + ": " + e.getMessage());
             }
         }
         return new LoadResult(List.copyOf(records.values()), filesScanned[0],
@@ -207,15 +225,7 @@ public class UsageCatalogIndexer implements ApplicationRunner {
         filesScanned[0]++;
         try {
             QueryUsage usage = mapper.readValue(bytes, QueryUsage.class);
-            QueryUsageSource source = usage.source();
-            String unit = source == null ? null : source.unit();
-            String uid = UsageUid.build(usage.dataSource(), source == null ? null : source.path(), unit);
-            if (records.containsKey(uid)) {
-                duplicateUids.add(uid);
-                errors.add(origin + ": duplicate uid " + uid);
-                return;
-            }
-            records.put(uid, usage);
+            addRecord(origin, usage, records, duplicateUids, errors);
         } catch (RuntimeException | IOException e) {
             errors.add(origin + ": " + e.getMessage());
         }
@@ -224,10 +234,32 @@ public class UsageCatalogIndexer implements ApplicationRunner {
     private void markIndexing() {
         status = IndexerStatusResponse.indexing(
                 properties.catalogEnabled(),
-                properties.resolvedCatalogPaths().stream().map(Path::toString).toList(),
+                configuredSources(),
                 properties.indexDiskCacheEnabled(),
                 properties.resolvedIndexCachePath().toString()
         );
+    }
+
+    private void addRecord(String origin, QueryUsage usage, Map<String, QueryUsage> records,
+                           Set<String> duplicateUids, List<String> errors) {
+        QueryUsageSource source = usage.source();
+        String unit = source == null ? null : source.unit();
+        String uid = UsageUid.build(usage.dataSource(), source == null ? null : source.path(), unit);
+        if (records.containsKey(uid)) {
+            duplicateUids.add(uid);
+            errors.add(origin + ": duplicate uid " + uid);
+            return;
+        }
+        records.put(uid, usage);
+    }
+
+    private List<String> configuredSources() {
+        List<String> out = new ArrayList<>(
+                properties.resolvedCatalogPaths().stream().map(Path::toString).toList());
+        for (UsageCatalogSource source : catalogSources) {
+            out.add(source.name());
+        }
+        return List.copyOf(out);
     }
 
     private static List<String> appendError(List<String> errors, String error) {

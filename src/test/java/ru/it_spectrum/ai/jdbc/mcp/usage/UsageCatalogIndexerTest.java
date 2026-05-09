@@ -8,6 +8,8 @@ import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
+import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
 
 import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
@@ -89,6 +91,41 @@ class UsageCatalogIndexerTest {
         assertThat(status.recordsLoaded()).isEqualTo(1);
         assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(1);
         assertThat(service.findQueriesByTable(null, "orders").count()).isEqualTo(0);
+    }
+
+    @Test
+    void mergesRecordsFromAdditionalCatalogSources() throws Exception {
+        UsageCatalogService service = service(List.of());
+        UsageCatalogSource source = new UsageCatalogSource() {
+            @Override
+            public String name() {
+                return "database-native";
+            }
+
+            @Override
+            public List<QueryUsage> load() {
+                return List.of(new QueryUsage(
+                        "SHOP",
+                        new QueryUsageSource("database-view", "native/view/public.customer_orders_v", null),
+                        null,
+                        null,
+                        List.of("database-native"),
+                        "SELECT c.id FROM customers c",
+                        null,
+                        null,
+                        null,
+                        null));
+            }
+        };
+        UsageCatalogIndexer indexer = new UsageCatalogIndexer(
+                properties(List.of()), service, new ObjectMapper(), List.of(source));
+
+        IndexerStatusResponse status = indexer.refreshBlocking();
+
+        assertThat(status.state()).isEqualTo("ready");
+        assertThat(status.sources()).contains("database-native");
+        assertThat(status.recordsLoaded()).isEqualTo(1);
+        assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(1);
     }
 
     private UsageCatalogService service(List<String> paths) throws Exception {

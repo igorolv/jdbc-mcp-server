@@ -28,13 +28,37 @@ public record UsageProperties(
         boolean indexOnStartup,
         boolean indexBackground,
         boolean indexDiskCacheEnabled,
-        String indexCachePath
+        String indexCachePath,
+        String dataSourceId,
+        boolean nativeCatalogEnabled,
+        List<String> nativeSchemas,
+        boolean nativeIncludeViews,
+        boolean nativeIncludeRoutines,
+        boolean nativeIncludeTriggers,
+        int nativeMaxObjects
 ) {
 
     public UsageProperties {
         if (catalogPaths == null) {
             catalogPaths = List.of();
         }
+        if (nativeSchemas == null) {
+            nativeSchemas = List.of();
+        }
+        if (nativeMaxObjects <= 0) {
+            nativeMaxObjects = 1_000;
+        }
+    }
+
+    public UsageProperties(boolean catalogEnabled,
+                           List<String> catalogPaths,
+                           boolean indexOnStartup,
+                           boolean indexBackground,
+                           boolean indexDiskCacheEnabled,
+                           String indexCachePath) {
+        this(catalogEnabled, catalogPaths, indexOnStartup, indexBackground,
+                indexDiskCacheEnabled, indexCachePath, "database",
+                false, List.of(), true, true, true, 1_000);
     }
 
     public List<Path> resolvedCatalogPaths() {
@@ -57,5 +81,21 @@ public record UsageProperties(
             home = ".";
         }
         return Paths.get(home, ".jdbc-mcp", "usage-index-cache");
+    }
+
+    public String effectiveDataSourceId() {
+        String raw = dataSourceId == null || dataSourceId.isBlank() ? "database" : dataSourceId.trim();
+        return raw.replace('/', '_').replace('#', '_');
+    }
+
+    public List<String> resolvedNativeSchemas() {
+        List<String> out = new ArrayList<>();
+        for (String raw : nativeSchemas) {
+            if (raw == null || raw.isBlank()) continue;
+            for (String part : raw.split(",")) {
+                if (!part.isBlank()) out.add(part.trim());
+            }
+        }
+        return List.copyOf(out);
     }
 }
