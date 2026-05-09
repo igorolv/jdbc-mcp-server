@@ -4,13 +4,16 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.CachedSchemaEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.CachedTableEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.ListCacheEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.SchemaSnapshotInfo;
 
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -144,65 +147,54 @@ public class SchemaSnapshotCache {
         while (li.hasNext()) if (Objects.equals(norm, li.next().schema)) li.remove();
     }
 
-    public Map<String, Object> snapshotInfo(String schema) {
+    public SchemaSnapshotInfo snapshotInfo(String schema) {
         long now = System.currentTimeMillis();
         String norm = normalize(schema);
 
         // describes
-        Map<String, List<Map<String, Object>>> bySchema = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, List<CachedTableEntry>> bySchema = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (Map.Entry<TableKey, Entry<TableDescription>> e : describes.entrySet()) {
             TableKey k = e.getKey();
             if (norm != null && !Objects.equals(norm, k.schema)) continue;
             String schemaLabel = k.schema == null ? "" : k.schema;
-            List<Map<String, Object>> entries = bySchema.computeIfAbsent(schemaLabel, s -> new ArrayList<>());
+            List<CachedTableEntry> entries = bySchema.computeIfAbsent(schemaLabel, s -> new ArrayList<>());
             long ageMs = now - e.getValue().loadedAtMs;
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("table", k.table);
-            entry.put("ageSeconds", ageMs / 1000L);
-            entry.put("expired", ageMs >= ttlMs);
-            entries.add(entry);
+            entries.add(new CachedTableEntry(k.table, ageMs / 1000L, ageMs >= ttlMs));
         }
 
         // lists
-        List<Map<String, Object>> listEntries = new ArrayList<>();
+        List<ListCacheEntry> listEntries = new ArrayList<>();
         for (Map.Entry<ListKey, Entry<List<TableEntry>>> e : lists.entrySet()) {
             ListKey k = e.getKey();
             if (norm != null && !Objects.equals(norm, k.schema)) continue;
             long ageMs = now - e.getValue().loadedAtMs;
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("schema", k.schema);
-            entry.put("namePattern", k.pattern);
-            entry.put("types", k.typesSig);
-            entry.put("rows", e.getValue().value.size());
-            entry.put("ageSeconds", ageMs / 1000L);
-            entry.put("expired", ageMs >= ttlMs);
-            listEntries.add(entry);
+            listEntries.add(new ListCacheEntry(
+                    k.schema,
+                    k.pattern,
+                    k.typesSig,
+                    e.getValue().value.size(),
+                    ageMs / 1000L,
+                    ageMs >= ttlMs));
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("enabled", enabled());
-        out.put("ttlSeconds", ttlMs / 1000L);
-        out.put("maxEntries", maxEntries);
-        out.put("describeCount", describes.size());
-        out.put("listCount", lists.size());
-        out.put("describeHits", describeHits.get());
-        out.put("describeMisses", describeMisses.get());
-        out.put("listHits", listHits.get());
-        out.put("listMisses", listMisses.get());
-        out.put("now", Instant.ofEpochMilli(now).toString());
-
-        List<Map<String, Object>> schemas = new ArrayList<>();
-        for (Map.Entry<String, List<Map<String, Object>>> e : bySchema.entrySet()) {
-            Map<String, Object> s = new LinkedHashMap<>();
-            s.put("schema", e.getKey());
-            s.put("tableCount", e.getValue().size());
-            s.put("tables", e.getValue());
-            schemas.add(s);
+        List<CachedSchemaEntry> schemas = new ArrayList<>();
+        for (Map.Entry<String, List<CachedTableEntry>> e : bySchema.entrySet()) {
+            schemas.add(new CachedSchemaEntry(e.getKey(), e.getValue().size(), e.getValue()));
         }
-        out.put("schemas", schemas);
-        out.put("listEntries", listEntries);
-        if (norm != null) out.put("filterSchema", norm);
-        return out;
+        return new SchemaSnapshotInfo(
+                enabled(),
+                ttlMs / 1000L,
+                maxEntries,
+                describes.size(),
+                lists.size(),
+                describeHits.get(),
+                describeMisses.get(),
+                listHits.get(),
+                listMisses.get(),
+                Instant.ofEpochMilli(now).toString(),
+                schemas,
+                listEntries,
+                norm);
     }
 
     private static String normalize(String value) {

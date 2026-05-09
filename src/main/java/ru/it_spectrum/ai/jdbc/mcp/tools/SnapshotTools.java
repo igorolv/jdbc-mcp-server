@@ -6,11 +6,11 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.InvalidateSnapshotResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.RefreshSchemaSnapshotResult;
 
 import java.sql.SQLException;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 /**
@@ -57,16 +57,13 @@ public class SnapshotTools {
             @McpToolParam(description = "Maximum tables to warm when refreshing a whole schema. Default 300.", required = false) Integer maxTables
     ) {
         long startedAt = System.currentTimeMillis();
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("schema", schema);
-        result.put("table", table);
+        RefreshSchemaSnapshotResult result;
         try {
             if (table != null && !table.isBlank()) {
                 cache.invalidateTable(schema, table);
                 TableDescription described = metadata.describeTable(schema, table);
-                result.put("refreshedTables", 1);
-                result.put("tableSchema", described.schema());
-                result.put("tableName", described.name());
+                result = refreshResult(schema, table, 1, described.schema(), described.name(),
+                        null, null, null, null, null, startedAt);
             } else if (schema != null && !schema.isBlank()) {
                 cache.invalidateSchema(schema);
                 int limit = maxTables == null ? 300 : Math.max(1, Math.min(maxTables, 5000));
@@ -86,24 +83,18 @@ public class SnapshotTools {
                         errors++;
                     }
                 }
-                result.put("listedTables", listed.size());
-                result.put("refreshedTables", count);
-                result.put("errors", errors);
-                result.put("limit", limit);
-                result.put("truncated", listed.size() > count);
+                result = refreshResult(schema, table, count, null, null,
+                        listed.size(), errors, limit, listed.size() > count, null, startedAt);
             } else {
                 cache.invalidateAll();
-                result.put("refreshedTables", 0);
-                result.put("clearedAll", true);
+                result = refreshResult(schema, table, 0, null, null,
+                        null, null, null, null, true, startedAt);
             }
         } catch (SQLException e) {
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
             return errors.argument(e);
         }
-        result.put("durationMs", System.currentTimeMillis() - startedAt);
-        result.put("ttlSeconds", cache.ttlMs() / 1000L);
-        result.put("enabled", cache.enabled());
         return json.write(result);
     }
 
@@ -114,20 +105,46 @@ public class SnapshotTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Single table to invalidate (optional)", required = false) String table
     ) {
-        Map<String, Object> result = new LinkedHashMap<>();
+        InvalidateSnapshotResult result;
         if (table != null && !table.isBlank()) {
             cache.invalidateTable(schema, table);
-            result.put("invalidated", "table");
-            result.put("schema", schema);
-            result.put("table", table);
+            result = new InvalidateSnapshotResult("table", schema, table);
         } else if (schema != null && !schema.isBlank()) {
             cache.invalidateSchema(schema);
-            result.put("invalidated", "schema");
-            result.put("schema", schema);
+            result = new InvalidateSnapshotResult("schema", schema, null);
         } else {
             cache.invalidateAll();
-            result.put("invalidated", "all");
+            result = new InvalidateSnapshotResult("all", null, null);
         }
         return json.write(result);
+    }
+
+    private RefreshSchemaSnapshotResult refreshResult(
+            String schema,
+            String table,
+            Integer refreshedTables,
+            String tableSchema,
+            String tableName,
+            Integer listedTables,
+            Integer errors,
+            Integer limit,
+            Boolean truncated,
+            Boolean clearedAll,
+            long startedAt
+    ) {
+        return new RefreshSchemaSnapshotResult(
+                schema,
+                table,
+                refreshedTables,
+                tableSchema,
+                tableName,
+                listedTables,
+                errors,
+                limit,
+                truncated,
+                clearedAll,
+                System.currentTimeMillis() - startedAt,
+                cache.ttlMs() / 1000L,
+                cache.enabled());
     }
 }
