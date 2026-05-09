@@ -5,13 +5,12 @@ import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.UsageCatalogDisabledResponse;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogIndexer;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * MCP tools for the local usage catalog: a file-backed set of known SQL queries used by
@@ -189,19 +188,10 @@ public class UsageTools {
     // ---------------------------------------------------------------------------------------
 
     private String disabled(String tool) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("error", "usage catalog is disabled (set JDBC_USAGE_CATALOG_ENABLED=true to enable)");
-        body.put("kind", "disabled");
-        body.put("tool", tool);
-        return json.write(body);
+        return json.write(UsageCatalogDisabledResponse.disabled(tool));
     }
 
     private String disabledWithRows(String tool, String collectionField) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("catalog_enabled", false);
-        body.put("tool", tool);
-        body.put(collectionField, List.of());
-        body.put("count", 0);
-        return json.write(body);
+        return json.write(UsageCatalogDisabledResponse.withRows(tool, collectionField));
     }
 }
