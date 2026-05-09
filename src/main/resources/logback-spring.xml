@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <springProperty name="DATA_DIR" source="jdbc-mcp.data-dir" defaultValue="~/.jdbc-mcp-server"/>
+    <springProperty name="DATA_DIR" source="jdbc-mcp.data-dir" defaultValue="${user.home}/.jdbc-mcp-server"/>
 
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${DATA_DIR}/logs/jdbc-mcp-server.log</file>

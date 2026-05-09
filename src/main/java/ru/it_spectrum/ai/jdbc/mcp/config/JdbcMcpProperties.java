@@ -17,7 +17,7 @@ public record JdbcMcpProperties(String dataDir) {
     public Path resolvedDataDir() {
         String dir = dataDir;
         if (dir == null || dir.isBlank()) {
-            dir = "~/.jdbc-mcp-server";
+            dir = System.getProperty("user.home", ".") + "/.jdbc-mcp-server";
         }
         if (dir.startsWith("~")) {
             String home = System.getProperty("user.home", ".");

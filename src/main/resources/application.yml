@@ -17,7 +17,7 @@ spring:
 
 # Top-level server data directory — all local storage is rooted here.
 jdbc-mcp:
-  data-dir: ${JDBC_MCP_DATA_DIR:~/.jdbc-mcp-server}
+  data-dir: ${JDBC_MCP_DATA_DIR:${user.home}/.jdbc-mcp-server}
 
 jdbc:
   url: ${JDBC_URL:}
