@@ -33,13 +33,14 @@ public class UsageCatalogIndexer implements ApplicationRunner {
 
     private final UsageProperties properties;
     private final UsageCatalogService service;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
     private final AtomicBoolean indexing = new AtomicBoolean(false);
     private volatile IndexerStatusResponse status;
 
-    public UsageCatalogIndexer(UsageProperties properties, UsageCatalogService service) {
+    public UsageCatalogIndexer(UsageProperties properties, UsageCatalogService service, ObjectMapper mapper) {
         this.properties = properties;
         this.service = service;
+        this.mapper = mapper;
         this.status = IndexerStatusResponse.initial(
                 properties.catalogEnabled(),
                 properties.resolvedCatalogPaths().stream().map(Path::toString).toList()

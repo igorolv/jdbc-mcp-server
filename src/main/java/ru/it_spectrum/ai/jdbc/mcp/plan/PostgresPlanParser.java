@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.plan;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 
 import java.util.ArrayList;
@@ -14,6 +15,12 @@ import java.util.Map;
  */
 public final class PostgresPlanParser implements PlanParser {
 
+    private final ObjectMapper mapper;
+
+    public PostgresPlanParser(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
+
     @Override
     public ParsedPlan parse(QueryResult result, boolean analyzed) {
         if (result.rows().isEmpty() || result.columns().isEmpty()) {
@@ -21,7 +28,12 @@ public final class PostgresPlanParser implements PlanParser {
         }
         Object raw = result.rows().get(0).get(result.columns().get(0));
         String json = raw == null ? "" : raw.toString();
-        Object parsed = JsonReader.parse(json);
+        Object parsed;
+        try {
+            parsed = mapper.readValue(json, List.class);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse EXPLAIN JSON: " + e.getMessage(), e);
+        }
         if (!(parsed instanceof List<?> list) || list.isEmpty()) {
             throw new IllegalArgumentException("Unexpected EXPLAIN JSON shape: " + json);
         }

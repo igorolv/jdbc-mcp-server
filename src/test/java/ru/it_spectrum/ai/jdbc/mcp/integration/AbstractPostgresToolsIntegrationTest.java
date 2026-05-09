@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.integration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -65,17 +66,19 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
             MetadataService metadata = new MetadataService(executor, dialect, properties, cache);
             StatsService stats = new StatsService(executor, dialect, properties);
             SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
+            ObjectMapper mapper = new JsonConfig().jdbcMcpObjectMapper();
+            PostgresPlanParser planParser = new PostgresPlanParser(mapper);
             DistributionService distribution = new DistributionService(
-                    executor, dialect, properties, new PostgresPlanParser());
+                    executor, dialect, properties, planParser);
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
             QueryAnalysisService analysis = new QueryAnalysisService();
             QueryLintService lint = new QueryLintService(analysis, metadata, stats);
-            JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
+            JsonResponses json = new JsonResponses(mapper);
             ToolErrors errors = new ToolErrors(json);
 
             return new IntegrationTestContext(
                     properties.defaultSchema(),
-                    new QueryTools(executor, dialect, properties, guard, new PostgresPlanParser(), analysis, lint, json, errors),
+                    new QueryTools(executor, dialect, properties, guard, planParser, analysis, lint, json, errors),
                     new MetadataTools(metadata, json, errors),
                     new SampleTools(executor, dialect, json, errors),
                     new StatsTools(stats, json, errors),

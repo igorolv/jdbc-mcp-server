@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.dialect;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
@@ -21,9 +22,9 @@ public class DialectConfig {
     }
 
     @Bean
-    public PlanParser planParser(DatabaseKind kind) {
+    public PlanParser planParser(DatabaseKind kind, ObjectMapper mapper) {
         return switch (kind) {
-            case POSTGRESQL -> new PostgresPlanParser();
+            case POSTGRESQL -> new PostgresPlanParser(mapper);
             case ORACLE -> new OraclePlanParser();
             case MSSQL -> new SqlServerPlanParser();
         };

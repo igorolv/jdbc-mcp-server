@@ -38,7 +38,7 @@ public class MetadataTools {
     ) {
         try {
             List<String> schemas = metadata.listSchemas(Boolean.TRUE.equals(includeSystem));
-            return toJsonArray(schemas);
+            return json.write(schemas);
         } catch (SQLException e) {
             return errors.sql(e);
         }
@@ -183,16 +183,6 @@ public class MetadataTools {
             if (!t.isEmpty()) cleaned.add(t);
         }
         return cleaned.isEmpty() ? null : cleaned.toArray(new String[0]);
-    }
-
-    private String toJsonArray(List<String> values) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < values.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append('"').append(values.get(i).replace("\\", "\\\\").replace("\"", "\\\"")).append('"');
-        }
-        sb.append("]");
-        return sb.toString();
     }
 
     private QueryResult toResult(List<String> columns, List<Map<String, Object>> rows) {

@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
@@ -97,7 +98,7 @@ class UsageCatalogIndexerTest {
     }
 
     private UsageCatalogIndexer indexer(UsageCatalogService service, List<String> paths) {
-        return new UsageCatalogIndexer(properties(paths), service);
+        return new UsageCatalogIndexer(properties(paths), service, new ObjectMapper());
     }
 
     private static UsageProperties properties(List<String> paths) {
