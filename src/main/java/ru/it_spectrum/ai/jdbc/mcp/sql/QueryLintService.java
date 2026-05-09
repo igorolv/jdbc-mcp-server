@@ -4,7 +4,10 @@ import net.sf.jsqlparser.JSQLParserException;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.CheckedTableSummary;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryInspection;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryLintResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryWarning;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
 
@@ -39,18 +42,17 @@ public class QueryLintService {
         this.stats = stats;
     }
 
-    public Map<String, Object> lint(String sql, String schema) throws SQLException {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("inspection", analysis.inspect(sql));
+    public QueryLintResult lint(String sql, String schema) throws SQLException {
+        QueryInspection inspection = analysis.inspect(sql);
 
         QueryAnalysisService.QueryModel model;
         try {
             model = analysis.model(sql);
         } catch (JSQLParserException | RuntimeException e) {
-            out.put("lintable", false);
-            out.put("warnings", List.of(warning("parser_error",
-                    "JSqlParser could not parse the SQL, so metadata lint was skipped: " + rootMessage(e))));
-            return out;
+            return QueryLintResult.parserError(
+                    inspection,
+                    warning("parser_error",
+                            "JSqlParser could not parse the SQL, so metadata lint was skipped: " + rootMessage(e)));
         }
 
         Map<String, TableInfo> tables = loadTables(model, schema);
@@ -81,11 +83,12 @@ public class QueryLintService {
         lintIndexes(model, tables, warnings);
         lintFkCoverage(model, schema, warnings);
 
-        out.put("lintable", true);
-        out.put("tablesChecked", tableSummaries(tables.values()));
-        out.put("warningCount", warnings.size());
-        out.put("warnings", dedupeWarnings(warnings));
-        return out;
+        return new QueryLintResult(
+                inspection,
+                true,
+                tableSummaries(tables.values()),
+                warnings.size(),
+                dedupeWarnings(warnings));
     }
 
     private Map<String, TableInfo> loadTables(QueryAnalysisService.QueryModel model, String schema)
@@ -162,16 +165,15 @@ public class QueryLintService {
         return null;
     }
 
-    private List<Map<String, Object>> tableSummaries(Collection<TableInfo> tables) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    private List<CheckedTableSummary> tableSummaries(Collection<TableInfo> tables) {
+        List<CheckedTableSummary> out = new ArrayList<>();
         for (TableInfo table : tables) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("schema", table.schema);
-            row.put("table", table.name);
-            row.put("exists", table.exists());
-            row.put("columnCount", table.columns.size());
-            row.put("indexCount", table.indexes.size());
-            out.add(row);
+            out.add(new CheckedTableSummary(
+                    table.schema,
+                    table.name,
+                    table.exists(),
+                    table.columns.size(),
+                    table.indexes.size()));
         }
         return out;
     }
