@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaLint;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaLintFinding;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -11,7 +12,6 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,7 +42,7 @@ class SchemaLintService extends SchemaContextSupport {
                 ? loadSingleTable(schema, table)
                 : loadSchemaTables(schema, tableLimit);
 
-        List<Map<String, Object>> findings = new ArrayList<>();
+        List<SchemaLintFinding> findings = new ArrayList<>();
         for (TableDescription info : tables.values()) {
             lintTable(info, enabledChecks, findings, findingLimit);
             if (findings.size() >= findingLimit) break;
@@ -60,7 +60,7 @@ class SchemaLintService extends SchemaContextSupport {
     }
 
     private void lintTable(TableDescription info, Set<String> checks,
-                           List<Map<String, Object>> findings, int limit) {
+                           List<SchemaLintFinding> findings, int limit) {
         String schema = info.schema();
         String table = info.name();
         List<Column> columns = info.columns();
@@ -93,7 +93,7 @@ class SchemaLintService extends SchemaContextSupport {
     }
 
     private void lintNullableUniqueColumns(TableDescription info,
-                                           List<Map<String, Object>> findings, int limit) {
+                                           List<SchemaLintFinding> findings, int limit) {
         String schema = info.schema();
         String table = info.name();
         for (UniqueConstraint unique : info.uniqueConstraints()) {
@@ -109,7 +109,7 @@ class SchemaLintService extends SchemaContextSupport {
     }
 
     private void lintUnconstrainedStatusColumns(TableDescription info,
-                                                List<Map<String, Object>> findings, int limit) {
+                                                List<SchemaLintFinding> findings, int limit) {
         String schema = info.schema();
         String table = info.name();
         for (Column column : info.columns()) {
@@ -127,7 +127,7 @@ class SchemaLintService extends SchemaContextSupport {
     }
 
     private void lintOrphanIdColumns(TableDescription info,
-                                     List<Map<String, Object>> findings, int limit) {
+                                     List<SchemaLintFinding> findings, int limit) {
         String schema = info.schema();
         String table = info.name();
         for (Column column : info.columns()) {
@@ -141,7 +141,7 @@ class SchemaLintService extends SchemaContextSupport {
 
     private void lintRelationships(Map<String, TableDescription> tables,
                                    Set<String> checks,
-                                   List<Map<String, Object>> findings, int limit) {
+                                   List<SchemaLintFinding> findings, int limit) {
         if (checkEnabled(checks, "fkWithoutIndex")) {
             for (TableDescription info : tables.values()) {
                 String schema = info.schema();
@@ -164,7 +164,7 @@ class SchemaLintService extends SchemaContextSupport {
     }
 
     private void lintFkTypeMismatch(Map<String, TableDescription> tables,
-                                    List<Map<String, Object>> findings, int limit) {
+                                    List<SchemaLintFinding> findings, int limit) {
         for (TableDescription info : tables.values()) {
             String schema = info.schema();
             String table = info.name();
@@ -189,7 +189,7 @@ class SchemaLintService extends SchemaContextSupport {
     }
 
     private void lintGraph(Map<String, TableDescription> tables, Set<String> checks,
-                           List<Map<String, Object>> findings, int limit) {
+                           List<SchemaLintFinding> findings, int limit) {
         if (!checkEnabled(checks, "isolatedTable")) return;
         Map<String, Integer> degrees = new HashMap<>();
         for (String tableKey : tables.keySet()) degrees.put(tableKey, 0);
@@ -229,19 +229,18 @@ class SchemaLintService extends SchemaContextSupport {
         return checks.contains(check) || checks.contains("all");
     }
 
-    private void addFinding(List<Map<String, Object>> findings, int limit,
+    private void addFinding(List<SchemaLintFinding> findings, int limit,
                             String severity, String check, String schema, String table,
                             String column, String message, String recommendation) {
         if (findings.size() >= limit) return;
-        Map<String, Object> finding = new LinkedHashMap<>();
-        finding.put("severity", severity);
-        finding.put("check", check);
-        finding.put("schema", schema);
-        finding.put("table", table);
-        if (column != null && !column.isBlank()) finding.put("column", column);
-        finding.put("message", message);
-        finding.put("recommendation", recommendation);
-        findings.add(finding);
+        findings.add(new SchemaLintFinding(
+                severity,
+                check,
+                schema,
+                table,
+                column == null || column.isBlank() ? null : column,
+                message,
+                recommendation));
     }
 
     private boolean hasCheckConstraintForColumn(TableDescription info, String columnName) {
