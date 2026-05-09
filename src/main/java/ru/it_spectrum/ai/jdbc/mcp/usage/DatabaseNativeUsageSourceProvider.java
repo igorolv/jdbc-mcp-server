@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
@@ -22,23 +23,29 @@ import java.util.regex.Pattern;
  *
  * <p>Views usually expose a parseable SELECT body and therefore contribute table, column and join
  * evidence immediately. Routine and trigger bodies are less portable across engines, so this
- * provider indexes SELECT-like fragments when it can find them and otherwise keeps the object as a
- * provenance record.
+ * provider delegates to an ANTLR-based pre-extractor and otherwise keeps the object as a provenance
+ * record.
  */
 @Service
 public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
 
-    private static final Pattern SELECT_LIKE =
-            Pattern.compile("(?is)\\b(SELECT|WITH|EXPLAIN)\\b");
     private static final Pattern CREATE_VIEW_AS =
             Pattern.compile("(?is)\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\b.*?\\bAS\\b");
 
     private final UsageProperties properties;
     private final MetadataService metadata;
+    private final ProceduralSqlExtractor proceduralSqlExtractor;
 
     public DatabaseNativeUsageSourceProvider(UsageProperties properties, MetadataService metadata) {
+        this(properties, metadata, new ProceduralSqlExtractor());
+    }
+
+    @Autowired
+    public DatabaseNativeUsageSourceProvider(UsageProperties properties, MetadataService metadata,
+                                             ProceduralSqlExtractor proceduralSqlExtractor) {
         this.properties = properties;
         this.metadata = metadata;
+        this.proceduralSqlExtractor = proceduralSqlExtractor;
     }
 
     @Override
@@ -108,8 +115,8 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             String source = metadata.routineSource(objectSchema, name);
             if (source == null || source.isBlank()) continue;
             String sourceKind = "database-" + normalizeKind(kind, "routine");
-            List<String> fragments = selectLikeFragments(source);
-            if (fragments.isEmpty()) {
+            List<ExtractedSqlStatement> statements = proceduralSqlExtractor.extract(source);
+            if (statements.isEmpty()) {
                 out.add(new QueryUsage(
                         properties.effectiveDataSourceId(),
                         new QueryUsageSource(sourceKind, path("routine", objectSchema, name), null),
@@ -124,21 +131,22 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                 ));
                 continue;
             }
-            int ordinal = 0;
-            for (String fragment : fragments) {
+            for (ExtractedSqlStatement statement : statements) {
                 if (limitReached(out)) return;
-                ordinal++;
                 out.add(new QueryUsage(
                         properties.effectiveDataSourceId(),
-                        new QueryUsageSource(sourceKind, path("routine", objectSchema, name), "stmt" + ordinal),
+                        new QueryUsageSource(sourceKind, path("routine", objectSchema, name),
+                                "stmt" + statement.ordinal()),
                         "Database " + normalizeKind(kind, "routine") + " " + qualified(objectSchema, name),
                         null,
                         List.of("database-native", "routine"),
-                        fragment,
+                        statement.sql(),
                         null,
                         null,
                         null,
-                        meta(kind, objectSchema, name, null, Map.of("statementOrdinal", ordinal))
+                        meta(kind, objectSchema, name, null, Map.of(
+                                "statementOrdinal", statement.ordinal(),
+                                "statementKind", statement.kind()))
                 ));
             }
         }
@@ -151,23 +159,22 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                 if (limitReached(out)) return;
                 String definition = trigger.definition();
                 if (definition == null || definition.isBlank()) continue;
-                List<String> fragments = selectLikeFragments(definition);
-                if (fragments.isEmpty()) {
-                    out.add(triggerUsage(table, trigger, definition, null, null));
+                List<ExtractedSqlStatement> statements = proceduralSqlExtractor.extract(definition);
+                if (statements.isEmpty()) {
+                    out.add(triggerUsage(table, trigger, definition, null, null, null));
                     continue;
                 }
-                int ordinal = 0;
-                for (String fragment : fragments) {
+                for (ExtractedSqlStatement statement : statements) {
                     if (limitReached(out)) return;
-                    ordinal++;
-                    out.add(triggerUsage(table, trigger, fragment, "stmt" + ordinal, ordinal));
+                    out.add(triggerUsage(table, trigger, statement.sql(), "stmt" + statement.ordinal(),
+                            statement.ordinal(), statement.kind()));
                 }
             }
         }
     }
 
     private QueryUsage triggerUsage(TableEntry table, Trigger trigger, String sql,
-                                    String unit, Integer statementOrdinal) {
+                                    String unit, Integer statementOrdinal, String statementKind) {
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put("table", table.name());
         extra.put("timing", trigger.timing());
@@ -175,6 +182,9 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
         extra.put("enabled", trigger.enabled());
         if (statementOrdinal != null) {
             extra.put("statementOrdinal", statementOrdinal);
+        }
+        if (statementKind != null) {
+            extra.put("statementKind", statementKind);
         }
         return new QueryUsage(
                 properties.effectiveDataSourceId(),
@@ -202,18 +212,6 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             return trimmed.substring(createView.end()).trim();
         }
         return trimmed;
-    }
-
-    static List<String> selectLikeFragments(String source) {
-        if (source == null || source.isBlank()) return List.of();
-        List<String> out = new ArrayList<>();
-        for (String segment : source.split(";")) {
-            Matcher matcher = SELECT_LIKE.matcher(segment);
-            if (!matcher.find()) continue;
-            String fragment = segment.substring(matcher.start()).trim();
-            if (!fragment.isBlank()) out.add(fragment);
-        }
-        return List.copyOf(out);
     }
 
     private static String path(String type, String schema, String name) {

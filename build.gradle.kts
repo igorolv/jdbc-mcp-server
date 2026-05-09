@@ -1,5 +1,6 @@
 plugins {
     java
+    antlr
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.spring.dependency.management)
 }
@@ -24,6 +25,8 @@ dependencies {
     implementation(libs.jsqlparser)
     implementation(libs.h2)
     implementation("com.fasterxml.jackson.core:jackson-databind")
+    implementation(libs.antlr4.runtime)
+    antlr(libs.antlr4)
 
     // JDBC drivers bundled into the fat jar
     runtimeOnly(libs.postgresql)
@@ -55,6 +58,10 @@ tasks.bootJar {
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+}
+
+tasks.generateGrammarSource {
+    arguments = arguments + listOf("-visitor")
 }
 
 tasks.test {

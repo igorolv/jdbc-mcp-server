@@ -82,6 +82,9 @@ class DatabaseNativeUsageSourceProviderTest {
         assertThat(records)
                 .extracting(QueryUsage::sql)
                 .containsExactly("SELECT c.id FROM customers c", "SELECT o.id FROM orders o");
+        assertThat(records)
+                .extracting(record -> record.sourceMeta().get("statementKind"))
+                .containsExactly("SELECT", "SELECT");
     }
 
     private static UsageProperties properties(boolean nativeEnabled, boolean views,

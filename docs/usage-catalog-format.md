@@ -10,7 +10,9 @@ converting their native data into this shape.
 The server also derives records automatically from connected database metadata. Views, routines
 and triggers are indexed with `source.kind` values such as `database-view`,
 `database-function`, `database-procedure` and `database-trigger`; these records use the same
-canonical shape as file-backed records.
+canonical shape as file-backed records. For routine and trigger bodies, an ANTLR-based
+pre-extractor finds embedded DML/query statements before the existing JSqlParser analysis extracts
+tables, columns and joins.
 
 The JSON Schema is published at:
 

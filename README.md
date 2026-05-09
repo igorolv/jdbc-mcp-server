@@ -241,9 +241,11 @@ default schema:
 - triggers as `source.kind="database-trigger"`.
 
 Views usually contribute fully parsed table, column and join evidence. Routine and trigger bodies
-are engine-specific, so the indexer extracts SELECT-like fragments when possible and otherwise
-keeps the object as a provenance record. Set `JDBC_USAGE_NATIVE_CATALOG_ENABLED=false` to disable
-this source, or `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to scan explicit schemas.
+are engine-specific, so the indexer first uses an ANTLR-based procedural pre-extractor to find
+embedded `SELECT` / `WITH` / `INSERT` / `UPDATE` / `DELETE` / `MERGE` statements, then feeds those
+statements into the existing JSqlParser analysis pipeline. If no embedded statement is found, the
+object is still kept as a provenance record. Set `JDBC_USAGE_NATIVE_CATALOG_ENABLED=false` to
+disable this source, or `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to scan explicit schemas.
 
 **Runtime index.** By default the server starts quickly and builds the usage index in the
 background (`JDBC_USAGE_INDEX_ON_STARTUP=true`, `JDBC_USAGE_INDEX_BACKGROUND=true`). The index is
