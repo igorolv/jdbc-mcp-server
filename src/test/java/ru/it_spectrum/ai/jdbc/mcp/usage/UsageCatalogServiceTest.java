@@ -8,8 +8,12 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.CatalogQueryDetail;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.RebuildResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
@@ -62,21 +66,17 @@ class UsageCatalogServiceTest {
         assertThat(result.columnsExtracted()).isGreaterThanOrEqualTo(4);
         assertThat(result.joinPairsExtracted()).isEqualTo(1);
 
-        Map<String, Object> stored = service.getQuery("SHOP/app/dao/CustomerOrders.java#findOrders");
-        assertThat(asList(stored, "tables"))
-                .extracting(row -> row.get("tableResolved"))
+        CatalogQueryDetail stored = service.getQuery("SHOP/app/dao/CustomerOrders.java#findOrders");
+        assertThat(stored.tables())
+                .extracting(CatalogQueryDetail.Table::tableResolved)
                 .contains("CUSTOMERS", "ORDERS");
-        assertThat(asList(stored, "joinPairs"))
+        assertThat(stored.joinPairs())
                 .singleElement()
                 .satisfies(pair -> {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> left = (Map<String, Object>) pair.get("left");
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> right = (Map<String, Object>) pair.get("right");
-                    assertThat(left.get("table")).isEqualTo("ORDERS");
-                    assertThat(left.get("column")).isEqualTo("CUSTOMER_ID");
-                    assertThat(right.get("table")).isEqualTo("CUSTOMERS");
-                    assertThat(right.get("column")).isEqualTo("ID");
+                    assertThat(pair.left().table()).isEqualTo("ORDERS");
+                    assertThat(pair.left().column()).isEqualTo("CUSTOMER_ID");
+                    assertThat(pair.right().table()).isEqualTo("CUSTOMERS");
+                    assertThat(pair.right().column()).isEqualTo("ID");
                 });
     }
 
@@ -125,35 +125,29 @@ class UsageCatalogServiceTest {
 
         service.rebuild(List.of(req));
 
-        Map<String, Object> stored = service.getQuery("SHOP/CustomerDao.java#findOne");
+        CatalogQueryDetail stored = service.getQuery("SHOP/CustomerDao.java#findOne");
 
-        assertThat(asList(stored, "parameters")).singleElement()
+        assertThat(stored.parameters()).singleElement()
                 .satisfies(p -> {
-                    assertThat(p.get("name")).isEqualTo("customerId");
-                    assertThat(p.get("businessLabel")).isEqualTo("Идентификатор клиента");
+                    assertThat(p.name()).isEqualTo("customerId");
+                    assertThat(p.businessLabel()).isEqualTo("Идентификатор клиента");
                 });
-        assertThat(asList(stored, "outputs")).singleElement()
+        assertThat(stored.outputs()).singleElement()
                 .satisfies(o -> {
-                    assertThat(o.get("alias")).isEqualTo("cust_name");
-                    assertThat(o.get("businessLabel")).isEqualTo("Имя клиента");
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> derived = (List<Map<String, Object>>) o.get("derivedFromColumns");
-                    assertThat(derived).singleElement()
+                    assertThat(o.alias()).isEqualTo("cust_name");
+                    assertThat(o.businessLabel()).isEqualTo("Имя клиента");
+                    assertThat(o.derivedFromColumns()).singleElement()
                             .satisfies(d -> {
-                                assertThat(d.get("table")).isEqualTo("CUSTOMERS");
-                                assertThat(d.get("column")).isEqualTo("NAME");
+                                assertThat(d.table()).isEqualTo("CUSTOMERS");
+                                assertThat(d.column()).isEqualTo("NAME");
                             });
                 });
-        assertThat(asList(stored, "fieldUsages")).singleElement()
+        assertThat(stored.fieldUsages()).singleElement()
                 .satisfies(fu -> {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> tx = (Map<String, Object>) fu.get("transformation");
-                    assertThat(tx.get("kind")).isEqualTo("identity");
-                    assertThat(fu.get("confidence")).isEqualTo("high");
+                    assertThat(fu.transformation().kind()).isEqualTo("identity");
+                    assertThat(fu.confidence()).isEqualTo("high");
                 });
-        @SuppressWarnings("unchecked")
-        List<String> tags = (List<String>) stored.get("tags");
-        assertThat(tags).contains("customer", "card");
+        assertThat(stored.tags()).contains("customer", "card");
     }
 
     @Test
@@ -278,18 +272,17 @@ class UsageCatalogServiceTest {
         service.rebuild(List.of(buildRequest("SHOP", source, sqlV1)));
         service.rebuild(List.of(buildRequest("SHOP", source, sqlV2)));
 
-        Map<String, Object> stored = service.getQuery("SHOP/CustomerDao.java#findOne");
-        assertThat(stored.get("rawSql")).isEqualTo(sqlV2);
-        // v1 referenced one column (id); v2 references three; child rows must be replaced, not appended.
-        assertThat((List<?>) stored.get("columns")).hasSizeGreaterThanOrEqualTo(3);
-        assertThat(asList(stored, "columns"))
-                .extracting(c -> c.get("columnName"))
+        CatalogQueryDetail stored = service.getQuery("SHOP/CustomerDao.java#findOne");
+        assertThat(stored.rawSql()).isEqualTo(sqlV2);
+        assertThat(stored.columns()).hasSizeGreaterThanOrEqualTo(3);
+        assertThat(stored.columns())
+                .extracting(CatalogQueryDetail.Column::columnName)
                 .contains("ID", "NAME", "STATUS");
     }
 
     @Test
     void parseFailureKeepsBusinessMetadata() {
-        String unparsable = "SELECT FROM"; // intentionally broken
+        String unparsable = "SELECT FROM";
         QueryUsage req = new QueryUsage(
                 "SHOP",
                 new QueryUsageSource("manual", "broken.sql", null),
@@ -307,12 +300,12 @@ class UsageCatalogServiceTest {
         RebuildResult result = service.rebuild(List.of(req));
 
         assertThat(result.parseFailed()).isEqualTo(1);
-        Map<String, Object> stored = service.getQuery("SHOP/broken.sql");
-        assertThat(stored.get("parseStatus")).isEqualTo("failed");
-        assertThat(stored.get("parseError")).isNotNull();
-        assertThat(asList(stored, "parameters")).hasSize(1);
-        assertThat(asList(stored, "outputs")).hasSize(1);
-        assertThat(asList(stored, "fieldUsages")).hasSize(1);
+        CatalogQueryDetail stored = service.getQuery("SHOP/broken.sql");
+        assertThat(stored.parseStatus()).isEqualTo("failed");
+        assertThat(stored.parseError()).isNotNull();
+        assertThat(stored.parameters()).hasSize(1);
+        assertThat(stored.outputs()).hasSize(1);
+        assertThat(stored.fieldUsages()).hasSize(1);
     }
 
     @Test
@@ -321,13 +314,13 @@ class UsageCatalogServiceTest {
                 buildSimple("SHOP", "a.sql", "SELECT * FROM Customers WHERE id = 1"),
                 buildSimple("SHOP", "b.sql", "SELECT * FROM ORDERS WHERE id = 1")));
 
-        Map<String, Object> byLower = service.findQueriesByTable(null, "customers");
-        assertThat(byLower.get("count")).isEqualTo(1);
-        assertThat(asList(byLower, "matches"))
-                .extracting(r -> r.get("sourcePath")).contains("a.sql");
+        FindQueriesByTableResult byLower = service.findQueriesByTable(null, "customers");
+        assertThat(byLower.count()).isEqualTo(1);
+        assertThat(byLower.matches())
+                .extracting(FindQueriesByTableResult.Match::sourcePath).contains("a.sql");
 
-        Map<String, Object> byUpper = service.findQueriesByTable(null, "ORDERS");
-        assertThat(byUpper.get("count")).isEqualTo(1);
+        FindQueriesByTableResult byUpper = service.findQueriesByTable(null, "ORDERS");
+        assertThat(byUpper.count()).isEqualTo(1);
     }
 
     @Test
@@ -335,14 +328,14 @@ class UsageCatalogServiceTest {
         service.rebuild(List.of(buildSimple("SHOP", "a.sql",
                 "SELECT name FROM customers WHERE status = 'A' ORDER BY name")));
 
-        Map<String, Object> nameMatches = service.findQueriesByColumn(null, "customers", "name");
-        assertThat(asList(nameMatches, "matches"))
-                .extracting(r -> r.get("context"))
+        FindQueriesByColumnResult nameMatches = service.findQueriesByColumn(null, "customers", "name");
+        assertThat(nameMatches.matches())
+                .extracting(FindQueriesByColumnResult.Match::context)
                 .contains("select", "order_by");
 
-        Map<String, Object> statusMatches = service.findQueriesByColumn(null, null, "status");
-        assertThat(asList(statusMatches, "matches"))
-                .extracting(r -> r.get("context"))
+        FindQueriesByColumnResult statusMatches = service.findQueriesByColumn(null, null, "status");
+        assertThat(statusMatches.matches())
+                .extracting(FindQueriesByColumnResult.Match::context)
                 .contains("where");
     }
 
@@ -356,16 +349,13 @@ class UsageCatalogServiceTest {
                 buildSimple("SHOP", "q3.sql",
                         "SELECT * FROM payments p JOIN customers c ON p.customer_id = c.id")));
 
-        Map<String, Object> all = service.observedRelationships(null, null, 1);
-        assertThat(asList(all, "relationships")).hasSize(2);
+        ObservedRelationshipsResult all = service.observedRelationships(null, null, 1);
+        assertThat(all.relationships()).hasSize(2);
 
-        Map<String, Object> popular = service.observedRelationships(null, null, 2);
-        List<Map<String, Object>> popularRows = asList(popular, "relationships");
-        assertThat(popularRows).hasSize(1);
-        assertThat(popularRows.get(0).get("support")).isEqualTo(2);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> left = (Map<String, Object>) popularRows.get(0).get("left");
-        assertThat(left.get("table")).isEqualTo("ORDERS");
+        ObservedRelationshipsResult popular = service.observedRelationships(null, null, 2);
+        assertThat(popular.relationships()).hasSize(1);
+        assertThat(popular.relationships().get(0).support()).isEqualTo(2);
+        assertThat(popular.relationships().get(0).left().table()).isEqualTo("ORDERS");
     }
 
     @Test
@@ -453,20 +443,16 @@ class UsageCatalogServiceTest {
         assertThat(result.tablesAmbiguous()).isEqualTo(0);
         assertThat(result.tablesUnresolved()).isEqualTo(0);
 
-        Map<String, Object> stored = service.getQuery("SHOP/q2.sql");
-        assertThat(asList(stored, "tables"))
-                .allSatisfy(t -> assertThat(t.get("schemaResolved")).isEqualTo("APP"));
-        assertThat(asList(stored, "joinPairs")).singleElement()
+        CatalogQueryDetail stored = service.getQuery("SHOP/q2.sql");
+        assertThat(stored.tables())
+                .allSatisfy(t -> assertThat(t.schemaResolved()).isEqualTo("APP"));
+        assertThat(stored.joinPairs()).singleElement()
                 .satisfies(jp -> {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> left = (Map<String, Object>) jp.get("left");
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> right = (Map<String, Object>) jp.get("right");
-                    assertThat(left.get("schema")).isEqualTo("APP");
-                    assertThat(right.get("schema")).isEqualTo("APP");
+                    assertThat(jp.left().schema()).isEqualTo("APP");
+                    assertThat(jp.right().schema()).isEqualTo("APP");
                 });
-        assertThat(asList(stored, "columns"))
-                .allSatisfy(c -> assertThat(c.get("schemaResolved")).isEqualTo("APP"));
+        assertThat(stored.columns())
+                .allSatisfy(c -> assertThat(c.schemaResolved()).isEqualTo("APP"));
     }
 
     @Test
@@ -481,11 +467,11 @@ class UsageCatalogServiceTest {
         });
 
         assertThat(result.tablesAmbiguous()).isEqualTo(1);
-        Map<String, Object> stored = service.getQuery("SHOP/q.sql");
-        assertThat(asList(stored, "tables")).singleElement()
+        CatalogQueryDetail stored = service.getQuery("SHOP/q.sql");
+        assertThat(stored.tables()).singleElement()
                 .satisfies(t -> {
-                    assertThat(t.get("resolutionStatus")).isEqualTo("ambiguous");
-                    assertThat(t.get("schemaResolved")).isNull();
+                    assertThat(t.resolutionStatus()).isEqualTo("ambiguous");
+                    assertThat(t.schemaResolved()).isNull();
                 });
     }
 
@@ -496,9 +482,9 @@ class UsageCatalogServiceTest {
         ReresolveResult result = service.reresolve("SHOP", name -> new java.util.ArrayList<>());
 
         assertThat(result.tablesUnresolved()).isEqualTo(1);
-        Map<String, Object> stored = service.getQuery("SHOP/q.sql");
-        assertThat(asList(stored, "tables")).singleElement()
-                .satisfies(t -> assertThat(t.get("resolutionStatus")).isEqualTo("unresolved"));
+        CatalogQueryDetail stored = service.getQuery("SHOP/q.sql");
+        assertThat(stored.tables()).singleElement()
+                .satisfies(t -> assertThat(t.resolutionStatus()).isEqualTo("unresolved"));
     }
 
     @Test
@@ -579,10 +565,10 @@ class UsageCatalogServiceTest {
     }
 
     @Test
-    void getQueryReturnsNotFoundShapeForUnknownUid() {
-        Map<String, Object> notFound = service.getQuery("SHOP/missing.sql");
-        assertThat(notFound.get("kind")).isEqualTo("not_found");
-        assertThat(notFound.get("missing")).isEqualTo("query");
+    void getQueryThrowsForUnknownUid() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> service.getQuery("SHOP/missing.sql"))
+                .withMessageContaining("not found");
     }
 
     // ---------------------------------------------------------------------------------------
@@ -618,10 +604,5 @@ class UsageCatalogServiceTest {
         }).stream()
                 .map(SemanticTermEvidence::value)
                 .toList();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> asList(Map<String, Object> root, String key) {
-        return (List<Map<String, Object>>) root.get(key);
     }
 }

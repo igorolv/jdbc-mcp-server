@@ -56,10 +56,10 @@ class UsageCatalogIndexerTest {
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.filesScanned()).isEqualTo(2);
         assertThat(status.recordsLoaded()).isEqualTo(2);
-        assertThat(service.findQueriesByTable(null, "customers").get("count")).isEqualTo(2);
-        assertThat(asList(service.observedRelationships(null, null, 1), "relationships"))
+        assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(2);
+        assertThat(service.observedRelationships(null, null, 1).relationships())
                 .singleElement()
-                .satisfies(edge -> assertThat(edge.get("support")).isEqualTo(1));
+                .satisfies(edge -> assertThat(edge.support()).isEqualTo(1));
     }
 
     @Test
@@ -85,8 +85,8 @@ class UsageCatalogIndexerTest {
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.duplicateUids()).isEqualTo(1);
         assertThat(status.recordsLoaded()).isEqualTo(1);
-        assertThat(service.findQueriesByTable(null, "customers").get("count")).isEqualTo(1);
-        assertThat(service.findQueriesByTable(null, "orders").get("count")).isEqualTo(0);
+        assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(1);
+        assertThat(service.findQueriesByTable(null, "orders").count()).isEqualTo(0);
     }
 
     private UsageCatalogService service(List<String> paths) throws Exception {

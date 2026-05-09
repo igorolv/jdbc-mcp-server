@@ -13,8 +13,14 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryParameter;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.CatalogQueryDetail;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.CatalogQueryDetail;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.ListQueriesResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.RebuildResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
@@ -511,54 +517,53 @@ public class UsageCatalogService {
     //  Read side
     // ---------------------------------------------------------------------------------------
 
-    public Map<String, Object> getQuery(String uid) {
+    public CatalogQueryDetail getQuery(String uid) {
         if (uid == null || uid.isBlank()) throw new IllegalArgumentException("uid is required");
-        Map<String, Object> head = querySingle(
+        CatalogQueryDetail head = querySingle(
                 "SELECT * FROM query WHERE uid = ?",
                 ps -> ps.setString(1, uid),
-                this::queryRow);
+                this::catalogQueryRow);
         if (head == null) {
-            Map<String, Object> notFound = new LinkedHashMap<>();
-            notFound.put("error", "query '" + uid + "' not found");
-            notFound.put("kind", "not_found");
-            notFound.put("missing", "query");
-            notFound.put("name", uid);
-            return notFound;
+            throw new IllegalArgumentException("query '" + uid + "' not found");
         }
-        head.put("tags", queryList(
+        List<String> tags = queryList(
                 "SELECT tag FROM query_tag WHERE query_uid = ? ORDER BY tag",
                 ps -> ps.setString(1, uid),
-                rs -> rs.getString("tag")));
-        head.put("parameters", queryList(
+                rs -> rs.getString("tag"));
+        List<CatalogQueryDetail.Param> params = queryList(
                 "SELECT * FROM query_param WHERE query_uid = ? ORDER BY ordinal",
                 ps -> ps.setString(1, uid),
-                this::paramRow));
-        head.put("tables", queryList(
+                this::paramRow);
+        List<CatalogQueryDetail.Table> tables = queryList(
                 "SELECT * FROM query_table WHERE query_uid = ? ORDER BY id",
                 ps -> ps.setString(1, uid),
-                this::tableRow));
-        head.put("columns", queryList(
+                this::tableRow);
+        List<CatalogQueryDetail.Column> columns = queryList(
                 "SELECT * FROM query_column WHERE query_uid = ? ORDER BY id",
                 ps -> ps.setString(1, uid),
-                this::columnRow));
-        head.put("joinPairs", queryList(
+                this::columnRow);
+        List<CatalogQueryDetail.JoinPair> joinPairs = queryList(
                 "SELECT * FROM query_join WHERE query_uid = ? ORDER BY id",
                 ps -> ps.setString(1, uid),
-                this::joinRow));
-        head.put("outputs", queryList(
+                this::joinRow);
+        List<CatalogQueryDetail.Output> outputs = queryList(
                 "SELECT * FROM query_output WHERE query_uid = ? ORDER BY id",
                 ps -> ps.setString(1, uid),
-                rs -> outputRow(rs, uid)));
-        head.put("fieldUsages", queryList(
+                rs -> outputRow(rs));
+        List<CatalogQueryDetail.FieldUsage> fieldUsages = queryList(
                 "SELECT * FROM query_field_usage WHERE query_uid = ? ORDER BY id",
                 ps -> ps.setString(1, uid),
-                this::fieldUsageRow));
-        return head;
+                this::fieldUsageRow);
+        return new CatalogQueryDetail(
+                head.uid(), head.dataSource(), head.sourceKind(), head.sourcePath(), head.sourceUnit(),
+                head.businessLabel(), head.businessDomain(), head.rawSql(), head.normalizedSql(),
+                head.parseStatus(), head.parseError(), head.sourceMetaJson(), head.ingestedAt(),
+                tags, params, tables, columns, joinPairs, outputs, fieldUsages);
     }
 
-    public Map<String, Object> listQueries(String dataSource, String sourcePath, String sourceKind,
-                                            String businessDomain, String tag, String parseStatus,
-                                            Integer limit, Integer offset) {
+    public ListQueriesResult listQueries(String dataSource, String sourcePath, String sourceKind,
+                                          String businessDomain, String tag, String parseStatus,
+                                          Integer limit, Integer offset) {
         StringBuilder sql = new StringBuilder("""
                 SELECT DISTINCT q.uid, q.data_source, q.source_kind, q.source_path, q.source_unit,
                        q.business_label, q.business_domain, q.parse_status, q.ingested_at
@@ -598,31 +603,23 @@ public class UsageCatalogService {
         sql.append(" OFFSET ?");
         args.add(safeOffset);
 
-        List<Map<String, Object>> rows = queryList(sql.toString(), ps -> {
+        List<ListQueriesResult.QueryEntry> entries = queryList(sql.toString(), ps -> {
             for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
-        }, rs -> {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("uid", rs.getString("uid"));
-            r.put("dataSource", rs.getString("data_source"));
-            r.put("sourceKind", rs.getString("source_kind"));
-            r.put("sourcePath", rs.getString("source_path"));
-            r.put("sourceUnit", emptyToNull(rs.getString("source_unit")));
-            r.put("businessLabel", rs.getString("business_label"));
-            r.put("businessDomain", rs.getString("business_domain"));
-            r.put("parseStatus", rs.getString("parse_status"));
-            r.put("ingestedAt", rs.getString("ingested_at"));
-            return r;
-        });
+        }, rs -> new ListQueriesResult.QueryEntry(
+                rs.getString("uid"),
+                rs.getString("data_source"),
+                rs.getString("source_kind"),
+                rs.getString("source_path"),
+                emptyToNull(rs.getString("source_unit")),
+                rs.getString("business_label"),
+                rs.getString("business_domain"),
+                rs.getString("parse_status"),
+                rs.getString("ingested_at")));
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("queries", rows);
-        out.put("limit", safeLimit);
-        out.put("offset", safeOffset);
-        out.put("count", rows.size());
-        return out;
+        return new ListQueriesResult(entries, safeLimit, safeOffset, entries.size());
     }
 
-    public Map<String, Object> findQueriesByTable(String schema, String table) {
+    public FindQueriesByTableResult findQueriesByTable(String schema, String table) {
         if (table == null || table.isBlank()) throw new IllegalArgumentException("table is required");
         String tableUpper = table.toUpperCase(Locale.ROOT);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
@@ -636,35 +633,27 @@ public class UsageCatalogService {
                   AND (? IS NULL OR qt.schema_resolved = ? OR qt.schema_resolved IS NULL)
                 ORDER BY q.uid
                 """;
-        List<Map<String, Object>> rows = queryList(sql, ps -> {
+        List<FindQueriesByTableResult.Match> matches = queryList(sql, ps -> {
             ps.setString(1, tableUpper);
             ps.setString(2, schemaUpper);
             ps.setString(3, schemaUpper);
-        }, rs -> {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("uid", rs.getString("uid"));
-            r.put("dataSource", rs.getString("data_source"));
-            r.put("sourceKind", rs.getString("source_kind"));
-            r.put("sourcePath", rs.getString("source_path"));
-            r.put("sourceUnit", emptyToNull(rs.getString("source_unit")));
-            r.put("businessLabel", rs.getString("business_label"));
-            r.put("businessDomain", rs.getString("business_domain"));
-            r.put("role", rs.getString("role"));
-            r.put("alias", rs.getString("alias"));
-            r.put("rawName", rs.getString("raw_name"));
-            r.put("schemaResolved", rs.getString("schema_resolved"));
-            r.put("tableResolved", rs.getString("table_resolved"));
-            return r;
-        });
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", schemaUpper);
-        out.put("table", tableUpper);
-        out.put("matches", rows);
-        out.put("count", rows.size());
-        return out;
+        }, rs -> new FindQueriesByTableResult.Match(
+                rs.getString("uid"),
+                rs.getString("data_source"),
+                rs.getString("source_kind"),
+                rs.getString("source_path"),
+                emptyToNull(rs.getString("source_unit")),
+                rs.getString("business_label"),
+                rs.getString("business_domain"),
+                rs.getString("role"),
+                rs.getString("alias"),
+                rs.getString("raw_name"),
+                rs.getString("schema_resolved"),
+                rs.getString("table_resolved")));
+        return new FindQueriesByTableResult(schemaUpper, tableUpper, matches, matches.size());
     }
 
-    public Map<String, Object> findQueriesByColumn(String schema, String table, String column) {
+    public FindQueriesByColumnResult findQueriesByColumn(String schema, String table, String column) {
         if (column == null || column.isBlank()) throw new IllegalArgumentException("column is required");
         String columnUpper = column.toUpperCase(Locale.ROOT);
         String tableUpper = table == null || table.isBlank() ? null : table.toUpperCase(Locale.ROOT);
@@ -679,36 +668,27 @@ public class UsageCatalogService {
                   AND (? IS NULL OR qc.schema_resolved = ? OR qc.schema_resolved IS NULL)
                 ORDER BY q.uid, qc.context
                 """;
-        List<Map<String, Object>> rows = queryList(sql, ps -> {
+        List<FindQueriesByColumnResult.Match> matches = queryList(sql, ps -> {
             ps.setString(1, columnUpper);
             ps.setString(2, tableUpper);
             ps.setString(3, tableUpper);
             ps.setString(4, schemaUpper);
             ps.setString(5, schemaUpper);
-        }, rs -> {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("uid", rs.getString("uid"));
-            r.put("sourceKind", rs.getString("source_kind"));
-            r.put("sourcePath", rs.getString("source_path"));
-            r.put("sourceUnit", emptyToNull(rs.getString("source_unit")));
-            r.put("businessLabel", rs.getString("business_label"));
-            r.put("businessDomain", rs.getString("business_domain"));
-            r.put("context", rs.getString("context"));
-            r.put("schemaResolved", rs.getString("schema_resolved"));
-            r.put("tableResolved", rs.getString("table_resolved"));
-            r.put("columnName", rs.getString("column_name"));
-            return r;
-        });
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", schemaUpper);
-        out.put("table", tableUpper);
-        out.put("column", columnUpper);
-        out.put("matches", rows);
-        out.put("count", rows.size());
-        return out;
+        }, rs -> new FindQueriesByColumnResult.Match(
+                rs.getString("uid"),
+                rs.getString("source_kind"),
+                rs.getString("source_path"),
+                emptyToNull(rs.getString("source_unit")),
+                rs.getString("business_label"),
+                rs.getString("business_domain"),
+                rs.getString("context"),
+                rs.getString("schema_resolved"),
+                rs.getString("table_resolved"),
+                rs.getString("column_name")));
+        return new FindQueriesByColumnResult(schemaUpper, tableUpper, columnUpper, matches, matches.size());
     }
 
-    public Map<String, Object> observedRelationships(String schema, String table, int minSupport) {
+    public ObservedRelationshipsResult observedRelationships(String schema, String table, int minSupport) {
         int support = Math.max(1, minSupport);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
         String tableUpper = table == null || table.isBlank() ? null : table.toUpperCase(Locale.ROOT);
@@ -727,7 +707,7 @@ public class UsageCatalogService {
                 HAVING COUNT(*) >= ?
                 ORDER BY support DESC, left_table, right_table
                 """;
-        List<Map<String, Object>> rows = queryList(sql, ps -> {
+        List<ObservedRelationshipsResult.Relationship> rels = queryList(sql, ps -> {
             ps.setString(1, tableUpper);
             ps.setString(2, tableUpper);
             ps.setString(3, tableUpper);
@@ -735,30 +715,18 @@ public class UsageCatalogService {
             ps.setString(5, schemaUpper);
             ps.setString(6, schemaUpper);
             ps.setInt(7, support);
-        }, rs -> {
-            Map<String, Object> r = new LinkedHashMap<>();
-            Map<String, Object> left = new LinkedHashMap<>();
-            left.put("schema", rs.getString("left_schema"));
-            left.put("table", rs.getString("left_table"));
-            left.put("column", rs.getString("left_column"));
-            Map<String, Object> right = new LinkedHashMap<>();
-            right.put("schema", rs.getString("right_schema"));
-            right.put("table", rs.getString("right_table"));
-            right.put("column", rs.getString("right_column"));
-            r.put("left", left);
-            r.put("right", right);
-            r.put("support", rs.getInt("support"));
-            String uids = rs.getString("uids");
-            r.put("queries", uids == null ? List.of() : List.of(uids.split("\\|")));
-            return r;
-        });
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", schemaUpper);
-        out.put("table", tableUpper);
-        out.put("minSupport", support);
-        out.put("relationships", rows);
-        out.put("count", rows.size());
-        return out;
+        }, rs -> new ObservedRelationshipsResult.Relationship(
+                new ObservedRelationshipsResult.SchemaRef(
+                        rs.getString("left_schema"),
+                        rs.getString("left_table"),
+                        rs.getString("left_column")),
+                new ObservedRelationshipsResult.SchemaRef(
+                        rs.getString("right_schema"),
+                        rs.getString("right_table"),
+                        rs.getString("right_column")),
+                rs.getInt("support"),
+                rs.getString("uids")));
+return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, rels.size());
     }
 
     public KnownTagsResult listKnownTags(String dataSource) {
@@ -1368,109 +1336,98 @@ public class UsageCatalogService {
     //  Row mappers
     // ---------------------------------------------------------------------------------------
 
-    private Map<String, Object> queryRow(ResultSet rs) throws SQLException {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("uid", rs.getString("uid"));
-        row.put("dataSource", rs.getString("data_source"));
-        row.put("sourceKind", rs.getString("source_kind"));
-        row.put("sourcePath", rs.getString("source_path"));
-        row.put("sourceUnit", emptyToNull(rs.getString("source_unit")));
-        row.put("businessLabel", rs.getString("business_label"));
-        row.put("businessDomain", rs.getString("business_domain"));
-        row.put("rawSql", rs.getString("raw_sql"));
-        row.put("normalizedSql", rs.getString("normalized_sql"));
-        row.put("parseStatus", rs.getString("parse_status"));
-        row.put("parseError", rs.getString("parse_error"));
-        row.put("sourceMetaJson", rs.getString("source_meta_json"));
-        row.put("ingestedAt", rs.getString("ingested_at"));
-        return row;
+    private CatalogQueryDetail catalogQueryRow(ResultSet rs) throws SQLException {
+        return new CatalogQueryDetail(
+                rs.getString("uid"),
+                rs.getString("data_source"),
+                rs.getString("source_kind"),
+                rs.getString("source_path"),
+                emptyToNull(rs.getString("source_unit")),
+                rs.getString("business_label"),
+                rs.getString("business_domain"),
+                rs.getString("raw_sql"),
+                rs.getString("normalized_sql"),
+                rs.getString("parse_status"),
+                rs.getString("parse_error"),
+                rs.getString("source_meta_json"),
+                rs.getString("ingested_at"),
+                null, null, null, null, null, null, null
+        );
     }
 
-    private Map<String, Object> paramRow(ResultSet rs) throws SQLException {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("ordinal", rs.getInt("ordinal"));
-        row.put("name", rs.getString("name"));
-        row.put("dataType", rs.getString("data_type"));
-        row.put("defaultValue", rs.getString("default_value"));
-        row.put("required", rs.getInt("required") != 0);
-        row.put("businessLabel", rs.getString("business_label"));
-        row.put("businessDescription", rs.getString("business_description"));
-        return row;
+    private CatalogQueryDetail.Param paramRow(ResultSet rs) throws SQLException {
+        return new CatalogQueryDetail.Param(
+                rs.getInt("ordinal"),
+                rs.getString("name"),
+                rs.getString("data_type"),
+                rs.getString("default_value"),
+                rs.getInt("required") != 0,
+                rs.getString("business_label"),
+                rs.getString("business_description"));
     }
 
-    private Map<String, Object> tableRow(ResultSet rs) throws SQLException {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("rawName", rs.getString("raw_name"));
-        row.put("schemaResolved", rs.getString("schema_resolved"));
-        row.put("tableResolved", rs.getString("table_resolved"));
-        row.put("alias", rs.getString("alias"));
-        row.put("role", rs.getString("role"));
-        row.put("resolutionStatus", rs.getString("resolution_status"));
-        return row;
+    private CatalogQueryDetail.Table tableRow(ResultSet rs) throws SQLException {
+        return new CatalogQueryDetail.Table(
+                rs.getString("raw_name"),
+                rs.getString("schema_resolved"),
+                rs.getString("table_resolved"),
+                rs.getString("alias"),
+                rs.getString("role"),
+                rs.getString("resolution_status"));
     }
 
-    private Map<String, Object> columnRow(ResultSet rs) throws SQLException {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("schemaResolved", rs.getString("schema_resolved"));
-        row.put("tableResolved", rs.getString("table_resolved"));
-        row.put("columnName", rs.getString("column_name"));
-        row.put("context", rs.getString("context"));
-        return row;
+    private CatalogQueryDetail.Column columnRow(ResultSet rs) throws SQLException {
+        return new CatalogQueryDetail.Column(
+                rs.getString("schema_resolved"),
+                rs.getString("table_resolved"),
+                rs.getString("column_name"),
+                rs.getString("context"));
     }
 
-    private Map<String, Object> joinRow(ResultSet rs) throws SQLException {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("joinType", rs.getString("join_type"));
-        Map<String, Object> left = new LinkedHashMap<>();
-        left.put("schema", rs.getString("left_schema"));
-        left.put("table", rs.getString("left_table"));
-        left.put("column", rs.getString("left_column"));
-        row.put("left", left);
-        Map<String, Object> right = new LinkedHashMap<>();
-        right.put("schema", rs.getString("right_schema"));
-        right.put("table", rs.getString("right_table"));
-        right.put("column", rs.getString("right_column"));
-        row.put("right", right);
-        row.put("onText", rs.getString("on_text"));
-        row.put("equality", rs.getInt("equality") != 0);
-        return row;
+    private CatalogQueryDetail.JoinPair joinRow(ResultSet rs) throws SQLException {
+        return new CatalogQueryDetail.JoinPair(
+                rs.getString("join_type"),
+                new CatalogQueryDetail.JoinPair.SchemaRef(
+                        rs.getString("left_schema"),
+                        rs.getString("left_table"),
+                        rs.getString("left_column")),
+                new CatalogQueryDetail.JoinPair.SchemaRef(
+                        rs.getString("right_schema"),
+                        rs.getString("right_table"),
+                        rs.getString("right_column")),
+                rs.getString("on_text"),
+                rs.getInt("equality") != 0);
     }
 
-    private Map<String, Object> outputRow(ResultSet rs, String uid) throws SQLException {
+    private CatalogQueryDetail.Output outputRow(ResultSet rs) throws SQLException {
         long id = rs.getLong("id");
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("alias", rs.getString("alias"));
-        row.put("sourceExpression", rs.getString("source_expression"));
-        row.put("businessLabel", rs.getString("business_label"));
-        row.put("businessDescription", rs.getString("business_description"));
-        row.put("derivedFromColumns", queryList(
+        List<CatalogQueryDetail.Output.DerivedColumn> derived = queryList(
                 "SELECT * FROM query_output_column WHERE query_output_id = ?",
                 ps -> ps.setLong(1, id),
-                cs -> {
-                    Map<String, Object> c = new LinkedHashMap<>();
-                    c.put("schema", cs.getString("schema_resolved"));
-                    c.put("table", cs.getString("table_resolved"));
-                    c.put("column", cs.getString("column_name"));
-                    return c;
-                }));
-        return row;
+                cs -> new CatalogQueryDetail.Output.DerivedColumn(
+                        cs.getString("schema_resolved"),
+                        cs.getString("table_resolved"),
+                        cs.getString("column_name")));
+        return new CatalogQueryDetail.Output(
+                rs.getString("alias"),
+                rs.getString("source_expression"),
+                rs.getString("business_label"),
+                rs.getString("business_description"),
+                derived);
     }
 
-    private Map<String, Object> fieldUsageRow(ResultSet rs) throws SQLException {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("outputId", rs.getObject("query_output_id"));
-        row.put("businessObject", rs.getString("business_object"));
-        Map<String, Object> tx = new LinkedHashMap<>();
-        tx.put("kind", rs.getString("transformation_kind"));
-        tx.put("description", rs.getString("transformation_description"));
-        row.put("transformation", tx);
-        Map<String, Object> loc = new LinkedHashMap<>();
-        loc.put("kind", rs.getString("location_kind"));
-        loc.put("detailsJson", rs.getString("location_details_json"));
-        row.put("location", loc);
-        row.put("headersJson", rs.getString("headers_json"));
-        row.put("confidence", rs.getString("confidence"));
-        return row;
+    private CatalogQueryDetail.FieldUsage fieldUsageRow(ResultSet rs) throws SQLException {
+        return new CatalogQueryDetail.FieldUsage(
+                rs.getObject("query_output_id"),
+                rs.getString("business_object"),
+                new CatalogQueryDetail.FieldUsage.Transformation(
+                        rs.getString("transformation_kind"),
+                        rs.getString("transformation_description")),
+                new CatalogQueryDetail.FieldUsage.Location(
+                        rs.getString("location_kind"),
+                        rs.getString("location_details_json")),
+                rs.getString("headers_json"),
+rs.getString("confidence"));
     }
 
     private SemanticTermEvidence termEvidenceRow(ResultSet rs) throws SQLException {
