@@ -3,6 +3,8 @@ package ru.it_spectrum.ai.jdbc.mcp.tools;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.BenchmarkResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.TimedQueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlNotAllowedException;
 
@@ -67,7 +69,7 @@ public class BenchmarkTools {
         int cold = coldRuns == null ? 1 : coldRuns;
         int warm = warmRuns == null ? 3 : warmRuns;
         try {
-            Map<String, Object> result = benchmarks.benchmark(sql, params, namedParams, limit, timeoutSeconds, cold, warm);
+            BenchmarkResult result = benchmarks.benchmark(sql, params, namedParams, limit, timeoutSeconds, cold, warm);
             return json.write(result);
         } catch (SqlNotAllowedException e) {
             return errors.rejected(e);
@@ -94,7 +96,7 @@ public class BenchmarkTools {
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {
         try {
-            Map<String, Object> result = benchmarks.timed(sql, params, namedParams, limit, timeoutSeconds);
+            TimedQueryResult result = benchmarks.timed(sql, params, namedParams, limit, timeoutSeconds);
             return json.write(result);
         } catch (SqlNotAllowedException e) {
             return errors.rejected(e);

@@ -4,6 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.BenchmarkResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.PgStatStatementEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.PgStatStatements;
+import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.ResultSize;
+import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.TimedQueryResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.TimingStats;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -60,21 +66,21 @@ public class BenchmarkService {
      * @param coldRuns        number of cold runs (default {@code 1})
      * @param warmRuns        number of warm runs (default {@code 3})
      */
-    public Map<String, Object> benchmark(String sql, List<Object> params,
-                                         int limit, int timeoutSeconds,
-                                         int coldRuns, int warmRuns) throws SQLException {
+    public BenchmarkResult benchmark(String sql, List<Object> params,
+                                     int limit, int timeoutSeconds,
+                                     int coldRuns, int warmRuns) throws SQLException {
         return benchmark(sql, params, null, limit, timeoutSeconds, coldRuns, warmRuns);
     }
 
-    public Map<String, Object> benchmark(String sql, Map<String, Object> namedParams,
-                                         int limit, int timeoutSeconds,
-                                         int coldRuns, int warmRuns) throws SQLException {
+    public BenchmarkResult benchmark(String sql, Map<String, Object> namedParams,
+                                     int limit, int timeoutSeconds,
+                                     int coldRuns, int warmRuns) throws SQLException {
         return benchmark(sql, null, namedParams, limit, timeoutSeconds, coldRuns, warmRuns);
     }
 
-    public Map<String, Object> benchmark(String sql, List<Object> params, Map<String, Object> namedParams,
-                                         int limit, int timeoutSeconds,
-                                         int coldRuns, int warmRuns) throws SQLException {
+    public BenchmarkResult benchmark(String sql, List<Object> params, Map<String, Object> namedParams,
+                                     int limit, int timeoutSeconds,
+                                     int coldRuns, int warmRuns) throws SQLException {
         if (limit <= 0) {
             throw new IllegalArgumentException("limit is required and must be > 0");
         }
@@ -119,29 +125,28 @@ public class BenchmarkService {
             all.add(ms);
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("engine", dialect.kind().name().toLowerCase(Locale.ROOT));
-        out.put("runs", totalRuns);
-        out.put("cold_runs", coldRuns);
-        out.put("warm_runs", warmRuns);
-        out.put("limit", limit);
-        out.put("timeout_seconds", timeoutSeconds);
-        out.put("cold_ms", toStats(cold));
-        out.put("warm_ms", toStats(warm));
-        out.put("all_ms", round(all));
+        ResultSize resultSize = null;
         if (last != null) {
-            Map<String, Object> size = new LinkedHashMap<>();
-            size.put("row_count", last.rowCount());
-            size.put("truncated", last.truncated());
-            size.put("columns", last.columns());
-            size.put("column_types", last.columnTypes());
-            out.put("result_size", size);
+            resultSize = new ResultSize(
+                    last.rowCount(),
+                    last.truncated(),
+                    last.columns(),
+                    last.columnTypes());
         }
-        out.put("note",
+        return new BenchmarkResult(
+                dialect.kind().name().toLowerCase(Locale.ROOT),
+                totalRuns,
+                coldRuns,
+                warmRuns,
+                limit,
+                timeoutSeconds,
+                toStats(cold),
+                toStats(warm),
+                round(all),
+                resultSize,
                 "Wall-clock timings include JDBC round-trip and row materialization. " +
-                "The first (cold) run exercises uncached plans and pages; warm runs reflect " +
-                "steady-state latency with buffers populated.");
-        return out;
+                        "The first (cold) run exercises uncached plans and pages; warm runs reflect " +
+                        "steady-state latency with buffers populated.");
     }
 
     // ---------------- timed ----------------
@@ -153,18 +158,18 @@ public class BenchmarkService {
      *
      * <p>Uses {@link SqlExecutor#query} so the read-only guard, row limit and timeout apply.
      */
-    public Map<String, Object> timed(String sql, List<Object> params,
-                                     Integer limit, Integer timeoutSeconds) throws SQLException {
+    public TimedQueryResult timed(String sql, List<Object> params,
+                                  Integer limit, Integer timeoutSeconds) throws SQLException {
         return timed(sql, params, null, limit, timeoutSeconds);
     }
 
-    public Map<String, Object> timed(String sql, Map<String, Object> namedParams,
-                                     Integer limit, Integer timeoutSeconds) throws SQLException {
+    public TimedQueryResult timed(String sql, Map<String, Object> namedParams,
+                                  Integer limit, Integer timeoutSeconds) throws SQLException {
         return timed(sql, null, namedParams, limit, timeoutSeconds);
     }
 
-    public Map<String, Object> timed(String sql, List<Object> params, Map<String, Object> namedParams,
-                                     Integer limit, Integer timeoutSeconds) throws SQLException {
+    public TimedQueryResult timed(String sql, List<Object> params, Map<String, Object> namedParams,
+                                  Integer limit, Integer timeoutSeconds) throws SQLException {
         SqlParameterBindingResolver.Binding binding = SqlParameterBindingResolver.resolve(sql, params, namedParams);
         boolean hasNamed = binding.namedParams() != null;
 
@@ -176,31 +181,33 @@ public class BenchmarkService {
         double elapsedMs = (System.nanoTime() - t0) / 1_000_000.0;
         Map<String, Counters> after = snapshotPss();
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("engine", dialect.kind().name().toLowerCase(Locale.ROOT));
-        out.put("elapsed_ms", round1(elapsedMs));
-        out.put("row_count", result.rowCount());
-        out.put("truncated", result.truncated());
-        out.put("columns", result.columns());
-        out.put("column_types", result.columnTypes());
-        out.put("rows", result.rows());
-
-        Map<String, Object> pss = new LinkedHashMap<>();
+        PgStatStatements pss;
         if (before == null) {
-            pss.put("available", false);
-            pss.put("note", "pg_stat_statements is not installed or not supported on this engine. " +
+            pss = new PgStatStatements(
+                    false,
+                    null,
+                    null,
+                    "pg_stat_statements is not installed or not supported on this engine. " +
                     "On PostgreSQL: CREATE EXTENSION pg_stat_statements; and add it to " +
                     "shared_preload_libraries.");
         } else {
-            List<Map<String, Object>> diffs = diff(before, after);
-            pss.put("available", true);
-            pss.put("changed_entries", diffs.size());
-            pss.put("entries", diffs);
-            pss.put("note", "Diff reports pg_stat_statements rows whose counters changed during the run. " +
-                    "Background activity in other sessions may also appear.");
+            List<PgStatStatementEntry> diffs = diff(before, after);
+            pss = new PgStatStatements(
+                    true,
+                    diffs.size(),
+                    diffs,
+                    "Diff reports pg_stat_statements rows whose counters changed during the run. " +
+                            "Background activity in other sessions may also appear.");
         }
-        out.put("pg_stat_statements", pss);
-        return out;
+        return new TimedQueryResult(
+                dialect.kind().name().toLowerCase(Locale.ROOT),
+                round1(elapsedMs),
+                result.rowCount(),
+                result.truncated(),
+                result.columns(),
+                result.columnTypes(),
+                result.rows(),
+                pss);
     }
 
     // ---------------- pg_stat_statements helpers ----------------
@@ -243,8 +250,8 @@ public class BenchmarkService {
         }
     }
 
-    private List<Map<String, Object>> diff(Map<String, Counters> before, Map<String, Counters> after) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    private List<PgStatStatementEntry> diff(Map<String, Counters> before, Map<String, Counters> after) {
+        List<PgStatStatementEntry> out = new ArrayList<>();
         String availSig = signature(dialect.pgStatStatementsAvailabilityQuery());
         String snapSig  = signature(dialect.pgStatStatementsSnapshotQuery());
         for (Map.Entry<String, Counters> e : after.entrySet()) {
@@ -257,20 +264,18 @@ public class BenchmarkService {
             String qSig = signature(a.query);
             if (qSig.equals(availSig) || qSig.equals(snapSig)) continue;
 
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("queryid", e.getKey());
-            entry.put("query", trimQuery(a.query));
-            entry.put("delta_calls", dCalls);
-            entry.put("delta_total_exec_time_ms",
-                    round1(a.totalExecTimeMs - (b == null ? 0.0 : b.totalExecTimeMs)));
-            entry.put("delta_rows", a.rows - (b == null ? 0 : b.rows));
-            entry.put("delta_shared_blks_hit", a.sharedBlksHit - (b == null ? 0 : b.sharedBlksHit));
-            entry.put("delta_shared_blks_read", a.sharedBlksRead - (b == null ? 0 : b.sharedBlksRead));
-            out.add(entry);
+            out.add(new PgStatStatementEntry(
+                    e.getKey(),
+                    trimQuery(a.query),
+                    dCalls,
+                    round1(a.totalExecTimeMs - (b == null ? 0.0 : b.totalExecTimeMs)),
+                    a.rows - (b == null ? 0 : b.rows),
+                    a.sharedBlksHit - (b == null ? 0 : b.sharedBlksHit),
+                    a.sharedBlksRead - (b == null ? 0 : b.sharedBlksRead)));
         }
         out.sort((x, y) -> Double.compare(
-                toDouble(y.get("delta_total_exec_time_ms")),
-                toDouble(x.get("delta_total_exec_time_ms"))));
+                y.delta_total_exec_time_ms(),
+                x.delta_total_exec_time_ms()));
         return out;
     }
 
@@ -289,14 +294,9 @@ public class BenchmarkService {
 
     // ---------------- stats helpers ----------------
 
-    static Map<String, Object> toStats(List<Double> samples) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("runs", samples.size());
+    static TimingStats toStats(List<Double> samples) {
         if (samples.isEmpty()) {
-            out.put("min", null);
-            out.put("median", null);
-            out.put("max", null);
-            return out;
+            return new TimingStats(0, null, null, null);
         }
         List<Double> sorted = new ArrayList<>(samples);
         Collections.sort(sorted);
@@ -309,10 +309,7 @@ public class BenchmarkService {
         } else {
             median = (sorted.get(n / 2 - 1) + sorted.get(n / 2)) / 2.0;
         }
-        out.put("min", round1(min));
-        out.put("median", round1(median));
-        out.put("max", round1(max));
-        return out;
+        return new TimingStats(samples.size(), round1(min), round1(median), round1(max));
     }
 
     private static List<Double> round(List<Double> samples) {
