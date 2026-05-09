@@ -17,7 +17,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -65,6 +64,38 @@ class UsageCatalogIndexerTest {
         assertThat(service.observedRelationships(null, null, 1).relationships())
                 .singleElement()
                 .satisfies(edge -> assertThat(edge.support()).isEqualTo(1));
+    }
+
+    @Test
+    void indexesJsonFilesContainingRecordArrays() throws Exception {
+        Path dir = tempDir.resolve("usage");
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("batch.json"), """
+                [
+                  {
+                    "dataSource": "SHOP",
+                    "source": {"kind": "dao", "path": "CustomerDao.java", "unit": "findOne"},
+                    "sql": "SELECT c.id, c.name FROM customers c WHERE c.id = :id"
+                  },
+                  {
+                    "dataSource": "SHOP",
+                    "source": {"kind": "dao", "path": "OrderDao.java", "unit": "findByCustomer"},
+                    "sql": "SELECT o.id FROM orders o WHERE o.customer_id = :customerId"
+                  }
+                ]
+                """, StandardCharsets.UTF_8);
+
+        UsageCatalogService service = service(List.of(dir.toString()));
+        UsageCatalogIndexer indexer = indexer(service, List.of(dir.toString()));
+
+        IndexerStatusResponse status = indexer.refreshBlocking();
+
+        assertThat(status.state()).isEqualTo("ready");
+        assertThat(status.filesScanned()).isEqualTo(1);
+        assertThat(status.recordsLoaded()).isEqualTo(2);
+        assertThat(status.invalidFiles()).isZero();
+        assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(1);
+        assertThat(service.findQueriesByTable(null, "orders").count()).isEqualTo(1);
     }
 
     @Test
@@ -147,10 +178,5 @@ class UsageCatalogIndexerTest {
 
     private static UsageProperties properties(List<String> paths) {
         return new UsageProperties(true, paths, false, false, false, "");
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> asList(Map<String, Object> root, String key) {
-        return (List<Map<String, Object>>) root.get(key);
     }
 }

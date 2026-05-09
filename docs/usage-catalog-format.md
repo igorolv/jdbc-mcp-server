@@ -135,7 +135,8 @@ Closed enums are used only where the server needs stable behavior:
 
 ## Loading
 
-The source of truth is a set of JSON files in this format. Configure the server with one or more
-directories, individual JSON files, or zip archives; it scans them on startup and builds a runtime
-usage index. Source-specific adapters should output canonical records; they do not need to be part
-of this project.
+The source of truth is a set of JSON files in this format. Each JSON file may contain either one
+`QueryUsage` object or a top-level array of `QueryUsage` objects. Configure the server with one or
+more directories, individual JSON files, or zip archives; it scans them on startup and builds a
+runtime usage index. Source-specific adapters should output canonical records; they do not need to
+be part of this project.

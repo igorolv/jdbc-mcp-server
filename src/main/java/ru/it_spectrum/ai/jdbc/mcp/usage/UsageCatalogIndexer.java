@@ -1,9 +1,10 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
@@ -153,7 +154,7 @@ public class UsageCatalogIndexer implements ApplicationRunner {
         }
     }
 
-private LoadResult loadRecords() {
+    private LoadResult loadRecords() {
         Map<String, QueryUsage> records = new LinkedHashMap<>();
         Set<String> duplicateUids = new LinkedHashSet<>();
         List<String> errors = new ArrayList<>();
@@ -229,8 +230,25 @@ private LoadResult loadRecords() {
                           Set<String> duplicateUids, List<String> errors, int[] filesScanned) {
         filesScanned[0]++;
         try {
-            QueryUsage usage = mapper.readValue(bytes, QueryUsage.class);
-            addRecord(origin, usage, records, duplicateUids, errors);
+            JsonNode root = mapper.readTree(bytes);
+            if (root.isObject()) {
+                QueryUsage usage = mapper.treeToValue(root, QueryUsage.class);
+                addRecord(origin, usage, records, duplicateUids, errors);
+                return;
+            }
+            if (root.isArray()) {
+                for (int i = 0; i < root.size(); i++) {
+                    JsonNode item = root.get(i);
+                    try {
+                        QueryUsage usage = mapper.treeToValue(item, QueryUsage.class);
+                        addRecord(origin + "[" + i + "]", usage, records, duplicateUids, errors);
+                    } catch (RuntimeException | IOException e) {
+                        errors.add(origin + "[" + i + "]: " + e.getMessage());
+                    }
+                }
+                return;
+            }
+            errors.add(origin + ": expected QueryUsage object or array of QueryUsage objects");
         } catch (RuntimeException | IOException e) {
             errors.add(origin + ": " + e.getMessage());
         }
@@ -256,7 +274,7 @@ private LoadResult loadRecords() {
             return;
         }
         records.put(uid, usage);
-}
+    }
 
     private List<String> configuredSources() {
         List<String> out = new ArrayList<>(
