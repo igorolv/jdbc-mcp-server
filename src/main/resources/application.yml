@@ -49,4 +49,4 @@ usage:
   native-include-views: ${JDBC_USAGE_NATIVE_INCLUDE_VIEWS:true}
   native-include-routines: ${JDBC_USAGE_NATIVE_INCLUDE_ROUTINES:true}
   native-include-triggers: ${JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS:true}
-  native-max-objects: ${JDBC_USAGE_NATIVE_MAX_OBJECTS:1000}
+  native-max-objects: ${JDBC_USAGE_NATIVE_MAX_OBJECTS:10000}
