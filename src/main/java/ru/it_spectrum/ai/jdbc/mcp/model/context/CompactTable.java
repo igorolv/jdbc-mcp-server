@@ -5,6 +5,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 
 import java.util.List;
 import java.util.Map;
@@ -21,7 +22,7 @@ public record CompactTable(
         List<ForeignKey> foreignKeys,
         List<CompactIndex> indexes,
         List<Trigger> triggers,
-        Map<String, Object> stats,
+        TableStats stats,
         TableEvidenceProfile evidence
 ) implements ContextTable {
     public CompactTable withEvidence(TableEvidenceProfile evidence) {

@@ -9,6 +9,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.RedundantIndexes;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.UnusedIndexes;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -60,7 +61,7 @@ public class StatsService {
 
     // ---------------- tableStats ----------------
 
-    public Map<String, Object> tableStats(String schema, String table) throws SQLException {
+    public TableStats tableStats(String schema, String table) throws SQLException {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("table must be provided");
         }
@@ -68,14 +69,11 @@ public class StatsService {
         QueryResult r = executor.queryInternal(dialect.tableStatsQuery(),
                 List.of(effectiveSchema == null ? "" : effectiveSchema, table), 1);
         if (r.rows().isEmpty()) {
-            Map<String, Object> empty = new LinkedHashMap<>();
-            empty.put("schema", effectiveSchema);
-            empty.put("table", table);
-            empty.put("found", false);
-            return empty;
+            return TableStats.notFound(effectiveSchema, table);
         }
-        Map<String, Object> row = new LinkedHashMap<>(r.rows().get(0));
-        row.put("found", true);
+        Map<String, Object> row = r.rows().get(0);
+        Object segmentBytes = null;
+        String segmentBytesError = null;
 
         // On Oracle, enrich with a best-effort segment size lookup. Requires DBA_SEGMENTS privilege.
         String segQuery = dialect.segmentSizeQuery();
@@ -84,16 +82,63 @@ public class StatsService {
                 QueryResult seg = executor.queryInternal(segQuery,
                         List.of(effectiveSchema == null ? "" : effectiveSchema, table), 1);
                 if (!seg.rows().isEmpty()) {
-                    Object bytes = seg.rows().get(0).get(seg.columns().get(0));
-                    row.put("segment_bytes", bytes);
+                    segmentBytes = seg.rows().get(0).get(seg.columns().get(0));
                 }
             } catch (SQLException e) {
                 log.debug("segmentSizeQuery failed (likely missing DBA_SEGMENTS privilege): {}",
                         e.getMessage());
-                row.put("segment_bytes_error", e.getMessage());
+                segmentBytesError = e.getMessage();
             }
         }
-        return row;
+        return tableStatsFromRow(row, segmentBytes, segmentBytesError);
+    }
+
+    private TableStats tableStatsFromRow(Map<String, Object> row, Object segmentBytes,
+                                         String segmentBytesError) {
+        return new TableStats(
+                strOrNull(getCI(row, "schema")),
+                null,
+                strOrNull(getCI(row, "table_name")),
+                true,
+                getCI(row, "relkind"),
+                getCI(row, "estimated_rows"),
+                getCI(row, "total_size_bytes"),
+                getCI(row, "table_size_bytes"),
+                getCI(row, "indexes_size_bytes"),
+                getCI(row, "toast_size_bytes"),
+                getCI(row, "live_tuples"),
+                getCI(row, "dead_tuples"),
+                getCI(row, "dead_tuple_pct"),
+                getCI(row, "seq_scan"),
+                getCI(row, "seq_tup_read"),
+                getCI(row, "idx_scan"),
+                getCI(row, "idx_tup_fetch"),
+                getCI(row, "tup_ins"),
+                getCI(row, "tup_upd"),
+                getCI(row, "tup_del"),
+                getCI(row, "last_vacuum"),
+                getCI(row, "last_autovacuum"),
+                getCI(row, "last_analyze"),
+                getCI(row, "last_autoanalyze"),
+                getCI(row, "blocks"),
+                getCI(row, "empty_blocks"),
+                getCI(row, "avg_row_len"),
+                getCI(row, "chain_count"),
+                getCI(row, "last_analyzed"),
+                getCI(row, "sample_size"),
+                getCI(row, "partitioned"),
+                getCI(row, "temporary"),
+                getCI(row, "global_stats"),
+                getCI(row, "user_stats"),
+                getCI(row, "compression"),
+                getCI(row, "create_date"),
+                getCI(row, "modify_date"),
+                getCI(row, "is_memory_optimized"),
+                getCI(row, "temporal_type_desc"),
+                getCI(row, "is_filetable"),
+                segmentBytes,
+                segmentBytesError,
+                null);
     }
 
     // ---------------- indexStats ----------------
@@ -356,6 +401,10 @@ public class StatsService {
 
     private static String strLower(Object v) {
         return v == null ? "" : v.toString().toLowerCase(Locale.ROOT);
+    }
+
+    private static String strOrNull(Object v) {
+        return v == null ? null : v.toString();
     }
 
     private static List<String> splitColumns(Object v) {

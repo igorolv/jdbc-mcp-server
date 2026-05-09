@@ -22,6 +22,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -368,13 +369,12 @@ abstract class SchemaContextSupport {
                     indexedColumns.contains(name) ? Boolean.TRUE : null));
         }
 
-        Map<String, Object> tableStats = null;
+        TableStats tableStats = null;
         if (includeStats && table != null && !isView(info)) {
             try {
                 tableStats = stats.tableStats(schema, table);
             } catch (SQLException e) {
-                tableStats = new LinkedHashMap<>();
-                tableStats.put("error", e.getMessage());
+                tableStats = TableStats.error(schema, table, e.getMessage());
             }
         }
 

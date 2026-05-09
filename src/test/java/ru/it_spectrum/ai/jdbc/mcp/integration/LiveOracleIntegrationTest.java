@@ -12,6 +12,7 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
@@ -175,10 +176,10 @@ class LiveOracleIntegrationTest {
         Assumptions.assumeTrue(tables != null && !tables.isEmpty(),
                 "no tables in schema " + schema + " — skipping tableStats check");
         String tableName = tables.get(0).name();
-        Map<String, Object> s = stats.tableStats(schema, tableName);
+        TableStats s = stats.tableStats(schema, tableName);
         // 'found' may be false if the user can't see DBA_*/ALL_TAB_STATISTICS for this table —
         // that's still a valid result (MCP tool would report it as-is).
-        assertThat(s).containsKey("found");
+        assertThat(s).isNotNull();
     }
 
     @Test

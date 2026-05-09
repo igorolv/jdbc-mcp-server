@@ -4,10 +4,10 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 
 import java.sql.SQLException;
-import java.util.Map;
 
 /**
  * MCP tools exposing object-level statistics useful for query optimisation:
@@ -38,7 +38,7 @@ public class StatsTools {
             @McpToolParam(description = "Table name") String table
     ) {
         try {
-            Map<String, Object> info = stats.tableStats(schema, table);
+            TableStats info = stats.tableStats(schema, table);
             return json.write(info);
         } catch (SQLException e) {
             return errors.sql(e);
