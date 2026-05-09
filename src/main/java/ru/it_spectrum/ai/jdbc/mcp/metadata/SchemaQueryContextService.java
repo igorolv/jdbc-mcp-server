@@ -4,6 +4,10 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContext;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContextColumn;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContextConstraint;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContextSample;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContextTable;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.ShortestPath;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
@@ -96,7 +100,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
         List<RelationshipEdge> declaredEdges = new ArrayList<>();
         for (TableDescription info : selected.values()) declaredEdges.addAll(outgoingEdges(info));
 
-        List<Map<String, Object>> tableContexts = new ArrayList<>();
+        List<QueryContextTable> tableContexts = new ArrayList<>();
         for (TableDescription info : selected.values()) {
             tableContexts.add(queryTableContext(info, tokens, samples,
                     semanticMatchesByTable.get(key(info.schema(), info.name()))));
@@ -110,36 +114,36 @@ class SchemaQueryContextService extends SchemaContextSupport {
                 pairwiseJoinPaths(new ArrayList<>(selected.keySet()), declaredEdges));
     }
 
-    private Map<String, Object> queryTableContext(TableDescription info, List<String> tokens,
-                                                  boolean includeSamples,
-                                                  SemanticTableCandidate semanticMatch) {
-        Map<String, Object> out = new LinkedHashMap<>();
+    private QueryContextTable queryTableContext(TableDescription info, List<String> tokens,
+                                                boolean includeSamples,
+                                                SemanticTableCandidate semanticMatch) {
         String schema = info.schema();
         String table = info.name();
-        out.put("schema", schema);
-        out.put("name", table);
-        out.put("type", info.type());
+        Map<String, List<String>> allowedValues = allowedValues(info);
         Map<String, TableDegree> degrees = new HashMap<>();
         degrees.put(key(schema, table), new TableDegree());
-        out.put("classification", classifyTable(info, degrees));
-        if (!isBlank(info.remarks())) out.put("remarks", info.remarks());
-        out.put("primaryKey", info.primaryKey());
-        out.put("allowedValues", info.allowedValues());
-        out.put("relevantColumns", relevantColumns(info, tokens));
-        out.put("constraints", compactCheckConstraints(info));
-        out.put("foreignKeys", info.foreignKeys());
-        out.put("indexes", compactIndexes(info.indexes()));
-        if (semanticMatch != null) out.put("semanticMatch", semanticMatch);
-        if (includeSamples) {
-            Map<String, Object> sample = sampleRowsBestEffort(schema, table, 3);
-            out.put("sample", sample);
-        }
-        return out;
+        return new QueryContextTable(
+                schema,
+                table,
+                info.type(),
+                classifyTable(info, degrees),
+                isBlank(info.remarks()) ? null : info.remarks(),
+                info.primaryKey(),
+                allowedValues,
+                relevantColumns(info, tokens),
+                compactCheckConstraints(info),
+                info.foreignKeys(),
+                compactIndexes(info.indexes()),
+                semanticMatch,
+                includeSamples ? sampleRowsBestEffort(schema, table, 3) : null);
     }
 
-    private List<Map<String, Object>> relevantColumns(TableDescription info, List<String> tokens) {
-        List<Map<String, Object>> columns = new ArrayList<>();
-        Set<String> pk = new HashSet<>(stringList(mapValue(info.primaryKey()), "columns"));
+    private List<QueryContextColumn> relevantColumns(TableDescription info, List<String> tokens) {
+        List<QueryContextColumn> columns = new ArrayList<>();
+        Map<String, List<String>> allowedValues = allowedValues(info);
+        Set<String> pk = info.primaryKey() == null
+                ? Set.of()
+                : new HashSet<>(info.primaryKey().columns());
         Set<String> fk = new HashSet<>();
         for (ForeignKey foreignKey : info.foreignKeys()) {
             fk.addAll(foreignKey.columns());
@@ -148,60 +152,57 @@ class SchemaQueryContextService extends SchemaContextSupport {
             String name = str(column.name());
             boolean tokenMatch = matchesAnyToken(name, tokens) || matchesAnyToken(str(column.remarks()), tokens);
             boolean important = pk.contains(name) || fk.contains(name) || tokenMatch
-                    || mapValue(info.allowedValues()).containsKey(name);
+                    || allowedValues.containsKey(name);
             if (!important && !tokens.isEmpty()) continue;
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("name", name);
-            out.put("type", column.typeName());
-            out.put("nullable", column.nullable());
-            if (pk.contains(name)) out.put("primaryKey", true);
-            if (fk.contains(name)) out.put("foreignKey", true);
-            Object allowed = mapValue(info.allowedValues()).get(name);
-            if (allowed != null) out.put("allowedValues", allowed);
-            columns.add(out);
+            columns.add(new QueryContextColumn(
+                    name,
+                    column.typeName(),
+                    column.nullable(),
+                    pk.contains(name) ? Boolean.TRUE : null,
+                    fk.contains(name) ? Boolean.TRUE : null,
+                    allowedValues.get(name)));
         }
         if (!columns.isEmpty() || tokens.isEmpty()) return columns;
         for (Column column : info.columns()) {
             if (columns.size() >= 8) break;
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("name", column.name());
-            out.put("type", column.typeName());
-            out.put("nullable", column.nullable());
-            columns.add(out);
+            columns.add(new QueryContextColumn(
+                    column.name(),
+                    column.typeName(),
+                    column.nullable(),
+                    null,
+                    null,
+                    null));
         }
         return columns;
     }
 
-    private List<Map<String, Object>> compactCheckConstraints(TableDescription info) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    private List<QueryContextConstraint> compactCheckConstraints(TableDescription info) {
+        List<QueryContextConstraint> out = new ArrayList<>();
         for (Constraint constraint : info.constraints()) {
             String type = str(constraint.type());
             if (!"CHECK".equalsIgnoreCase(type) && constraint.allowedValues() == null) continue;
-            Map<String, Object> compact = new LinkedHashMap<>();
-            compact.put("name", constraint.name());
-            compact.put("type", type);
-            if (constraint.definition() != null) compact.put("definition", constraint.definition());
-            if (constraint.allowedValuesColumn() != null) {
-                compact.put("allowedValuesColumn", constraint.allowedValuesColumn());
-                compact.put("allowedValues", constraint.allowedValues());
-            }
-            out.add(compact);
+            out.add(new QueryContextConstraint(
+                    constraint.name(),
+                    type,
+                    constraint.definition(),
+                    constraint.allowedValuesColumn(),
+                    constraint.allowedValues()));
         }
         return out;
     }
 
-    private Map<String, Object> sampleRowsBestEffort(String schema, String table, int limit) {
-        Map<String, Object> out = new LinkedHashMap<>();
+    private QueryContextSample sampleRowsBestEffort(String schema, String table, int limit) {
         try {
             String sql = dialect.limitQuery("SELECT * FROM " + qualify(schema, table), limit);
             QueryResult result = executor.queryInternal(sql, List.of(), limit);
-            out.put("columns", result.columns());
-            out.put("rows", result.rows());
-            out.put("rowCount", result.rowCount());
+            return new QueryContextSample(result.columns(), result.rows(), result.rowCount(), null);
         } catch (Exception e) {
-            out.put("sampleError", e.getMessage());
+            return new QueryContextSample(null, null, null, e.getMessage());
         }
-        return out;
+    }
+
+    private Map<String, List<String>> allowedValues(TableDescription info) {
+        return info.allowedValues() == null ? Map.of() : info.allowedValues();
     }
 
     private List<ShortestPath> pairwiseJoinPaths(List<String> tableKeys, List<RelationshipEdge> edges) {
