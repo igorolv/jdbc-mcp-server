@@ -5,6 +5,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContext;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.ShortestPath;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
@@ -205,12 +206,12 @@ class SchemaQueryContextService extends SchemaContextSupport {
         return out;
     }
 
-    private List<Map<String, Object>> pairwiseJoinPaths(List<String> tableKeys, List<RelationshipEdge> edges) {
-        List<Map<String, Object>> paths = new ArrayList<>();
+    private List<ShortestPath> pairwiseJoinPaths(List<String> tableKeys, List<RelationshipEdge> edges) {
+        List<ShortestPath> paths = new ArrayList<>();
         for (int i = 0; i < tableKeys.size(); i++) {
             for (int j = i + 1; j < tableKeys.size(); j++) {
-                Map<String, Object> path = shortestGraphPath(tableKeys.get(i), tableKeys.get(j), edges, MAX_DEPTH);
-                if (Boolean.TRUE.equals(path.get("found"))) paths.add(path);
+                ShortestPath path = shortestGraphPath(tableKeys.get(i), tableKeys.get(j), edges, MAX_DEPTH);
+                if (path.found()) paths.add(path);
             }
         }
         return paths;

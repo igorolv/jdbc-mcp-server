@@ -1,7 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
 import java.util.List;
-import java.util.Map;
 
 public record SchemaOverview(
         String schema,
@@ -12,6 +11,6 @@ public record SchemaOverview(
         int tableCount,
         int returnedTableCount,
         boolean truncated,
-        List<Map<String, Object>> tables,
+        List<ContextTable> tables,
         List<RelationshipEdge> relationships
 ) {}

@@ -1,8 +1,15 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.CompactTable;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.CycleHint;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.GraphComponent;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.GraphEdgeSummary;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.GraphNode;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.GraphTableSummary;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.JoinPathStep;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.ShortestPath;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.DeclaredSchemaEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedQueryEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
@@ -118,74 +125,59 @@ abstract class SchemaContextSupport {
         if (toDegree != null) toDegree.in++;
     }
 
-    protected List<Map<String, Object>> graphNodes(Map<String, TableDescription> tables,
+    protected List<GraphNode> graphNodes(Map<String, TableDescription> tables,
                                                  Map<String, TableDegree> degrees) {
-        List<Map<String, Object>> nodes = new ArrayList<>();
+        List<GraphNode> nodes = new ArrayList<>();
         for (TableDescription table : tables.values()) {
             String schema = table.schema();
             String name = table.name();
             TableDegree degree = degrees.getOrDefault(key(schema, name), TableDegree.ZERO);
-            Map<String, Object> node = new LinkedHashMap<>();
-            node.put("id", key(schema, name));
-            node.put("schema", schema);
-            node.put("table", name);
-            node.put("classification", classifyTable(table, degrees));
-            node.put("incomingDegree", degree.in);
-            node.put("outgoingDegree", degree.out);
-            node.put("totalDegree", degree.total());
-            node.put("columnCount", columnCount(table));
-            node.put("primaryKey", table.primaryKey() != null ? table.primaryKey().columns() : List.of());
-            nodes.add(node);
+            nodes.add(new GraphNode(
+                    key(schema, name),
+                    schema,
+                    name,
+                    classifyTable(table, degrees),
+                    degree.in,
+                    degree.out,
+                    degree.total(),
+                    columnCount(table),
+                    table.primaryKey() != null ? table.primaryKey().columns() : List.of()));
         }
-        nodes.sort((a, b) -> Integer.compare(
-                ((Number) b.get("totalDegree")).intValue(),
-                ((Number) a.get("totalDegree")).intValue()));
+        nodes.sort((a, b) -> Integer.compare(b.totalDegree(), a.totalDegree()));
         return nodes;
     }
 
-    protected List<Map<String, Object>> graphEdges(List<RelationshipEdge> edges) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    protected List<GraphEdgeSummary> graphEdges(List<RelationshipEdge> edges) {
+        List<GraphEdgeSummary> out = new ArrayList<>();
         for (RelationshipEdge edge : edges) {
-            Map<String, Object> graphEdge = new LinkedHashMap<>();
-            graphEdge.put("relationshipType", edge.relationshipType());
-            graphEdge.put("name", edge.fkName());
-            graphEdge.put("from", key(edge.fromSchema(), edge.fromTable()));
-            graphEdge.put("to", key(edge.toSchema(), edge.toTable()));
-            graphEdge.put("fromTable", edge.fromTable());
-            graphEdge.put("fromColumns", edge.fromColumns());
-            graphEdge.put("toTable", edge.toTable());
-            graphEdge.put("toColumns", edge.toColumns());
-            out.add(graphEdge);
+            out.add(new GraphEdgeSummary(
+                    edge.relationshipType(),
+                    edge.fkName(),
+                    key(edge.fromSchema(), edge.fromTable()),
+                    key(edge.toSchema(), edge.toTable()),
+                    edge.fromTable(),
+                    edge.fromColumns(),
+                    edge.toTable(),
+                    edge.toColumns()));
         }
         return out;
     }
 
-    protected List<Map<String, Object>> centralTables(List<Map<String, Object>> nodes, int limit) {
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> node : nodes) {
+    protected List<GraphTableSummary> centralTables(List<GraphNode> nodes, int limit) {
+        List<GraphTableSummary> out = new ArrayList<>();
+        for (GraphNode node : nodes) {
             if (out.size() >= limit) break;
-            if (((Number) node.get("totalDegree")).intValue() <= 0) continue;
-            Map<String, Object> central = new LinkedHashMap<>();
-            central.put("schema", node.get("schema"));
-            central.put("table", node.get("table"));
-            central.put("classification", node.get("classification"));
-            central.put("incomingDegree", node.get("incomingDegree"));
-            central.put("outgoingDegree", node.get("outgoingDegree"));
-            central.put("totalDegree", node.get("totalDegree"));
-            out.add(central);
+            if (node.totalDegree() <= 0) continue;
+            out.add(GraphTableSummary.central(node));
         }
         return out;
     }
 
-    protected List<Map<String, Object>> isolatedTables(List<Map<String, Object>> nodes) {
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> node : nodes) {
-            if (((Number) node.get("totalDegree")).intValue() != 0) continue;
-            Map<String, Object> isolated = new LinkedHashMap<>();
-            isolated.put("schema", node.get("schema"));
-            isolated.put("table", node.get("table"));
-            isolated.put("classification", node.get("classification"));
-            out.add(isolated);
+    protected List<GraphTableSummary> isolatedTables(List<GraphNode> nodes) {
+        List<GraphTableSummary> out = new ArrayList<>();
+        for (GraphNode node : nodes) {
+            if (node.totalDegree() != 0) continue;
+            out.add(GraphTableSummary.isolated(node));
         }
         return out;
     }
@@ -205,9 +197,9 @@ abstract class SchemaContextSupport {
         return adjacency;
     }
 
-    protected List<Map<String, Object>> connectedComponents(Map<String, TableDescription> tables,
+    protected List<GraphComponent> connectedComponents(Map<String, TableDescription> tables,
                                                           Map<String, List<String>> adjacency) {
-        List<Map<String, Object>> components = new ArrayList<>();
+        List<GraphComponent> components = new ArrayList<>();
         Set<String> visited = new HashSet<>();
         for (String start : tables.keySet()) {
             if (!visited.add(start)) continue;
@@ -222,20 +214,15 @@ abstract class SchemaContextSupport {
                 }
             }
             members.sort(String::compareToIgnoreCase);
-            Map<String, Object> component = new LinkedHashMap<>();
-            component.put("size", members.size());
-            component.put("tables", members);
-            components.add(component);
+            components.add(new GraphComponent(members.size(), members));
         }
-        components.sort((a, b) -> Integer.compare(
-                ((Number) b.get("size")).intValue(),
-                ((Number) a.get("size")).intValue()));
+        components.sort((a, b) -> Integer.compare(b.size(), a.size()));
         return components;
     }
 
-    protected List<Map<String, Object>> cycleHints(Map<String, TableDescription> tables,
+    protected List<CycleHint> cycleHints(Map<String, TableDescription> tables,
                                                  List<RelationshipEdge> edges, int limit) {
-        List<Map<String, Object>> cycles = new ArrayList<>();
+        List<CycleHint> cycles = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         Map<String, List<RelationshipEdge>> byFrom = new HashMap<>();
         for (RelationshipEdge edge : edges) {
@@ -252,10 +239,7 @@ abstract class SchemaContextSupport {
             pair.sort(String::compareToIgnoreCase);
             String cycleKey = String.join("->", pair);
             if (!seen.add(cycleKey)) continue;
-            Map<String, Object> cycle = new LinkedHashMap<>();
-            cycle.put("tables", pair);
-            cycle.put("note", "Directed relationship cycle detected or implied within 4 hops");
-            cycles.add(cycle);
+            cycles.add(new CycleHint(pair, "Directed relationship cycle detected or implied within 4 hops"));
         }
         return cycles;
     }
@@ -275,7 +259,7 @@ abstract class SchemaContextSupport {
         return false;
     }
 
-    protected Map<String, Object> shortestGraphPath(String fromKey, String toKey,
+    protected ShortestPath shortestGraphPath(String fromKey, String toKey,
                                                   List<RelationshipEdge> edges, int maxDepth) {
         Map<String, List<GraphEdge>> byFrom = new HashMap<>();
         for (RelationshipEdge edge : edges) {
@@ -285,12 +269,7 @@ abstract class SchemaContextSupport {
                     ignored -> new ArrayList<>()).add(GraphEdge.reverse(edge));
         }
         List<List<JoinPathStep>> paths = searchPaths(fromKey, toKey, byFrom, maxDepth, 1);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("from", fromKey);
-        out.put("to", toKey);
-        out.put("found", !paths.isEmpty());
-        out.put("edges", paths.isEmpty() ? List.of() : paths.get(0));
-        return out;
+        return new ShortestPath(fromKey, toKey, !paths.isEmpty(), paths.isEmpty() ? List.of() : paths.get(0));
     }
 
     protected String resolveTableKey(Map<String, TableDescription> tables, String schema, String table) {
@@ -363,7 +342,7 @@ abstract class SchemaContextSupport {
         return paths;
     }
 
-    protected Map<String, Object> compactTable(TableDescription info, boolean includeStats) throws SQLException {
+    protected CompactTable compactTable(TableDescription info, boolean includeStats) throws SQLException {
         String schema = info.schema();
         String table = info.name();
         Set<String> pkColumns = info.primaryKey() != null
@@ -377,51 +356,48 @@ abstract class SchemaContextSupport {
             indexedColumns.addAll(index.columns());
         }
 
-        List<Map<String, Object>> columns = new ArrayList<>();
+        List<CompactTable.CompactColumn> columns = new ArrayList<>();
         for (Column col : info.columns()) {
             String name = col.name();
-            Map<String, Object> compact = new LinkedHashMap<>();
-            compact.put("name", name);
-            compact.put("type", col.typeName());
-            compact.put("nullable", col.nullable());
-            if (pkColumns.contains(name)) compact.put("primaryKey", true);
-            if (fkColumns.contains(name)) compact.put("foreignKey", true);
-            if (indexedColumns.contains(name)) compact.put("indexed", true);
-            columns.add(compact);
+            columns.add(new CompactTable.CompactColumn(
+                    name,
+                    col.typeName(),
+                    col.nullable(),
+                    pkColumns.contains(name) ? Boolean.TRUE : null,
+                    fkColumns.contains(name) ? Boolean.TRUE : null,
+                    indexedColumns.contains(name) ? Boolean.TRUE : null));
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", schema);
-        out.put("name", table);
-        out.put("type", info.type());
-        out.put("remarks", info.remarks());
-        out.put("columns", columns);
-        out.put("primaryKey", info.primaryKey());
-        out.put("constraints", info.constraints());
-        out.put("allowedValues", info.allowedValues());
-        out.put("foreignKeys", info.foreignKeys());
-        out.put("indexes", compactIndexes(info.indexes()));
-        out.put("triggers", info.triggers());
+        Map<String, Object> tableStats = null;
         if (includeStats && table != null && !isView(info)) {
             try {
-                out.put("stats", stats.tableStats(schema, table));
+                tableStats = stats.tableStats(schema, table);
             } catch (SQLException e) {
-                Map<String, Object> error = new LinkedHashMap<>();
-                error.put("error", e.getMessage());
-                out.put("stats", error);
+                tableStats = new LinkedHashMap<>();
+                tableStats.put("error", e.getMessage());
             }
         }
-        return out;
+
+        return new CompactTable(
+                schema,
+                table,
+                info.type(),
+                info.remarks(),
+                columns,
+                info.primaryKey(),
+                info.constraints(),
+                info.allowedValues(),
+                info.foreignKeys(),
+                compactIndexes(info.indexes()),
+                info.triggers(),
+                tableStats,
+                null);
     }
 
-    protected List<Map<String, Object>> compactIndexes(List<Index> indexes) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    protected List<CompactTable.CompactIndex> compactIndexes(List<Index> indexes) {
+        List<CompactTable.CompactIndex> out = new ArrayList<>();
         for (Index index : indexes) {
-            Map<String, Object> compact = new LinkedHashMap<>();
-            compact.put("name", index.name());
-            compact.put("unique", index.unique());
-            compact.put("columns", index.columns());
-            out.add(compact);
+            out.add(new CompactTable.CompactIndex(index.name(), index.unique(), index.columns()));
         }
         return out;
     }

@@ -2,6 +2,8 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.CompactTable;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.ContextTable;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.TableContext;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -61,13 +63,13 @@ class SchemaTableContextService extends SchemaContextSupport {
             }
         }
 
-        List<Map<String, Object>> tables = new ArrayList<>();
+        List<ContextTable> tables = new ArrayList<>();
         List<RelationshipEdge> relationships = new ArrayList<>();
         Set<String> relationshipKeys = new HashSet<>();
         for (TableDescription info : described.values()) {
-            Map<String, Object> tableContext = compactTable(info, Boolean.TRUE.equals(includeStats));
+            CompactTable tableContext = compactTable(info, Boolean.TRUE.equals(includeStats));
             if (observed && usageCatalog != null && usageCatalog.enabled()) {
-                tableContext.put("evidence", usageCatalog.tableEvidenceProfile(
+                tableContext = tableContext.withEvidence(usageCatalog.tableEvidenceProfile(
                         info.schema(), info.name()).toMap());
             }
             tables.add(tableContext);

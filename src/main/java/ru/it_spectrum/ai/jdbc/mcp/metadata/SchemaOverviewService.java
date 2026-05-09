@@ -2,6 +2,8 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.ContextTable;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.ErrorTable;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaOverview;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
@@ -11,9 +13,7 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
@@ -38,7 +38,7 @@ class SchemaOverviewService extends SchemaContextSupport {
         boolean truncated = listed.size() > limit;
         List<TableEntry> selected = listed.subList(0, Math.min(limit, listed.size()));
 
-        List<Map<String, Object>> tables = new ArrayList<>(selected.size());
+        List<ContextTable> tables = new ArrayList<>(selected.size());
         List<RelationshipEdge> relationships = new ArrayList<>();
         Set<String> relationshipKeys = new HashSet<>();
         Set<String> describedNamesUpper = new HashSet<>();
@@ -67,13 +67,12 @@ class SchemaOverviewService extends SchemaContextSupport {
                 listed.size(), tables.size(), truncated, tables, relationships);
     }
 
-    private Map<String, Object> errorTable(TableEntry listedTable, SQLException error) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("schema", listedTable.schema());
-        out.put("name", listedTable.name());
-        out.put("type", listedTable.type());
-        out.put("remarks", listedTable.remarks());
-        out.put("error", error.getMessage());
-        return out;
+    private ErrorTable errorTable(TableEntry listedTable, SQLException error) {
+        return new ErrorTable(
+                listedTable.schema(),
+                listedTable.name(),
+                listedTable.type(),
+                listedTable.remarks(),
+                error.getMessage());
     }
 }

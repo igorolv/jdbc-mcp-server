@@ -2,8 +2,12 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.CycleHint;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.GraphComponent;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.GraphNode;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaGraph;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.ShortestPath;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -38,11 +42,11 @@ class SchemaGraphService extends SchemaContextSupport {
 
         Map<String, TableDegree> degrees = tableDegrees(tables, declaredEdges);
         Map<String, List<String>> adjacency = undirectedAdjacency(tables, declaredEdges);
-        List<Map<String, Object>> nodes = graphNodes(tables, degrees);
-        List<Map<String, Object>> components = connectedComponents(tables, adjacency);
-        List<Map<String, Object>> cycles = cycleHints(tables, declaredEdges, 25);
+        List<GraphNode> nodes = graphNodes(tables, degrees);
+        List<GraphComponent> components = connectedComponents(tables, adjacency);
+        List<CycleHint> cycles = cycleHints(tables, declaredEdges, 25);
 
-        Map<String, Object> shortestPath = null;
+        ShortestPath shortestPath = null;
         if (fromTable != null && !fromTable.isBlank() && toTable != null && !toTable.isBlank()) {
             String fromKey = resolveTableKey(tables, schema, fromTable);
             String toKey = resolveTableKey(tables, schema, toTable);

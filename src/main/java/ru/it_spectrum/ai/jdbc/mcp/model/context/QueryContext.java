@@ -11,6 +11,6 @@ public record QueryContext(
         int tableCount,
         List<Map<String, Object>> semanticMatches,
         List<Map<String, Object>> tables,
-        List<Map<String, Object>> relationships,
-        List<Map<String, Object>> joinPaths
+        List<GraphEdgeSummary> relationships,
+        List<ShortestPath> joinPaths
 ) {}
