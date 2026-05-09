@@ -9,6 +9,8 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryInspection;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryValidationResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
@@ -266,12 +268,8 @@ public class QueryTools {
                     } catch (SQLException ignore) {
                         // some drivers can't describe a prepared SELECT without execution
                     }
-                    java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
-                    body.put("valid", true);
-                    body.put("parameters", paramCount);
-                    body.put("columns", colCount);
-                    body.put("inspection", analysis.inspect(normalizedSql));
-                    return json.write(body);
+                    return json.write(QueryValidationResult.valid(
+                            paramCount, colCount, analysis.inspect(normalizedSql)));
                 }
             });
         } catch (RuntimeException e) {
@@ -308,13 +306,8 @@ public class QueryTools {
         }
     }
 
-    private String validationFailure(String stage, String message, Object inspection) {
-        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
-        body.put("valid", false);
-        body.put("stage", stage);
-        body.put("error", message);
-        body.put("inspection", inspection);
-        return json.write(body);
+    private String validationFailure(String stage, String message, QueryInspection inspection) {
+        return json.write(QueryValidationResult.invalid(stage, message, inspection));
     }
 
     // ---------------- helpers ----------------
