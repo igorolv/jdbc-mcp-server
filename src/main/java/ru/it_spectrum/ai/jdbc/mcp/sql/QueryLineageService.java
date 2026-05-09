@@ -256,7 +256,7 @@ public class QueryLineageService {
                 matches.addAll(metadata.findTablesByName(cleanName));
             }
         }
-        matches = dedupeTables(matches);
+        matches = new ArrayList<>(dedupeTables(matches));
         if (matches.isEmpty() && cleanName != null && !cleanName.equals(cleanName.toUpperCase(Locale.ROOT))) {
             if (cleanSchema != null) {
                 matches.addAll(listTables(cleanSchema, cleanName.toUpperCase(Locale.ROOT)));
@@ -266,7 +266,7 @@ public class QueryLineageService {
                     matches.addAll(metadata.findTablesByName(cleanName.toUpperCase(Locale.ROOT)));
                 }
             }
-            matches = dedupeTables(matches);
+            matches = new ArrayList<>(dedupeTables(matches));
         }
         if (matches.isEmpty()) {
             return ResolvedObject.unresolved(cleanSchema, cleanName, null, "not_found", List.of());

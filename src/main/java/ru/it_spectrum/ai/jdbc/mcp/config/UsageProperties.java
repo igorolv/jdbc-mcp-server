@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -38,6 +39,7 @@ public record UsageProperties(
         int nativeMaxObjects
 ) {
 
+    @ConstructorBinding
     public UsageProperties {
         if (catalogPaths == null) {
             catalogPaths = List.of();

@@ -213,4 +213,18 @@ class LiveOracleIntegrationTest {
                 .doesNotContain("SQL error")
                 .doesNotContain("Plan parse error");
     }
+
+    @Test
+    void resolveQueryLineageOnDualDoesNotThrow() {
+        String result = queryTools.resolveQueryLineage(
+                "SELECT 1 AS v FROM dual",
+                schema,
+                true,
+                true,
+                3);
+
+        assertThat(result)
+                .contains("\"directObjects\"")
+                .doesNotContain("Error invoking method");
+    }
 }
