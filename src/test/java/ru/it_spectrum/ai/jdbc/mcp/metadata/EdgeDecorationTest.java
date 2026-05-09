@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -19,7 +20,6 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageTransformationKind;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,7 +42,7 @@ class EdgeDecorationTest {
 
     @Test
     void declaredFkEdgeGetsDeclaredSchemaEvidenceEvenWithoutCatalogData() {
-        List<Map<String, Object>> edges = new ArrayList<>();
+        List<RelationshipEdge> edges = new ArrayList<>();
         edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
@@ -64,7 +64,7 @@ class EdgeDecorationTest {
                     "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
         }
         usageCatalog.rebuild(usages);
-        List<Map<String, Object>> edges = new ArrayList<>();
+        List<RelationshipEdge> edges = new ArrayList<>();
         edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
@@ -90,7 +90,7 @@ class EdgeDecorationTest {
                         "Customer shipments", "Customers",
                         "SELECT o.id AS order_id FROM orders o JOIN customers c ON o.customer_id = c.id",
                         "order_id", "Order id", "Invoice payer")));
-        List<Map<String, Object>> edges = new ArrayList<>();
+        List<RelationshipEdge> edges = new ArrayList<>();
         edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
@@ -110,15 +110,15 @@ class EdgeDecorationTest {
         usageCatalog.rebuild(List.of(simple("SHOP", "q.sql",
                 "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id")));
 
-        List<Map<String, Object>> edges = new ArrayList<>();
+        List<RelationshipEdge> edges = new ArrayList<>();
         probe.run(edges, Set.of("EVENTS", "SESSIONS"), true);
 
         assertThat(edges).singleElement()
                 .satisfies(e -> {
-                    assertThat(e.get("relationshipType")).isEqualTo("observed");
-                    assertThat(e.get("undirected")).isEqualTo(true);
-                    assertThat(e.get("fromTable")).isEqualTo("EVENTS");
-                    assertThat(e.get("toTable")).isEqualTo("SESSIONS");
+                    assertThat(e.relationshipType()).isEqualTo("observed");
+                    assertThat(e.undirected()).isEqualTo(true);
+                    assertThat(e.fromTable()).isEqualTo("EVENTS");
+                    assertThat(e.toTable()).isEqualTo("SESSIONS");
                     Map<String, Object> evidence = evidence(e);
                     assertThat(evidence).doesNotContainKey("declaredSchema");
                     assertThat(evidence).containsKey("observedQuery");
@@ -130,7 +130,7 @@ class EdgeDecorationTest {
         usageCatalog.rebuild(List.of(simple("SHOP", "q.sql",
                 "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id")));
 
-        List<Map<String, Object>> edges = new ArrayList<>();
+        List<RelationshipEdge> edges = new ArrayList<>();
         probe.run(edges, Set.of("EVENTS"), true); // sessions is not in described scope
 
         assertThat(edges).isEmpty();
@@ -144,7 +144,7 @@ class EdgeDecorationTest {
                     "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
         }
         usageCatalog.rebuild(usages);
-        List<Map<String, Object>> edges = new ArrayList<>();
+        List<RelationshipEdge> edges = new ArrayList<>();
         edges.add(edge("foreignKey", "ORDERS", "CUSTOMER_ID", "CUSTOMERS", "ID"));
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), false);
@@ -158,25 +158,25 @@ class EdgeDecorationTest {
     //  helpers
     // ---------------------------------------------------------------------------------------
 
-    private static Map<String, Object> edge(String type, String fromTable, String fromColumn,
+    private static RelationshipEdge edge(String type, String fromTable, String fromColumn,
                                             String toTable, String toColumn) {
-        Map<String, Object> e = new LinkedHashMap<>();
-        e.put("relationshipType", type);
-        e.put("fkName", type + "_" + fromTable + "_" + fromColumn);
-        e.put("fromSchema", "APP");
-        e.put("fromTable", fromTable);
-        e.put("fromColumns", List.of(fromColumn));
-        e.put("toSchema", "APP");
-        e.put("toTable", toTable);
-        e.put("toColumns", List.of(toColumn));
-        return e;
+        return new RelationshipEdge(
+                type,
+                type + "_" + fromTable + "_" + fromColumn,
+                "APP",
+                fromTable,
+                List.of(fromColumn),
+                "APP",
+                toTable,
+                List.of(toColumn),
+                null,
+                null);
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> evidence(Map<String, Object> edge) {
-        Object raw = edge.get("evidence");
-        assertThat(raw).as("edge evidence bundle").isInstanceOf(Map.class);
-        return (Map<String, Object>) raw;
+    private static Map<String, Object> evidence(RelationshipEdge edge) {
+        Map<String, Object> raw = edge.evidence();
+        assertThat(raw).as("edge evidence bundle").isNotNull();
+        return raw;
     }
 
     @SuppressWarnings("unchecked")
@@ -225,7 +225,7 @@ class EdgeDecorationTest {
             super(null, null, null, null, usageCatalog);
         }
 
-        void run(List<Map<String, Object>> edges, Set<String> describedNamesUpper,
+        void run(List<RelationshipEdge> edges, Set<String> describedNamesUpper,
                  boolean includeObserved) {
             decorateAndAppendObserved(edges, describedNamesUpper, includeObserved);
         }

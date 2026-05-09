@@ -1,6 +1,8 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.JoinPathStep;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.DeclaredSchemaEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedQueryEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
@@ -25,7 +27,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 
@@ -101,16 +102,16 @@ abstract class SchemaContextSupport {
     }
 
     protected Map<String, TableDegree> tableDegrees(Map<String, TableDescription> tables,
-                                                  List<Map<String, Object>> fkEdges) {
+                                                  List<RelationshipEdge> fkEdges) {
         Map<String, TableDegree> degrees = new HashMap<>();
         for (String tableKey : tables.keySet()) degrees.put(tableKey, new TableDegree());
-        for (Map<String, Object> edge : fkEdges) incrementDegrees(degrees, edge);
+        for (RelationshipEdge edge : fkEdges) incrementDegrees(degrees, edge);
         return degrees;
     }
 
-    protected void incrementDegrees(Map<String, TableDegree> degrees, Map<String, Object> edge) {
-        String from = key(str(edge.get("fromSchema")), str(edge.get("fromTable")));
-        String to = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+    protected void incrementDegrees(Map<String, TableDegree> degrees, RelationshipEdge edge) {
+        String from = key(edge.fromSchema(), edge.fromTable());
+        String to = key(edge.toSchema(), edge.toTable());
         TableDegree fromDegree = degrees.get(from);
         if (fromDegree != null) fromDegree.out++;
         TableDegree toDegree = degrees.get(to);
@@ -142,18 +143,18 @@ abstract class SchemaContextSupport {
         return nodes;
     }
 
-    protected List<Map<String, Object>> graphEdges(List<Map<String, Object>> edges) {
+    protected List<Map<String, Object>> graphEdges(List<RelationshipEdge> edges) {
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> edge : edges) {
+        for (RelationshipEdge edge : edges) {
             Map<String, Object> graphEdge = new LinkedHashMap<>();
-            graphEdge.put("relationshipType", edge.get("relationshipType"));
-            graphEdge.put("name", edge.get("fkName"));
-            graphEdge.put("from", key(str(edge.get("fromSchema")), str(edge.get("fromTable"))));
-            graphEdge.put("to", key(str(edge.get("toSchema")), str(edge.get("toTable"))));
-            graphEdge.put("fromTable", edge.get("fromTable"));
-            graphEdge.put("fromColumns", edge.get("fromColumns"));
-            graphEdge.put("toTable", edge.get("toTable"));
-            graphEdge.put("toColumns", edge.get("toColumns"));
+            graphEdge.put("relationshipType", edge.relationshipType());
+            graphEdge.put("name", edge.fkName());
+            graphEdge.put("from", key(edge.fromSchema(), edge.fromTable()));
+            graphEdge.put("to", key(edge.toSchema(), edge.toTable()));
+            graphEdge.put("fromTable", edge.fromTable());
+            graphEdge.put("fromColumns", edge.fromColumns());
+            graphEdge.put("toTable", edge.toTable());
+            graphEdge.put("toColumns", edge.toColumns());
             out.add(graphEdge);
         }
         return out;
@@ -190,12 +191,12 @@ abstract class SchemaContextSupport {
     }
 
     protected Map<String, List<String>> undirectedAdjacency(Map<String, TableDescription> tables,
-                                                         List<Map<String, Object>> edges) {
+                                                         List<RelationshipEdge> edges) {
         Map<String, List<String>> adjacency = new LinkedHashMap<>();
         for (String tableKey : tables.keySet()) adjacency.put(tableKey, new ArrayList<>());
-        for (Map<String, Object> edge : edges) {
-            String from = key(str(edge.get("fromSchema")), str(edge.get("fromTable")));
-            String to = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+        for (RelationshipEdge edge : edges) {
+            String from = key(edge.fromSchema(), edge.fromTable());
+            String to = key(edge.toSchema(), edge.toTable());
             if (adjacency.containsKey(from) && adjacency.containsKey(to)) {
                 adjacency.get(from).add(to);
                 adjacency.get(to).add(from);
@@ -233,18 +234,18 @@ abstract class SchemaContextSupport {
     }
 
     protected List<Map<String, Object>> cycleHints(Map<String, TableDescription> tables,
-                                                 List<Map<String, Object>> edges, int limit) {
+                                                 List<RelationshipEdge> edges, int limit) {
         List<Map<String, Object>> cycles = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        Map<String, List<Map<String, Object>>> byFrom = new HashMap<>();
-        for (Map<String, Object> edge : edges) {
-            byFrom.computeIfAbsent(key(str(edge.get("fromSchema")), str(edge.get("fromTable"))),
+        Map<String, List<RelationshipEdge>> byFrom = new HashMap<>();
+        for (RelationshipEdge edge : edges) {
+            byFrom.computeIfAbsent(key(edge.fromSchema(), edge.fromTable()),
                     ignored -> new ArrayList<>()).add(edge);
         }
-        for (Map<String, Object> edge : edges) {
+        for (RelationshipEdge edge : edges) {
             if (cycles.size() >= limit) break;
-            String from = key(str(edge.get("fromSchema")), str(edge.get("fromTable")));
-            String to = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+            String from = key(edge.fromSchema(), edge.fromTable());
+            String to = key(edge.toSchema(), edge.toTable());
             if (!tables.containsKey(from) || !tables.containsKey(to)) continue;
             if (!hasDirectedPath(to, from, byFrom, 4, Set.of(to))) continue;
             List<String> pair = new ArrayList<>(List.of(from, to));
@@ -260,11 +261,11 @@ abstract class SchemaContextSupport {
     }
 
     protected boolean hasDirectedPath(String current, String target,
-                                    Map<String, List<Map<String, Object>>> byFrom,
+                                    Map<String, List<RelationshipEdge>> byFrom,
                                     int remainingDepth, Set<String> visited) {
         if (remainingDepth <= 0) return false;
-        for (Map<String, Object> edge : byFrom.getOrDefault(current, List.of())) {
-            String next = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+        for (RelationshipEdge edge : byFrom.getOrDefault(current, List.of())) {
+            String next = key(edge.toSchema(), edge.toTable());
             if (next.equals(target)) return true;
             if (visited.contains(next)) continue;
             Set<String> nextVisited = new HashSet<>(visited);
@@ -275,15 +276,15 @@ abstract class SchemaContextSupport {
     }
 
     protected Map<String, Object> shortestGraphPath(String fromKey, String toKey,
-                                                  List<Map<String, Object>> edges, int maxDepth) {
+                                                  List<RelationshipEdge> edges, int maxDepth) {
         Map<String, List<GraphEdge>> byFrom = new HashMap<>();
-        for (Map<String, Object> edge : edges) {
-            byFrom.computeIfAbsent(key(str(edge.get("fromSchema")), str(edge.get("fromTable"))),
+        for (RelationshipEdge edge : edges) {
+            byFrom.computeIfAbsent(key(edge.fromSchema(), edge.fromTable()),
                     ignored -> new ArrayList<>()).add(GraphEdge.forward(edge));
-            byFrom.computeIfAbsent(key(str(edge.get("toSchema")), str(edge.get("toTable"))),
+            byFrom.computeIfAbsent(key(edge.toSchema(), edge.toTable()),
                     ignored -> new ArrayList<>()).add(GraphEdge.reverse(edge));
         }
-        List<List<Map<String, Object>>> paths = searchPaths(fromKey, toKey, byFrom, maxDepth, 1);
+        List<List<JoinPathStep>> paths = searchPaths(fromKey, toKey, byFrom, maxDepth, 1);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("from", fromKey);
         out.put("to", toKey);
@@ -334,10 +335,10 @@ abstract class SchemaContextSupport {
         return table.columns().size();
     }
 
-    protected List<List<Map<String, Object>>> searchPaths(String start, String target,
+    protected List<List<JoinPathStep>> searchPaths(String start, String target,
                                                         Map<String, List<GraphEdge>> byFrom,
                                                         int maxDepth, int maxPaths) {
-        List<List<Map<String, Object>>> paths = new ArrayList<>();
+        List<List<JoinPathStep>> paths = new ArrayList<>();
         Queue<PathState> queue = new ArrayDeque<>();
         queue.add(new PathState(start, List.of(), Set.of(start)));
 
@@ -347,8 +348,8 @@ abstract class SchemaContextSupport {
             for (GraphEdge edge : byFrom.getOrDefault(state.node, List.of())) {
                 String next = key(edge.toSchema, edge.toTable);
                 if (state.visited.contains(next)) continue;
-                List<Map<String, Object>> nextEdges = new ArrayList<>(state.edges);
-                nextEdges.add(edge.asMap());
+                List<JoinPathStep> nextEdges = new ArrayList<>(state.edges);
+                nextEdges.add(edge.asStep());
                 if (next.equals(target)) {
                     paths.add(nextEdges);
                     if (paths.size() >= maxPaths) break;
@@ -444,40 +445,27 @@ abstract class SchemaContextSupport {
         return out;
     }
 
-    protected List<Map<String, Object>> outgoingEdges(TableDescription info) {
+    protected List<RelationshipEdge> outgoingEdges(TableDescription info) {
         String schema = info.schema();
         String table = info.name();
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<RelationshipEdge> out = new ArrayList<>();
         for (ForeignKey fk : info.foreignKeys()) {
-            Map<String, Object> edge = new LinkedHashMap<>();
-            edge.put("relationshipType", "foreignKey");
-            edge.put("fkName", fk.name());
-            edge.put("fromSchema", schema);
-            edge.put("fromTable", table);
-            edge.put("fromColumns", fk.columns());
-            edge.put("toSchema", fk.referencedSchema());
-            edge.put("toTable", fk.referencedTable());
-            edge.put("toColumns", fk.referencedColumns());
-            out.add(edge);
+            out.add(new RelationshipEdge(
+                    "foreignKey", fk.name(), schema, table, fk.columns(),
+                    fk.referencedSchema(), fk.referencedTable(), fk.referencedColumns(),
+                    null, null));
         }
         return out;
     }
 
-    protected List<Map<String, Object>> incomingEdges(TableDescription info) {
+    protected List<RelationshipEdge> incomingEdges(TableDescription info) {
         String schema = info.schema();
         String table = info.name();
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<RelationshipEdge> out = new ArrayList<>();
         for (IncomingForeignKey fk : info.referencedBy()) {
-            Map<String, Object> edge = new LinkedHashMap<>();
-            edge.put("relationshipType", "foreignKey");
-            edge.put("fkName", fk.name());
-            edge.put("fromSchema", fk.fromSchema());
-            edge.put("fromTable", fk.fromTable());
-            edge.put("fromColumns", fk.fromColumns());
-            edge.put("toSchema", schema);
-            edge.put("toTable", table);
-            edge.put("toColumns", fk.toColumns());
-            out.add(edge);
+            out.add(new RelationshipEdge(
+                    "foreignKey", fk.name(), fk.fromSchema(), fk.fromTable(), fk.fromColumns(),
+                    schema, table, fk.toColumns(), null, null));
         }
         return out;
     }
@@ -501,17 +489,17 @@ abstract class SchemaContextSupport {
      * <p>Matching against observed pairs is undirected and single-column only; composite FKs
      * still receive a declared layer but no observed-pair match in this iteration.
      */
-    protected void decorateAndAppendObserved(List<Map<String, Object>> edges,
+    protected void decorateAndAppendObserved(List<RelationshipEdge> edges,
                                              Set<String> describedTableNamesUpper,
                                              boolean includeObserved) {
-        Map<Map<String, Object>, RelationshipEvidence.Builder> builders = new LinkedHashMap<>();
-        for (Map<String, Object> edge : edges) {
+        Map<RelationshipEdge, RelationshipEvidence.Builder> builders = new LinkedHashMap<>();
+        for (RelationshipEdge edge : edges) {
             RelationshipEvidence.Builder b = builderFor(edge, builders);
-            if ("foreignKey".equals(str(edge.get("relationshipType")))) {
+            if ("foreignKey".equals(edge.relationshipType())) {
                 b.declaredSchema = new DeclaredSchemaEdgeEvidence(
-                        str(edge.get("fkName")),
-                        objectList(edge.get("fromColumns")),
-                        objectList(edge.get("toColumns")));
+                        edge.fkName(),
+                        edge.fromColumns() == null ? List.of() : edge.fromColumns(),
+                        edge.toColumns() == null ? List.of() : edge.toColumns());
             }
         }
         if (!includeObserved || usageCatalog == null || !usageCatalog.enabled()) {
@@ -521,9 +509,9 @@ abstract class SchemaContextSupport {
 
         Set<String> tableScope = new HashSet<>();
         if (describedTableNamesUpper != null) tableScope.addAll(describedTableNamesUpper);
-        for (Map<String, Object> edge : edges) {
-            String from = upper(str(edge.get("fromTable")));
-            String to = upper(str(edge.get("toTable")));
+        for (RelationshipEdge edge : edges) {
+            String from = upper(edge.fromTable());
+            String to = upper(edge.toTable());
             if (from != null) tableScope.add(from);
             if (to != null) tableScope.add(to);
         }
@@ -539,13 +527,13 @@ abstract class SchemaContextSupport {
                     oe.leftTable(), oe.leftColumn(), oe.rightTable(), oe.rightColumn()), oe);
         }
         Set<String> consumed = new HashSet<>();
-        for (Map<String, Object> edge : edges) {
-            List<?> fromCols = edge.get("fromColumns") instanceof List<?> fl ? fl : List.of();
-            List<?> toCols = edge.get("toColumns") instanceof List<?> tl ? tl : List.of();
+        for (RelationshipEdge edge : edges) {
+            List<String> fromCols = edge.fromColumns() == null ? List.of() : edge.fromColumns();
+            List<String> toCols = edge.toColumns() == null ? List.of() : edge.toColumns();
             if (fromCols.size() != 1 || toCols.size() != 1) continue;
             String key = undirectedPairKey(
-                    str(edge.get("fromTable")), String.valueOf(fromCols.get(0)),
-                    str(edge.get("toTable")), String.valueOf(toCols.get(0)));
+                    edge.fromTable(), fromCols.get(0),
+                    edge.toTable(), toCols.get(0));
             UsageCatalogService.ObservedEdge oe = byPair.get(key);
             if (oe == null) continue;
             builderFor(edge, builders).observedQuery = new ObservedQueryEdgeEvidence(
@@ -563,29 +551,25 @@ abstract class SchemaContextSupport {
                     && (!describedScope.contains(leftUpper) || !describedScope.contains(rightUpper))) {
                 continue;
             }
-            Map<String, Object> edge = new LinkedHashMap<>();
-            edge.put("relationshipType", "observed");
-            edge.put("fkName", "observed_" + oe.leftTable() + "_" + oe.leftColumn()
-                    + "_to_" + oe.rightTable() + "_" + oe.rightColumn());
-            edge.put("fromSchema", oe.leftSchema());
-            edge.put("fromTable", oe.leftTable());
-            edge.put("fromColumns", List.of(oe.leftColumn()));
-            edge.put("toSchema", oe.rightSchema());
-            edge.put("toTable", oe.rightTable());
-            edge.put("toColumns", List.of(oe.rightColumn()));
-            edge.put("undirected", true);
+            RelationshipEdge edge = new RelationshipEdge(
+                    "observed",
+                    "observed_" + oe.leftTable() + "_" + oe.leftColumn()
+                            + "_to_" + oe.rightTable() + "_" + oe.rightColumn(),
+                    oe.leftSchema(), oe.leftTable(), List.of(oe.leftColumn()),
+                    oe.rightSchema(), oe.rightTable(), List.of(oe.rightColumn()),
+                    true, null);
             edges.add(edge);
             RelationshipEvidence.Builder b = builderFor(edge, builders);
             b.observedQuery = new ObservedQueryEdgeEvidence(oe.support(), capQueryUids(oe.queryUids()));
         }
 
-        for (Map.Entry<Map<String, Object>, RelationshipEvidence.Builder> entry : builders.entrySet()) {
-            Map<String, Object> edge = entry.getKey();
+        for (Map.Entry<RelationshipEdge, RelationshipEvidence.Builder> entry : builders.entrySet()) {
+            RelationshipEdge edge = entry.getKey();
             RelationshipEvidence.Builder b = entry.getValue();
             if (b.declaredSchema == null && b.observedQuery == null) continue;
             SemanticEdgeEvidence semantic = usageCatalog.semanticEdgeEvidence(
-                    str(edge.get("fromSchema")), str(edge.get("fromTable")),
-                    str(edge.get("toSchema")), str(edge.get("toTable")));
+                    edge.fromSchema(), edge.fromTable(),
+                    edge.toSchema(), edge.toTable());
             if (semantic != null && !semantic.isEmpty()) {
                 b.semanticUsage = semantic;
             }
@@ -595,19 +579,20 @@ abstract class SchemaContextSupport {
     }
 
     private static RelationshipEvidence.Builder builderFor(
-            Map<String, Object> edge,
-            Map<Map<String, Object>, RelationshipEvidence.Builder> builders) {
+            RelationshipEdge edge,
+            Map<RelationshipEdge, RelationshipEvidence.Builder> builders) {
         return builders.computeIfAbsent(edge, ignored -> new RelationshipEvidence.Builder());
     }
 
-    private static void applyEvidence(List<Map<String, Object>> edges,
-                                      Map<Map<String, Object>, RelationshipEvidence.Builder> builders) {
-        for (Map<String, Object> edge : edges) {
+    private static void applyEvidence(List<RelationshipEdge> edges,
+                                      Map<RelationshipEdge, RelationshipEvidence.Builder> builders) {
+        for (int i = 0; i < edges.size(); i++) {
+            RelationshipEdge edge = edges.get(i);
             RelationshipEvidence.Builder b = builders.get(edge);
             if (b == null) continue;
             RelationshipEvidence re = b.build();
             if (re.isEmpty()) continue;
-            edge.put("evidence", re.toMap());
+            edges.set(i, edge.withEvidence(re.toMap()));
         }
     }
 
@@ -724,16 +709,16 @@ abstract class SchemaContextSupport {
         return value;
     }
 
-    protected void addUnique(List<Map<String, Object>> target, Set<String> seen, Map<String, Object> edge) {
+    protected void addUnique(List<RelationshipEdge> target, Set<String> seen, RelationshipEdge edge) {
         String k = edgeKey(edge);
         if (seen.add(k)) target.add(edge);
     }
 
-    protected String edgeKey(Map<String, Object> edge) {
-        return key(str(edge.get("fromSchema")), str(edge.get("fromTable"))) + ":"
-                + edge.get("fromColumns") + "->"
-                + key(str(edge.get("toSchema")), str(edge.get("toTable"))) + ":"
-                + edge.get("toColumns");
+    protected String edgeKey(RelationshipEdge edge) {
+        return key(edge.fromSchema(), edge.fromTable()) + ":"
+                + edge.fromColumns() + "->"
+                + key(edge.toSchema(), edge.toTable()) + ":"
+                + edge.toColumns();
     }
 
     protected String[] parseTypes(String types) {
@@ -806,11 +791,11 @@ abstract class SchemaContextSupport {
                 .replace("\"", "&quot;");
     }
 
-    protected String joinCondition(Map<String, Object> edge) {
-        List<String> left = objectList(edge.get("fromColumns"));
-        List<String> right = objectList(edge.get("toColumns"));
-        String fromTable = str(edge.get("fromTable"));
-        String toTable = str(edge.get("toTable"));
+    protected String joinCondition(RelationshipEdge edge) {
+        List<String> left = edge.fromColumns() == null ? List.of() : edge.fromColumns();
+        List<String> right = edge.toColumns() == null ? List.of() : edge.toColumns();
+        String fromTable = edge.fromTable();
+        String toTable = edge.toTable();
         List<String> parts = new ArrayList<>();
         for (int i = 0; i < Math.min(left.size(), right.size()); i++) {
             parts.add(fromTable + "." + left.get(i) + " = " + toTable + "." + right.get(i));
@@ -824,7 +809,7 @@ abstract class SchemaContextSupport {
     protected record NodeDepth(String schema, String table, int depth) {
     }
 
-    protected record PathState(String node, List<Map<String, Object>> edges, Set<String> visited) {
+    protected record PathState(String node, List<JoinPathStep> edges, Set<String> visited) {
     }
 
     protected static final class TableDegree {
@@ -842,55 +827,46 @@ abstract class SchemaContextSupport {
     }
 
     protected record GraphEdge(String direction, String relationshipType, String fkName,
-                               String fromSchema, String fromTable, Object fromColumns,
-                               String toSchema, String toTable, Object toColumns,
-                               Object evidence) {
+                               String fromSchema, String fromTable, List<String> fromColumns,
+                               String toSchema, String toTable, List<String> toColumns,
+                               Map<String, Object> evidence) {
 
-        static GraphEdge forward(Map<String, Object> edge) {
+        static GraphEdge forward(RelationshipEdge edge) {
             return new GraphEdge("forward",
-                    strStatic(edge.get("relationshipType")),
-                    strStatic(edge.get("fkName")),
-                    strStatic(edge.get("fromSchema")),
-                    strStatic(edge.get("fromTable")),
-                    edge.get("fromColumns"),
-                    strStatic(edge.get("toSchema")),
-                    strStatic(edge.get("toTable")),
-                    edge.get("toColumns"),
-                    edge.get("evidence"));
+                    edge.relationshipType(),
+                    edge.fkName(),
+                    edge.fromSchema(),
+                    edge.fromTable(),
+                    edge.fromColumns(),
+                    edge.toSchema(),
+                    edge.toTable(),
+                    edge.toColumns(),
+                    edge.evidence());
         }
 
-        static GraphEdge reverse(Map<String, Object> edge) {
+        static GraphEdge reverse(RelationshipEdge edge) {
             return new GraphEdge("reverse",
-                    strStatic(edge.get("relationshipType")),
-                    strStatic(edge.get("fkName")),
-                    strStatic(edge.get("toSchema")),
-                    strStatic(edge.get("toTable")),
-                    edge.get("toColumns"),
-                    strStatic(edge.get("fromSchema")),
-                    strStatic(edge.get("fromTable")),
-                    edge.get("fromColumns"),
-                    edge.get("evidence"));
+                    edge.relationshipType(),
+                    edge.fkName(),
+                    edge.toSchema(),
+                    edge.toTable(),
+                    edge.toColumns(),
+                    edge.fromSchema(),
+                    edge.fromTable(),
+                    edge.fromColumns(),
+                    edge.evidence());
         }
 
-        Map<String, Object> asMap() {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("direction", direction);
-            out.put("relationshipType", relationshipType);
-            out.put("fkName", fkName);
-            out.put("fromSchema", fromSchema);
-            out.put("fromTable", fromTable);
-            out.put("fromColumns", fromColumns);
-            out.put("toSchema", toSchema);
-            out.put("toTable", toTable);
-            out.put("toColumns", toColumns);
-            out.put("joinCondition", joinCondition());
-            if (evidence != null) out.put("evidence", evidence);
-            return out;
+        JoinPathStep asStep() {
+            return new JoinPathStep(direction, relationshipType, fkName,
+                    fromSchema, fromTable, fromColumns,
+                    toSchema, toTable, toColumns,
+                    joinCondition(), evidence);
         }
 
         protected String joinCondition() {
-            List<String> left = objectList(fromColumns);
-            List<String> right = objectList(toColumns);
+            List<String> left = fromColumns == null ? List.of() : fromColumns;
+            List<String> right = toColumns == null ? List.of() : toColumns;
             List<String> parts = new ArrayList<>();
             for (int i = 0; i < Math.min(left.size(), right.size()); i++) {
                 parts.add(qualified(fromTable, left.get(i)) + " = " + qualified(toTable, right.get(i)));
@@ -900,19 +876,6 @@ abstract class SchemaContextSupport {
 
         protected static String qualified(String table, String column) {
             return table + "." + column;
-        }
-
-        protected static List<String> objectList(Object value) {
-            if (!(value instanceof List<?> list)) return List.of();
-            List<String> out = new ArrayList<>();
-            for (Object item : list) {
-                if (item != null) out.add(String.valueOf(item));
-            }
-            return out;
-        }
-
-        protected static String strStatic(Object value) {
-            return Objects.toString(value, null);
         }
     }
 }

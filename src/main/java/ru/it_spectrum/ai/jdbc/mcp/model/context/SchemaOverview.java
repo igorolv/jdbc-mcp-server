@@ -13,5 +13,5 @@ public record SchemaOverview(
         int returnedTableCount,
         boolean truncated,
         List<Map<String, Object>> tables,
-        List<Map<String, Object>> relationships
+        List<RelationshipEdge> relationships
 ) {}

@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaLint;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -194,8 +195,8 @@ class SchemaLintService extends SchemaContextSupport {
         for (String tableKey : tables.keySet()) degrees.put(tableKey, 0);
         for (TableDescription info : tables.values()) {
             String from = key(info.schema(), info.name());
-            for (Map<String, Object> edge : outgoingEdges(info)) {
-                String to = key(str(edge.get("toSchema")), str(edge.get("toTable")));
+            for (RelationshipEdge edge : outgoingEdges(info)) {
+                String to = key(edge.toSchema(), edge.toTable());
                 degrees.computeIfPresent(from, (k, v) -> v + 1);
                 degrees.computeIfPresent(to, (k, v) -> v + 1);
             }

@@ -2,7 +2,9 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.JoinPathStep;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.FindJoinPaths;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -49,7 +51,7 @@ class SchemaJoinPathService extends SchemaContextSupport {
         described.putIfAbsent(key(effectiveFromSchema, effectiveFromTable), fromInfo);
         described.putIfAbsent(key(effectiveToSchema, effectiveToTable), toInfo);
 
-        List<Map<String, Object>> rawEdges = new ArrayList<>();
+        List<RelationshipEdge> rawEdges = new ArrayList<>();
         for (TableDescription info : described.values()) {
             rawEdges.addAll(outgoingEdges(info));
         }
@@ -60,7 +62,7 @@ class SchemaJoinPathService extends SchemaContextSupport {
         decorateAndAppendObserved(rawEdges, describedNamesUpper, observed);
 
         List<GraphEdge> graphEdges = new ArrayList<>();
-        for (Map<String, Object> edge : rawEdges) {
+        for (RelationshipEdge edge : rawEdges) {
             graphEdges.add(GraphEdge.forward(edge));
             graphEdges.add(GraphEdge.reverse(edge));
         }
@@ -72,7 +74,7 @@ class SchemaJoinPathService extends SchemaContextSupport {
 
         String start = key(effectiveFromSchema, effectiveFromTable);
         String target = key(effectiveToSchema, effectiveToTable);
-        List<List<Map<String, Object>>> paths = searchPaths(start, target, byFrom, depthLimit, pathLimit);
+        List<List<JoinPathStep>> paths = searchPaths(start, target, byFrom, depthLimit, pathLimit);
 
         return new FindJoinPaths(effectiveFromSchema, effectiveFromTable,
                 effectiveToSchema, effectiveToTable,

@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaGraph;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -32,7 +33,7 @@ class SchemaGraphService extends SchemaContextSupport {
         int depthLimit = clamp(maxDepth, MAX_DEPTH, 1, MAX_DEPTH);
 
         Map<String, TableDescription> tables = loadSchemaTables(schema, tableLimit);
-        List<Map<String, Object>> declaredEdges = new ArrayList<>();
+        List<RelationshipEdge> declaredEdges = new ArrayList<>();
         for (TableDescription info : tables.values()) declaredEdges.addAll(outgoingEdges(info));
 
         Map<String, TableDegree> degrees = tableDegrees(tables, declaredEdges);
@@ -72,18 +73,18 @@ class SchemaGraphService extends SchemaContextSupport {
             selected = allTables;
         }
 
-        List<Map<String, Object>> declaredEdges = new ArrayList<>();
+        List<RelationshipEdge> declaredEdges = new ArrayList<>();
         for (TableDescription info : selected.values()) {
             declaredEdges.addAll(outgoingEdges(info));
         }
-        declaredEdges.removeIf(e -> !selected.containsKey(key(str(e.get("fromSchema")), str(e.get("fromTable"))))
-                || !selected.containsKey(key(str(e.get("toSchema")), str(e.get("toTable")))));
+        declaredEdges.removeIf(e -> !selected.containsKey(key(e.fromSchema(), e.fromTable()))
+                || !selected.containsKey(key(e.toSchema(), e.toTable())));
 
         Map<String, Set<String>> pkCols = new HashMap<>();
         Map<String, Set<String>> fkCols = new HashMap<>();
-        for (Map<String, Object> edge : declaredEdges) {
-            String fromKey = key(str(edge.get("fromSchema")), str(edge.get("fromTable")));
-            for (String col : stringList(edge, "fromColumns")) {
+        for (RelationshipEdge edge : declaredEdges) {
+            String fromKey = key(edge.fromSchema(), edge.fromTable());
+            for (String col : edge.fromColumns() == null ? List.<String>of() : edge.fromColumns()) {
                 fkCols.computeIfAbsent(fromKey, k -> new HashSet<>()).add(col);
             }
         }
@@ -128,9 +129,9 @@ class SchemaGraphService extends SchemaContextSupport {
 
         sb.append('\n');
 
-        for (Map<String, Object> edge : declaredEdges) {
-            sb.append("  ").append(dotId(key(str(edge.get("fromSchema")), str(edge.get("fromTable")))))
-                    .append(" -> ").append(dotId(key(str(edge.get("toSchema")), str(edge.get("toTable")))))
+        for (RelationshipEdge edge : declaredEdges) {
+            sb.append("  ").append(dotId(key(edge.fromSchema(), edge.fromTable())))
+                    .append(" -> ").append(dotId(key(edge.toSchema(), edge.toTable())))
                     .append(" [label=").append(dotString(joinCondition(edge)))
                     .append(", style=solid];\n");
         }

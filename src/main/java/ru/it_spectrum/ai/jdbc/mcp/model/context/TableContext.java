@@ -11,5 +11,5 @@ public record TableContext(
         boolean includeStats,
         boolean includeObserved,
         List<Map<String, Object>> tables,
-        List<Map<String, Object>> relationships
+        List<RelationshipEdge> relationships
 ) {}

@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
@@ -28,7 +29,7 @@ class SchemaBriefService extends SchemaContextSupport {
     public String schemaBrief(String schema, String terms, Integer maxTables) throws SQLException {
         int tableLimit = clamp(maxTables, DEFAULT_MAX_TABLES, 1, MAX_TABLES_LIMIT);
         Map<String, TableDescription> tables = loadBriefTables(schema, terms, tableLimit);
-        List<Map<String, Object>> fkEdges = new ArrayList<>();
+        List<RelationshipEdge> fkEdges = new ArrayList<>();
         for (TableDescription info : tables.values()) {
             fkEdges.addAll(outgoingEdges(info));
         }
@@ -71,19 +72,19 @@ class SchemaBriefService extends SchemaContextSupport {
     }
 
     private void appendRelationshipSection(StringBuilder sb, String title,
-                                           List<Map<String, Object>> edges, int limit) {
+                                           List<RelationshipEdge> edges, int limit) {
         if (edges.isEmpty()) return;
         sb.append('\n').append(title).append('\n');
         int count = 0;
-        for (Map<String, Object> edge : edges) {
+        for (RelationshipEdge edge : edges) {
             if (count++ >= limit) {
                 sb.append("- ... ").append(edges.size() - limit).append(" more\n");
                 break;
             }
             sb.append("- ")
-                    .append(edge.get("fromTable")).append('.').append(String.join("+", objectList(edge.get("fromColumns"))))
+                    .append(edge.fromTable()).append('.').append(String.join("+", edge.fromColumns()))
                     .append(" -> ")
-                    .append(edge.get("toTable")).append('.').append(String.join("+", objectList(edge.get("toColumns"))));
+                    .append(edge.toTable()).append('.').append(String.join("+", edge.toColumns()));
             sb.append('\n');
         }
     }

@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaOverview;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -38,7 +39,7 @@ class SchemaOverviewService extends SchemaContextSupport {
         List<TableEntry> selected = listed.subList(0, Math.min(limit, listed.size()));
 
         List<Map<String, Object>> tables = new ArrayList<>(selected.size());
-        List<Map<String, Object>> relationships = new ArrayList<>();
+        List<RelationshipEdge> relationships = new ArrayList<>();
         Set<String> relationshipKeys = new HashSet<>();
         Set<String> describedNamesUpper = new HashSet<>();
 
@@ -55,7 +56,7 @@ class SchemaOverviewService extends SchemaContextSupport {
             }
             tables.add(compactTable(described, Boolean.TRUE.equals(includeStats)));
             describedNamesUpper.add(upper(tableName));
-            for (Map<String, Object> edge : outgoingEdges(described)) {
+            for (RelationshipEdge edge : outgoingEdges(described)) {
                 addUnique(relationships, relationshipKeys, edge);
             }
         }

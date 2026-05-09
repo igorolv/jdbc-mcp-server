@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContext;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
@@ -91,7 +92,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
             }
         }
 
-        List<Map<String, Object>> declaredEdges = new ArrayList<>();
+        List<RelationshipEdge> declaredEdges = new ArrayList<>();
         for (TableDescription info : selected.values()) declaredEdges.addAll(outgoingEdges(info));
 
         List<Map<String, Object>> tableContexts = new ArrayList<>();
@@ -204,7 +205,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
         return out;
     }
 
-    private List<Map<String, Object>> pairwiseJoinPaths(List<String> tableKeys, List<Map<String, Object>> edges) {
+    private List<Map<String, Object>> pairwiseJoinPaths(List<String> tableKeys, List<RelationshipEdge> edges) {
         List<Map<String, Object>> paths = new ArrayList<>();
         for (int i = 0; i < tableKeys.size(); i++) {
             for (int j = i + 1; j < tableKeys.size(); j++) {
