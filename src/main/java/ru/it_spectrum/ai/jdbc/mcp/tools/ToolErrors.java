@@ -1,11 +1,10 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
 import org.springframework.stereotype.Component;
+import ru.it_spectrum.ai.jdbc.mcp.model.ToolErrorResponse;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlNotAllowedException;
 
 import java.sql.SQLException;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * Single source of truth for error responses returned by MCP tools.
@@ -43,12 +42,7 @@ public class ToolErrors {
     }
 
     public String notFound(String kind, String name) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("error", kind + " '" + name + "' not found");
-        body.put("kind", "not_found");
-        body.put("missing", kind);
-        body.put("name", name);
-        return json.write(body);
+        return json.write(ToolErrorResponse.notFound(kind, name));
     }
 
     public String driver(String message) {
@@ -64,9 +58,6 @@ public class ToolErrors {
     }
 
     private String error(String kind, String message) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("error", message);
-        body.put("kind", kind);
-        return json.write(body);
+        return json.write(ToolErrorResponse.of(kind, message));
     }
 }
