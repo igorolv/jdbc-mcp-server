@@ -13,7 +13,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryParameter;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
-import ru.it_spectrum.ai.jdbc.mcp.model.usage.CatalogQueryDetail;
+import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.CatalogQueryDetail;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;

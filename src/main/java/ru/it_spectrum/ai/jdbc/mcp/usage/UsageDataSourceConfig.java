@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import org.springframework.core.io.ClassPathResource;
 import org.h2.jdbcx.JdbcDataSource;
 

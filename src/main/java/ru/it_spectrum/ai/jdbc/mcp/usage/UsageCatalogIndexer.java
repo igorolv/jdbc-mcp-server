@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;

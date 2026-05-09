@@ -10,7 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageDataSourceConfig;
-import ru.it_spectrum.ai.jdbc.mcp.usage.UsageProperties;
+import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageConfidence;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageFieldUsage;

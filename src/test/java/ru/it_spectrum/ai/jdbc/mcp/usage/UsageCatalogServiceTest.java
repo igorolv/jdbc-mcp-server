@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
+import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
