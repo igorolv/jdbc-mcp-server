@@ -22,6 +22,26 @@ It exposes 40 read-only tools across eight groups:
 The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, and SQL Server JDBC drivers
 are bundled inside the fat jar.
 
+## Code style: typed response models
+
+The project is gradually replacing ad-hoc `Map<String, Object>` response payloads with typed Java
+`record` models under `src/main/java/ru/it_spectrum/ai/jdbc/mcp/model`.
+
+When adding or changing code:
+
+- Prefer typed `record` DTOs for service results and MCP response bodies.
+- Keep tool classes thin: they should call services and serialize typed results via `JsonResponses`.
+- Do not introduce new public service methods or model fields returning `Map<String, Object>` unless
+  the payload is inherently dynamic.
+- Acceptable dynamic cases are:
+  - arbitrary SQL result rows, e.g. `QueryResult.rows()`;
+  - user-provided SQL parameters, e.g. `namedParams`;
+  - raw database-specific plan payloads / metadata, e.g. `PlanNode.raw()` and `ParsedPlan.meta()`;
+  - local JDBC/JSON parser internals that are converted to typed records before crossing service
+    boundaries.
+- If a response shape is stable enough to document in AGENTS.md or README, it is stable enough to
+  model as a `record`.
+
 ## Prerequisites
 
 - JDK 21+ installed (check with `java -version`)

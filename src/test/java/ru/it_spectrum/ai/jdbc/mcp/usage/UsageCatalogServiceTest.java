@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
@@ -194,28 +195,19 @@ class UsageCatalogServiceTest {
         service.rebuild(List.of(customerCard, invoice));
 
         TableEvidenceProfile profile = service.tableEvidenceProfile(null, "customers");
-        Map<String, Object> mapped = profile.toMap();
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> observed = (Map<String, Object>) mapped.get("observedQuery");
-        assertThat(observed.get("queryCount")).isEqualTo(2);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> observedColumns = (List<Map<String, Object>>) observed.get("columns");
-        assertThat(observedColumns)
+        assertThat(profile.observedQuery().queryCount()).isEqualTo(2);
+        assertThat(profile.observedQuery().columns())
                 .anySatisfy(column -> {
-                    assertThat(column.get("column")).isEqualTo("NAME");
-                    assertThat(column.get("queryCount")).isEqualTo(2);
+                    assertThat(column.column()).isEqualTo("NAME");
+                    assertThat(column.queryCount()).isEqualTo(2);
                 })
                 .anySatisfy(column -> {
-                    assertThat(column.get("column")).isEqualTo("STATUS");
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> contexts =
-                            (List<Map<String, Object>>) column.get("contexts");
-                    assertThat(contexts).extracting(c -> c.get("value")).contains("where");
+                    assertThat(column.column()).isEqualTo("STATUS");
+                    assertThat(column.contexts()).extracting(SemanticTermEvidence::value).contains("where");
                 });
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> semantic = (Map<String, Object>) mapped.get("semanticUsage");
+        SemanticTableUsage semantic = profile.semanticUsage();
         assertThat(asEvidenceValues(semantic, "businessDomains")).contains("Customers", "Billing");
         assertThat(asEvidenceValues(semantic, "businessTags")).contains("customer", "invoice");
         assertThat(asEvidenceValues(semantic, "outputLabels")).contains("Customer name", "Payer name");
@@ -612,10 +604,15 @@ class UsageCatalogServiceTest {
         return baseRequest(dataSource, path, null, sql);
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Object> asEvidenceValues(Map<String, Object> root, String key) {
-        return ((List<Map<String, Object>>) root.get(key)).stream()
-                .map(row -> row.get("value"))
+    private static List<String> asEvidenceValues(SemanticTableUsage root, String key) {
+        return (switch (key) {
+            case "businessDomains" -> root.businessDomains();
+            case "businessTags" -> root.businessTags();
+            case "outputLabels" -> root.outputLabels();
+            case "businessObjects" -> root.businessObjects();
+            default -> List.<SemanticTermEvidence>of();
+        }).stream()
+                .map(SemanticTermEvidence::value)
                 .toList();
     }
 

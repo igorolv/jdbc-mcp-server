@@ -1,8 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.evidence;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 public record SemanticTableUsage(
         List<SemanticTermEvidence> businessDomains,
@@ -12,22 +10,12 @@ public record SemanticTableUsage(
         List<SemanticTermEvidence> businessObjects,
         List<SemanticColumnUsage> columns
 ) {
-    public Map<String, Object> toMap() {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("businessDomains", terms(businessDomains));
-        out.put("businessTags", terms(businessTags));
-        out.put("queryLabels", terms(queryLabels));
-        out.put("outputLabels", terms(outputLabels));
-        out.put("businessObjects", terms(businessObjects));
-        out.put("columns", columns == null ? List.of() : columns.stream()
-                .map(SemanticColumnUsage::toMap)
-                .toList());
-        return out;
-    }
-
-    private static List<Map<String, Object>> terms(List<SemanticTermEvidence> terms) {
-        return terms == null ? List.of() : terms.stream()
-                .map(SemanticTermEvidence::toMap)
-                .toList();
+    public SemanticTableUsage {
+        businessDomains = businessDomains == null ? List.of() : List.copyOf(businessDomains);
+        businessTags = businessTags == null ? List.of() : List.copyOf(businessTags);
+        queryLabels = queryLabels == null ? List.of() : List.copyOf(queryLabels);
+        outputLabels = outputLabels == null ? List.of() : List.copyOf(outputLabels);
+        businessObjects = businessObjects == null ? List.of() : List.copyOf(businessObjects);
+        columns = columns == null ? List.of() : List.copyOf(columns);
     }
 }

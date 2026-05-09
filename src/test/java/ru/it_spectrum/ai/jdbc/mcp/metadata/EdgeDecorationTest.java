@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -47,13 +49,13 @@ class EdgeDecorationTest {
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
 
-        Map<String, Object> evidence = evidence(edges.get(0));
-        assertThat(evidence).containsOnlyKeys("declaredSchema");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> declared = (Map<String, Object>) evidence.get("declaredSchema");
-        assertThat(declared.get("foreignKeyName")).isEqualTo("foreignKey_ORDERS_CUSTOMER_ID");
-        assertThat(declared.get("fromColumns")).isEqualTo(List.of("CUSTOMER_ID"));
-        assertThat(declared.get("toColumns")).isEqualTo(List.of("ID"));
+        RelationshipEvidence evidence = evidence(edges.get(0));
+        assertThat(evidence.declaredSchema()).isNotNull();
+        assertThat(evidence.observedQuery()).isNull();
+        assertThat(evidence.semanticUsage()).isNull();
+        assertThat(evidence.declaredSchema().foreignKeyName()).isEqualTo("foreignKey_ORDERS_CUSTOMER_ID");
+        assertThat(evidence.declaredSchema().fromColumns()).isEqualTo(List.of("CUSTOMER_ID"));
+        assertThat(evidence.declaredSchema().toColumns()).isEqualTo(List.of("ID"));
     }
 
     @Test
@@ -69,14 +71,11 @@ class EdgeDecorationTest {
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
 
-        Map<String, Object> evidence = evidence(edges.get(0));
-        assertThat(evidence).containsKeys("declaredSchema", "observedQuery");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> observed = (Map<String, Object>) evidence.get("observedQuery");
-        assertThat(observed.get("joinSupport")).isEqualTo(3);
-        @SuppressWarnings("unchecked")
-        List<String> uids = (List<String>) observed.get("queryUids");
-        assertThat(uids).hasSize(3);
+        RelationshipEvidence evidence = evidence(edges.get(0));
+        assertThat(evidence.declaredSchema()).isNotNull();
+        assertThat(evidence.observedQuery()).isNotNull();
+        assertThat(evidence.observedQuery().joinSupport()).isEqualTo(3);
+        assertThat(evidence.observedQuery().queryUids()).hasSize(3);
     }
 
     @Test
@@ -95,11 +94,12 @@ class EdgeDecorationTest {
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
 
-        Map<String, Object> evidence = evidence(edges.get(0));
-        assertThat(evidence).containsKeys("declaredSchema", "observedQuery", "semanticUsage");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> semantic = (Map<String, Object>) evidence.get("semanticUsage");
-        assertThat(semantic.get("coOccurringQueryCount")).isEqualTo(2);
+        RelationshipEvidence evidence = evidence(edges.get(0));
+        assertThat(evidence.declaredSchema()).isNotNull();
+        assertThat(evidence.observedQuery()).isNotNull();
+        SemanticEdgeEvidence semantic = evidence.semanticUsage();
+        assertThat(semantic).isNotNull();
+        assertThat(semantic.coOccurringQueryCount()).isEqualTo(2);
         assertThat(termValues(semantic, "sharedBusinessDomains")).contains("Customers");
         assertThat(termValues(semantic, "sharedBusinessObjects")).contains("Invoice payer");
         assertThat(termValues(semantic, "sharedOutputLabels")).contains("Payer name", "Order id");
@@ -119,9 +119,9 @@ class EdgeDecorationTest {
                     assertThat(e.undirected()).isEqualTo(true);
                     assertThat(e.fromTable()).isEqualTo("EVENTS");
                     assertThat(e.toTable()).isEqualTo("SESSIONS");
-                    Map<String, Object> evidence = evidence(e);
-                    assertThat(evidence).doesNotContainKey("declaredSchema");
-                    assertThat(evidence).containsKey("observedQuery");
+                    RelationshipEvidence evidence = evidence(e);
+                    assertThat(evidence.declaredSchema()).isNull();
+                    assertThat(evidence.observedQuery()).isNotNull();
                 });
     }
 
@@ -150,8 +150,10 @@ class EdgeDecorationTest {
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), false);
 
         assertThat(edges).hasSize(1);
-        Map<String, Object> evidence = evidence(edges.get(0));
-        assertThat(evidence).containsOnlyKeys("declaredSchema");
+        RelationshipEvidence evidence = evidence(edges.get(0));
+        assertThat(evidence.declaredSchema()).isNotNull();
+        assertThat(evidence.observedQuery()).isNull();
+        assertThat(evidence.semanticUsage()).isNull();
     }
 
     // ---------------------------------------------------------------------------------------
@@ -173,16 +175,20 @@ class EdgeDecorationTest {
                 null);
     }
 
-    private static Map<String, Object> evidence(RelationshipEdge edge) {
-        Map<String, Object> raw = edge.evidence();
+    private static RelationshipEvidence evidence(RelationshipEdge edge) {
+        RelationshipEvidence raw = edge.evidence();
         assertThat(raw).as("edge evidence bundle").isNotNull();
         return raw;
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Object> termValues(Map<String, Object> semantic, String key) {
-        return ((List<Map<String, Object>>) semantic.get(key)).stream()
-                .map(row -> row.get("value"))
+    private static List<String> termValues(SemanticEdgeEvidence semantic, String key) {
+        return (switch (key) {
+            case "sharedBusinessDomains" -> semantic.sharedBusinessDomains();
+            case "sharedBusinessObjects" -> semantic.sharedBusinessObjects();
+            case "sharedOutputLabels" -> semantic.sharedOutputLabels();
+            default -> List.<ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence>of();
+        }).stream()
+                .map(term -> term.value())
                 .toList();
     }
 

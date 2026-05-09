@@ -1,7 +1,8 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
+
 import java.util.List;
-import java.util.Map;
 
 public record JoinPathStep(
         String direction,
@@ -14,6 +15,6 @@ public record JoinPathStep(
         String toTable,
         List<String> toColumns,
         String joinCondition,
-        Map<String, Object> evidence
+        RelationshipEvidence evidence
 ) {
 }

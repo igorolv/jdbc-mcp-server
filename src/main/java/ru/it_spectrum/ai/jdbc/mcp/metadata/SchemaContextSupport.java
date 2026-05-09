@@ -568,7 +568,7 @@ abstract class SchemaContextSupport {
             if (b == null) continue;
             RelationshipEvidence re = b.build();
             if (re.isEmpty()) continue;
-            edges.set(i, edge.withEvidence(re.toMap()));
+            edges.set(i, edge.withEvidence(re));
         }
     }
 
@@ -805,7 +805,7 @@ abstract class SchemaContextSupport {
     protected record GraphEdge(String direction, String relationshipType, String fkName,
                                String fromSchema, String fromTable, List<String> fromColumns,
                                String toSchema, String toTable, List<String> toColumns,
-                               Map<String, Object> evidence) {
+                               RelationshipEvidence evidence) {
 
         static GraphEdge forward(RelationshipEdge edge) {
             return new GraphEdge("forward",

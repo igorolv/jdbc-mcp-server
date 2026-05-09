@@ -70,7 +70,7 @@ class SchemaTableContextService extends SchemaContextSupport {
             CompactTable tableContext = compactTable(info, Boolean.TRUE.equals(includeStats));
             if (observed && usageCatalog != null && usageCatalog.enabled()) {
                 tableContext = tableContext.withEvidence(usageCatalog.tableEvidenceProfile(
-                        info.schema(), info.name()).toMap());
+                        info.schema(), info.name()));
             }
             tables.add(tableContext);
             for (RelationshipEdge edge : outgoingEdges(info)) {

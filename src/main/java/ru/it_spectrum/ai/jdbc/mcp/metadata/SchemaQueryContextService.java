@@ -42,7 +42,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
         List<String> tokens = queryTokens(terms);
 
         Map<String, TableDescription> selected = new LinkedHashMap<>();
-        Map<String, Map<String, Object>> semanticMatchesByTable = new LinkedHashMap<>();
+        Map<String, SemanticTableCandidate> semanticMatchesByTable = new LinkedHashMap<>();
         for (String tableName : requestedTables) {
             TableDescription described = metadata.describeTable(schema, tableName);
             selected.put(key(described.schema(), described.name()), described);
@@ -63,7 +63,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
                 }
                 String tableKey = key(described.schema(), described.name());
                 selected.putIfAbsent(tableKey, described);
-                semanticMatchesByTable.put(tableKey, candidate.toMap());
+                semanticMatchesByTable.put(tableKey, candidate);
             }
         }
 
@@ -104,9 +104,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
 
         return new QueryContext(schema, terms, requestedTables, samples,
                 tableContexts.size(),
-                semanticCandidates.stream()
-                        .map(SemanticTableCandidate::toMap)
-                        .toList(),
+                semanticCandidates,
                 tableContexts,
                 graphEdges(declaredEdges),
                 pairwiseJoinPaths(new ArrayList<>(selected.keySet()), declaredEdges));
@@ -114,7 +112,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
 
     private Map<String, Object> queryTableContext(TableDescription info, List<String> tokens,
                                                   boolean includeSamples,
-                                                  Map<String, Object> semanticMatch) {
+                                                  SemanticTableCandidate semanticMatch) {
         Map<String, Object> out = new LinkedHashMap<>();
         String schema = info.schema();
         String table = info.name();
