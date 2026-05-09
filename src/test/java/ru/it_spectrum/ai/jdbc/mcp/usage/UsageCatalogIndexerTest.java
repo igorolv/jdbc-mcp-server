@@ -119,7 +119,7 @@ class UsageCatalogIndexerTest {
             }
         };
         UsageCatalogIndexer indexer = new UsageCatalogIndexer(
-                properties(List.of()), new JdbcMcpProperties(""), service, new ObjectMapper(), List.of(source));
+                properties(List.of()), jdbcMcpProperties(), service, new ObjectMapper(), List.of(source));
 
         IndexerStatusResponse status = indexer.refreshBlocking();
 
@@ -131,14 +131,18 @@ class UsageCatalogIndexerTest {
 
     private UsageCatalogService service(List<String> paths) throws Exception {
         UsageProperties properties = properties(paths);
-        JdbcMcpProperties jdbcMcpProperties = new JdbcMcpProperties("");
+        JdbcMcpProperties jdbcMcpProperties = jdbcMcpProperties();
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
         return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
                 new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()));
     }
 
     private UsageCatalogIndexer indexer(UsageCatalogService service, List<String> paths) {
-        return new UsageCatalogIndexer(properties(paths), new JdbcMcpProperties(""), service, new ObjectMapper());
+        return new UsageCatalogIndexer(properties(paths), jdbcMcpProperties(), service, new ObjectMapper());
+    }
+
+    private JdbcMcpProperties jdbcMcpProperties() {
+        return new JdbcMcpProperties(tempDir.resolve("data").toString());
     }
 
     private static UsageProperties properties(List<String> paths) {
