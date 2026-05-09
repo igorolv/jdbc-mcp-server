@@ -1,8 +1,10 @@
 package ru.it_spectrum.ai.jdbc.mcp.plan;
 
+import ru.it_spectrum.ai.jdbc.mcp.model.plan.PlanAnalysisSummary;
+import ru.it_spectrum.ai.jdbc.mcp.model.plan.PlanNodeSummary;
+
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,39 +32,31 @@ public final class PlanAnalyzer {
 
     private PlanAnalyzer() {}
 
-    public static Map<String, Object> summarize(ParsedPlan plan) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("engine", plan.engine());
-        out.put("analyzed", plan.analyzed());
-        if (plan.planningTimeMs() != null)  out.put("planning_time_ms", plan.planningTimeMs());
-        if (plan.executionTimeMs() != null) out.put("execution_time_ms", plan.executionTimeMs());
-
+    public static PlanAnalysisSummary summarize(ParsedPlan plan) {
         List<PlanNode> all = new ArrayList<>();
         flatten(plan.root(), all);
-        out.put("node_count", all.size());
 
         PlanNode root = plan.root();
-        if (root != null) {
-            Map<String, Object> rootSummary = new LinkedHashMap<>();
-            rootSummary.put("node_type", root.nodeType());
-            if (root.totalCost() != null)     rootSummary.put("total_cost", root.totalCost());
-            if (root.estimatedRows() != null) rootSummary.put("estimated_rows", root.estimatedRows());
-            if (root.actualRows() != null)    rootSummary.put("actual_rows", root.actualRowsTotal());
-            if (root.actualTotalTimeMs() != null) rootSummary.put("actual_total_time_ms", root.actualTotalTimeMs());
-            out.put("root", rootSummary);
-        }
+        PlanNodeSummary rootSummary = root == null ? null : rootSummary(root);
 
-        out.put("top_expensive_nodes", topExpensive(all, 3, plan.analyzed()));
-        out.put("full_scans",          fullScans(all));
-        out.put("estimation_errors",   estimationErrors(all, plan.analyzed()));
-        out.put("risky_nested_loops",  riskyNestedLoops(all));
-        out.put("disk_spills",         diskSpills(all));
-        return out;
+        return new PlanAnalysisSummary(
+                plan.engine(),
+                plan.analyzed(),
+                plan.planningTimeMs(),
+                plan.executionTimeMs(),
+                all.size(),
+                rootSummary,
+                topExpensive(all, 3, plan.analyzed()),
+                fullScans(all),
+                estimationErrors(all, plan.analyzed()),
+                riskyNestedLoops(all),
+                diskSpills(all)
+        );
     }
 
     // ---------------- rules ----------------
 
-    private static List<Map<String, Object>> topExpensive(List<PlanNode> nodes, int n, boolean analyzed) {
+    private static List<PlanNodeSummary> topExpensive(List<PlanNode> nodes, int n, boolean analyzed) {
         Comparator<PlanNode> cmp;
         String metric;
         if (analyzed) {
@@ -81,24 +75,26 @@ public final class PlanAnalyzer {
                 .toList();
     }
 
-    private static List<Map<String, Object>> fullScans(List<PlanNode> nodes) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    private static List<PlanNodeSummary> fullScans(List<PlanNode> nodes) {
+        List<PlanNodeSummary> out = new ArrayList<>();
         for (PlanNode p : nodes) {
             if (!isFullScan(p)) continue;
             long rows = orZero(p.estimatedRows()).longValue();
             if (rows < FULL_SCAN_BIG_ROWS && orZero(p.actualRowsTotal()).longValue() < FULL_SCAN_BIG_ROWS) {
                 continue;
             }
-            Map<String, Object> entry = describeNode(p, null);
-            entry.put("reason", "large full scan (" + rows + " estimated rows)");
-            out.add(entry);
+            out.add(nodeSummary(
+                    p, null,
+                    "large full scan (" + rows + " estimated rows)",
+                    null, null, null, null, null, null
+            ));
         }
         return out;
     }
 
-    private static List<Map<String, Object>> estimationErrors(List<PlanNode> nodes, boolean analyzed) {
+    private static List<PlanNodeSummary> estimationErrors(List<PlanNode> nodes, boolean analyzed) {
         if (!analyzed) return List.of(); // can't compare estimate vs reality without ANALYZE
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<PlanNodeSummary> out = new ArrayList<>();
         for (PlanNode p : nodes) {
             Long est = p.estimatedRows();
             Long act = p.actualRowsTotal();
@@ -106,22 +102,21 @@ public final class PlanAnalyzer {
             if (est == 0 && act == 0) continue;
             double ratio = (Math.max(est, act) + 1.0) / (Math.min(est, act) + 1.0);
             if (ratio < EST_ERROR_FACTOR) continue;
-            Map<String, Object> entry = describeNode(p, null);
-            entry.put("estimated_rows", est);
-            entry.put("actual_rows", act);
-            entry.put("ratio", round(ratio, 1));
-            entry.put("reason", est < act
-                    ? "optimizer underestimated — stats may be stale or predicate is correlated"
-                    : "optimizer overestimated — filter removed most rows");
-            out.add(entry);
+            out.add(nodeSummary(
+                    p, null,
+                    est < act
+                            ? "optimizer underestimated — stats may be stale or predicate is correlated"
+                            : "optimizer overestimated — filter removed most rows",
+                    round(ratio, 1), null, null, null, null, null
+            ));
         }
         // Sort by ratio, largest first.
-        out.sort((a, b) -> Double.compare(toDouble(b.get("ratio")), toDouble(a.get("ratio"))));
+        out.sort(Comparator.comparingDouble((PlanNodeSummary n) -> orZero(n.ratio()).doubleValue()).reversed());
         return out;
     }
 
-    private static List<Map<String, Object>> riskyNestedLoops(List<PlanNode> nodes) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    private static List<PlanNodeSummary> riskyNestedLoops(List<PlanNode> nodes) {
+        List<PlanNodeSummary> out = new ArrayList<>();
         for (PlanNode p : nodes) {
             if (!"Nested Loop".equalsIgnoreCase(p.nodeType())
                     && !"NESTED LOOPS".equalsIgnoreCase(p.nodeType())
@@ -131,37 +126,38 @@ public final class PlanAnalyzer {
             long outerRows = orZero(outer.actualRowsTotal() != null
                     ? outer.actualRowsTotal() : outer.estimatedRows()).longValue();
             if (outerRows < NESTED_LOOP_BIG_OUTER_ROWS) continue;
-            Map<String, Object> entry = describeNode(p, null);
-            entry.put("outer_node_type", outer.nodeType());
-            entry.put("outer_rows", outerRows);
-            entry.put("reason", "Nested Loop with " + outerRows + " outer rows — " +
-                    "each outer row probes the inner side; hash/merge join may be cheaper");
-            out.add(entry);
+            out.add(nodeSummary(
+                    p, null,
+                    "Nested Loop with " + outerRows + " outer rows — " +
+                            "each outer row probes the inner side; hash/merge join may be cheaper",
+                    null, outer.nodeType(), outerRows, null, null, null
+            ));
         }
         return out;
     }
 
-    private static List<Map<String, Object>> diskSpills(List<PlanNode> nodes) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    private static List<PlanNodeSummary> diskSpills(List<PlanNode> nodes) {
+        List<PlanNodeSummary> out = new ArrayList<>();
         for (PlanNode p : nodes) {
             Map<String, Object> raw = p.raw();
             if (raw == null) continue;
             String sortMethod = firstString(raw, "Sort Method", "sort_method");
             if (sortMethod != null && sortMethod.toLowerCase(Locale.ROOT).contains("external")) {
-                Map<String, Object> e = describeNode(p, null);
-                e.put("sort_method", sortMethod);
-                e.put("sort_space_kb", raw.get("Sort Space Used"));
-                e.put("reason", "Sort spilled to disk (Sort Method: " + sortMethod + ") — " +
-                        "consider raising work_mem or reducing sort input");
-                out.add(e);
+                out.add(nodeSummary(
+                        p, null,
+                        "Sort spilled to disk (Sort Method: " + sortMethod + ") — " +
+                                "consider raising work_mem or reducing sort input",
+                        null, null, null, sortMethod, raw.get("Sort Space Used"), null
+                ));
                 continue;
             }
             String sortSpaceType = firstString(raw, "Sort Space Type", "sort_space_type");
             if ("Disk".equalsIgnoreCase(sortSpaceType)) {
-                Map<String, Object> e = describeNode(p, null);
-                e.put("sort_space_type", sortSpaceType);
-                e.put("reason", "Sort used disk — work_mem exhausted");
-                out.add(e);
+                out.add(nodeSummary(
+                        p, null,
+                        "Sort used disk — work_mem exhausted",
+                        null, null, null, null, null, sortSpaceType
+                ));
             }
         }
         return out;
@@ -187,16 +183,49 @@ public final class PlanAnalyzer {
                     && u.contains("FULL");
     }
 
-    private static Map<String, Object> describeNode(PlanNode p, String highlightMetric) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("node_type", p.nodeType());
-        if (p.relation() != null) m.put("relation", p.relation());
-        if (p.totalCost() != null) m.put("total_cost", p.totalCost());
-        if (p.estimatedRows() != null) m.put("estimated_rows", p.estimatedRows());
-        if (p.actualRowsTotal() != null) m.put("actual_rows", p.actualRowsTotal());
-        if (p.actualTotalTimeMs() != null) m.put("actual_total_time_ms", p.actualTotalTimeMs());
-        if (highlightMetric != null) m.put("ranked_by", highlightMetric);
-        return m;
+    private static PlanNodeSummary rootSummary(PlanNode p) {
+        return new PlanNodeSummary(
+                p.nodeType(),
+                null,
+                p.totalCost(),
+                p.estimatedRows(),
+                p.actualRows() == null ? null : p.actualRowsTotal(),
+                p.actualTotalTimeMs(),
+                null, null, null, null, null, null, null, null
+        );
+    }
+
+    private static PlanNodeSummary describeNode(PlanNode p, String highlightMetric) {
+        return nodeSummary(p, highlightMetric, null, null, null, null, null, null, null);
+    }
+
+    private static PlanNodeSummary nodeSummary(
+            PlanNode p,
+            String highlightMetric,
+            String reason,
+            Double ratio,
+            String outerNodeType,
+            Long outerRows,
+            String sortMethod,
+            Object sortSpaceKb,
+            String sortSpaceType
+    ) {
+        return new PlanNodeSummary(
+                p.nodeType(),
+                p.relation(),
+                p.totalCost(),
+                p.estimatedRows(),
+                p.actualRowsTotal(),
+                p.actualTotalTimeMs(),
+                highlightMetric,
+                reason,
+                ratio,
+                outerNodeType,
+                outerRows,
+                sortMethod,
+                sortSpaceKb,
+                sortSpaceType
+        );
     }
 
     private static void flatten(PlanNode node, List<PlanNode> out) {
@@ -210,12 +239,6 @@ public final class PlanAnalyzer {
     private static double round(double v, int digits) {
         double f = Math.pow(10, digits);
         return Math.round(v * f) / f;
-    }
-
-    private static double toDouble(Object o) {
-        if (o instanceof Number n) return n.doubleValue();
-        if (o == null) return 0.0;
-        try { return Double.parseDouble(o.toString()); } catch (NumberFormatException e) { return 0.0; }
     }
 
     private static String firstString(Map<String, Object> raw, String... keys) {
