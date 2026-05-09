@@ -143,7 +143,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **41 read-only MCP tools**.
+The server exposes **51 read-only MCP tools**.
 
 ### Query tools
 
@@ -238,6 +238,38 @@ not cached. Hard cap on entries: `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000
 | `refreshSchemaSnapshot` | Invalidate and eagerly re-warm the cache. With `table` — only that table; with `schema` — all tables in the schema; with neither — full clear (no warm). Params: `schema`, `table`, `maxTables` (default 300) |
 | `invalidateSnapshot` | Drop cached entries without re-warming. Params: `schema`, `table` |
 
+### Usage catalog tools
+
+The usage catalog indexes known application SQL queries (from JSON/ZIP files) and the database's
+own views/routines into a runtime H2 store. It enables the agent to discover how tables and
+columns are used in practice — what queries reference them, what join patterns exist, and what
+business context they belong to.
+
+Configured via environment variables:
+- `JDBC_USAGE_CATALOG_ENABLED` (default `true`) — master switch
+- `JDBC_USAGE_CATALOG_PATHS` — comma-separated paths to JSON/ZIP files with `QueryUsage` records
+- `JDBC_USAGE_DATA_SOURCE_ID` (default `database`) — logical name for the inspected database
+- `JDBC_USAGE_INDEX_ON_STARTUP` / `JDBC_USAGE_INDEX_BACKGROUND` (both default `true`)
+- `JDBC_USAGE_NATIVE_CATALOG_ENABLED` (default `true`) — index the database's own views/routines
+
+Called methods return `{"catalog_enabled":false,"rows":[]}` when the catalog is off.
+
+| Tool | Description |
+|---|---|
+| `usageCatalogStatus` | Runtime index status: configured sources, indexing state, record/parse-failure/duplicate counts |
+| `refreshUsageCatalog` | Rebuild the index from configured paths (immediate or background depending on config) |
+| `getQuery` | Full stored record for one query uid (`{dataSource}/{path}#{unit}`): SQL, parameters, parsed tables/columns/joins, outputs, field usages |
+| `listQueries` | List stored queries with filters: `dataSource`, `sourcePath` (LIKE), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `limit`, `offset` |
+| `findQueriesByTable` | Find queries referencing a table (case-insensitive, alias-expanded). Params: `schema`, `table` |
+| `findQueriesByColumn` | Find queries referencing a column, with usage context (`select`, `where`, `join`, `order_by`, `having`). Params: `schema`, `table`, `column` |
+| `observedRelationships` | Aggregate equi-join pairs across all queries: `(left_table.left_col = right_table.right_col)` with support count and contributing query uids. Params: `schema`, `table`, `minSupport` |
+| `reresolveQueries` | Re-resolve unqualified table references in stored queries against the live JDBC schema. Params: `dataSource` |
+| `listKnownTags` | Business tags with their query counts — reuse existing vocabulary. Params: `dataSource` |
+| `listKnownDomains` | Business domains with their query counts. Params: `dataSource` |
+
+These tools feed the `evidence` bundle (`observedQuery` / `semanticUsage` layers) in
+`schemaOverview`, `tableContext`, and `findJoinPaths` when `includeObserved=true`.
+
 All tools are **read-only**. Any attempt to run a non-SELECT statement is rejected by the
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
 read-only, and PostgreSQL uses `default_transaction_read_only=on`. On Oracle and SQL Server,
@@ -278,11 +310,13 @@ Recommended flow when the user asks a data question:
 2. If a single table is the focus, call `describeTable` — one call returns columns, PK, FKs,
    indexes, constraints, allowed values from CHECKs, and triggers.
 3. Optionally call `sampleRows` to peek at actual data shape.
-4. Write the SQL and call `inspectQuery`, `queryLint`, or `resolveQueryLineage` when you want an AST/metadata/lineage sanity pass before touching the database.
-5. Call `validateQuery` with the same `params` / `namedParams` you intend to use for execution — fix errors without wasting executions.
-6. Call `analyzePlan` (compact LLM-friendly summary) or `explainQuery` (full textual plan) if the query might be expensive.
-7. Call `executeQuery`. Use `limit` to keep the response small.
-8. If the response has `"truncated": true`, either narrow the query or raise `limit`.
+4. If the usage catalog is enabled, call `findQueriesByTable` or `findQueriesByColumn` to see
+   how other queries reference the same tables — learn existing join patterns, filters, and business context.
+5. Write the SQL and call `inspectQuery`, `queryLint`, or `resolveQueryLineage` when you want an AST/metadata/lineage sanity pass before touching the database.
+6. Call `validateQuery` with the same `params` / `namedParams` you intend to use for execution — fix errors without wasting executions.
+7. Call `analyzePlan` (compact LLM-friendly summary) or `explainQuery` (full textual plan) if the query might be expensive.
+8. Call `executeQuery`. Use `limit` to keep the response small.
+9. If the response has `"truncated": true`, either narrow the query or raise `limit`.
 
 Recommended flow when the user asks to optimise / audit queries or schema:
 
