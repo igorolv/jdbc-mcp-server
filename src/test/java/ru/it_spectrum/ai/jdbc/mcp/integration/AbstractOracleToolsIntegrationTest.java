@@ -56,7 +56,7 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
             String schema = ORACLE.getUsername().toUpperCase();
             JdbcProperties properties = new JdbcProperties(
                     ORACLE.getJdbcUrl(), ORACLE.getUsername(), ORACLE.getPassword(),
-                    schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 300, 2000);
+                    schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000, 300, 2000);
             DataSource dataSource = buildPool(properties);
             SqlDialect dialect = new OracleDialect();
             ReadOnlyGuard guard = new ReadOnlyGuard(properties);

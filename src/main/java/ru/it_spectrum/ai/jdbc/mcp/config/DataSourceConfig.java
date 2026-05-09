@@ -38,6 +38,15 @@ public class DataSourceConfig {
 
     @Bean(destroyMethod = "close")
     public DataSource dataSource(JdbcProperties properties, DatabaseKind kind) {
+        HikariConfig hikari = buildHikariConfig(properties, kind);
+
+        log.info("Creating lazy read-only JDBC pool (url={}, user={}, maxSize={}, minIdle={})",
+                maskUrl(hikari.getJdbcUrl()), properties.username(),
+                hikari.getMaximumPoolSize(), hikari.getMinimumIdle());
+        return new HikariDataSource(hikari);
+    }
+
+    static HikariConfig buildHikariConfig(JdbcProperties properties, DatabaseKind kind) {
         HikariConfig hikari = new HikariConfig();
         hikari.setPoolName("jdbc-mcp-pool");
         hikari.setJdbcUrl(applyDialectUrlTweaks(properties.url(), kind));
@@ -49,14 +58,14 @@ public class DataSourceConfig {
         hikari.setMinimumIdle(Math.max(0, Math.min(properties.poolMinimumIdle(), properties.poolMaximumSize())));
         hikari.setConnectionTimeout(Math.max(250L, properties.connectionTimeoutMs()));
         hikari.setValidationTimeout(Math.max(250L, properties.validationTimeoutMs()));
+        hikari.setIdleTimeout(Math.max(10_000L, properties.idleTimeoutMs()));
+        hikari.setInitializationFailTimeout(-1);
 
         if (properties.defaultSchema() != null && !properties.defaultSchema().isBlank()) {
             hikari.setSchema(properties.defaultSchema());
         }
 
-        log.info("Creating read-only JDBC pool (url={}, user={})",
-                maskUrl(hikari.getJdbcUrl()), properties.username());
-        return new HikariDataSource(hikari);
+        return hikari;
     }
 
     /**

@@ -232,8 +232,8 @@ zip archives are scanned for JSON entries. Set `JDBC_USAGE_CATALOG_ENABLED=false
 catalog: lookup tools return empty results with `catalog_enabled: false` so the agent can degrade
 gracefully.
 
-**Database-native usage.** By default, the catalog also indexes supported database objects from the
-default schema:
+**Database-native usage.** Optionally, the catalog can also index supported database objects from
+the default schema:
 
 - views / materialized views as `source.kind="database-view"` or
   `source.kind="database-materialized-view"`;
@@ -245,8 +245,8 @@ Views usually contribute fully parsed table, column and join evidence. Routine a
 are engine-specific, so the indexer first uses an ANTLR-based procedural pre-extractor to find
 embedded `SELECT` / `WITH` / `INSERT` / `UPDATE` / `DELETE` / `MERGE` statements, then feeds those
 statements into the existing JSqlParser analysis pipeline. If no embedded statement is found, the
-object is still kept as a provenance record. Set `JDBC_USAGE_NATIVE_CATALOG_ENABLED=false` to
-disable this source, or `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to scan explicit schemas.
+object is still kept as a provenance record. Set `JDBC_USAGE_NATIVE_CATALOG_ENABLED=true` to
+enable this source, or `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to scan explicit schemas.
 
 **Runtime index.** By default the server starts quickly and builds the usage index in the
 background (`JDBC_USAGE_INDEX_ON_STARTUP=true`, `JDBC_USAGE_INDEX_BACKGROUND=true`). The index is
@@ -525,9 +525,10 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_FETCH_SIZE` | no | JDBC `fetchSize`, default `500` |
 | `JDBC_READONLY_GUARD` | no | `strict` by default, or `off` |
 | `JDBC_POOL_MAX_SIZE` | no | Hikari maximum pool size, default `40` |
-| `JDBC_POOL_MIN_IDLE` | no | Hikari minimum idle connections, default `1` |
+| `JDBC_POOL_MIN_IDLE` | no | Hikari minimum idle connections, default `0`; with the default lazy pool settings, database connections are opened only when a tool first needs one |
 | `JDBC_CONNECTION_TIMEOUT_MS` | no | Hikari connection checkout timeout in milliseconds, default `10000` |
 | `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
+| `JDBC_POOL_IDLE_TIMEOUT_MS` | no | Hikari idle connection timeout in milliseconds, default `60000`; idle connections above `JDBC_POOL_MIN_IDLE` are closed after this |
 | `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog (see *Usage Catalog* above), default `true`. When `false`, lookup tools return empty results with `catalog_enabled: false` |
 | `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |
 | `JDBC_USAGE_DATA_SOURCE_ID` | no | Logical `dataSource` used for automatically derived database-native usage records, default `database`. `/` and `#` are normalized to `_` |
@@ -535,7 +536,7 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_USAGE_INDEX_BACKGROUND` | no | Build/refresh the runtime usage index in a background thread, default `true` |
 | `JDBC_USAGE_INDEX_DISK_CACHE_ENABLED` | no | Reserved for derived index cache, default `false` |
 | `JDBC_USAGE_INDEX_CACHE_PATH` | no | Reserved cache location, default `${user.home}/.jdbc-mcp/usage-index-cache` |
-| `JDBC_USAGE_NATIVE_CATALOG_ENABLED` | no | Include database-native usage records from views, routines and triggers, default `true` |
+| `JDBC_USAGE_NATIVE_CATALOG_ENABLED` | no | Include database-native usage records from views, routines and triggers, default `false`; enabling it may open a database connection during usage-catalog indexing |
 | `JDBC_USAGE_NATIVE_SCHEMAS` | no | Comma-separated schemas to scan for native usage. When omitted, the resolved default schema is scanned |
 | `JDBC_USAGE_NATIVE_INCLUDE_VIEWS` | no | Include views/materialized views in native usage, default `true` |
 | `JDBC_USAGE_NATIVE_INCLUDE_ROUTINES` | no | Include functions/procedures in native usage, default `true` |

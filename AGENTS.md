@@ -70,8 +70,9 @@ Optionally:
 - **Per-statement timeout** — `JDBC_QUERY_TIMEOUT_SECONDS` (default 30, `0` disables).
 - **Row cap** — `JDBC_MAX_ROWS` (default 1000); responses include `truncated: true` when hit.
 - **Read-only guard** — `JDBC_READONLY_GUARD` (`strict` default, `off` disables the client-side check; connection-level read-only flags stay on, with Oracle and SQL Server treating them as best-effort).
-- **JDBC pool settings** — `JDBC_POOL_MAX_SIZE` (default 40), `JDBC_POOL_MIN_IDLE` (default 1),
-  `JDBC_CONNECTION_TIMEOUT_MS` (default 10000), and `JDBC_VALIDATION_TIMEOUT_MS` (default 5000).
+- **JDBC pool settings** — `JDBC_POOL_MAX_SIZE` (default 40), `JDBC_POOL_MIN_IDLE` (default 0),
+  `JDBC_CONNECTION_TIMEOUT_MS` (default 10000), `JDBC_VALIDATION_TIMEOUT_MS` (default 5000),
+  and `JDBC_POOL_IDLE_TIMEOUT_MS` (default 60000).
 - **Metadata snapshot cache** — `JDBC_METADATA_CACHE_TTL_SECONDS` (default 300, `0` disables) and
   `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000). Caches structural metadata only; live stats are not cached.
 
@@ -254,7 +255,7 @@ Configured via environment variables:
   These are additional to the default `{dataDir}/usage-catalog` directory.
 - `JDBC_USAGE_DATA_SOURCE_ID` (default `database`) — logical name for the inspected database
 - `JDBC_USAGE_INDEX_ON_STARTUP` / `JDBC_USAGE_INDEX_BACKGROUND` (both default `true`)
-- `JDBC_USAGE_NATIVE_CATALOG_ENABLED` (default `true`) — index the database's own views/routines
+- `JDBC_USAGE_NATIVE_CATALOG_ENABLED` (default `false`) — index the database's own views/routines
 
 Called methods return `{"catalog_enabled":false,"rows":[]}` when the catalog is off.
 

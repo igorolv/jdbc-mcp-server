@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.config;
 
+import com.zaxxer.hikari.HikariConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,5 +57,32 @@ class DatabaseKindTest {
         assertThat(DataSourceConfig.applyDialectUrlTweaks(url, DatabaseKind.ORACLE)).isEqualTo(url);
         String sqlServer = "jdbc:sqlserver://host:1433;databaseName=db";
         assertThat(DataSourceConfig.applyDialectUrlTweaks(sqlServer, DatabaseKind.MSSQL)).isEqualTo(sqlServer);
+    }
+
+    @Test
+    void buildHikariConfigDoesNotOpenConnectionsOnStartup() {
+        JdbcProperties properties = new JdbcProperties(
+                "jdbc:oracle:thin:@//host/svc",
+                "readonly",
+                "secret",
+                "",
+                30,
+                1000,
+                500,
+                "strict",
+                40,
+                0,
+                10000,
+                5000,
+                60000,
+                300,
+                2000);
+
+        HikariConfig config = DataSourceConfig.buildHikariConfig(properties, DatabaseKind.ORACLE);
+
+        assertThat(config.getMinimumIdle()).isZero();
+        assertThat(config.getMaximumPoolSize()).isEqualTo(40);
+        assertThat(config.getIdleTimeout()).isEqualTo(60_000);
+        assertThat(config.getInitializationFailTimeout()).isEqualTo(-1);
     }
 }

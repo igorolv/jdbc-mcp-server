@@ -29,9 +29,10 @@ jdbc:
   fetch-size: ${JDBC_FETCH_SIZE:500}
   readonly-guard: ${JDBC_READONLY_GUARD:strict}
   pool-maximum-size: ${JDBC_POOL_MAX_SIZE:40}
-  pool-minimum-idle: ${JDBC_POOL_MIN_IDLE:1}
+  pool-minimum-idle: ${JDBC_POOL_MIN_IDLE:0}
   connection-timeout-ms: ${JDBC_CONNECTION_TIMEOUT_MS:10000}
   validation-timeout-ms: ${JDBC_VALIDATION_TIMEOUT_MS:5000}
+  idle-timeout-ms: ${JDBC_POOL_IDLE_TIMEOUT_MS:60000}
   metadata-cache-ttl-seconds: ${JDBC_METADATA_CACHE_TTL_SECONDS:300}
   metadata-cache-max-entries: ${JDBC_METADATA_CACHE_MAX_ENTRIES:2000}
 
@@ -44,7 +45,7 @@ usage:
   index-on-startup: ${JDBC_USAGE_INDEX_ON_STARTUP:true}
   index-background: ${JDBC_USAGE_INDEX_BACKGROUND:true}
   index-disk-cache-enabled: ${JDBC_USAGE_INDEX_DISK_CACHE_ENABLED:false}
-  native-catalog-enabled: ${JDBC_USAGE_NATIVE_CATALOG_ENABLED:true}
+  native-catalog-enabled: ${JDBC_USAGE_NATIVE_CATALOG_ENABLED:false}
   native-schemas: ${JDBC_USAGE_NATIVE_SCHEMAS:}
   native-include-views: ${JDBC_USAGE_NATIVE_INCLUDE_VIEWS:true}
   native-include-routines: ${JDBC_USAGE_NATIVE_INCLUDE_ROUTINES:true}

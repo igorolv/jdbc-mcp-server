@@ -57,7 +57,7 @@ abstract class AbstractSqlServerToolsIntegrationTest extends AbstractToolsIntegr
 
             JdbcProperties properties = new JdbcProperties(
                     MSSQL.getJdbcUrl(), MSSQL.getUsername(), MSSQL.getPassword(),
-                    "dbo", 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 300, 2000);
+                    "dbo", 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000, 300, 2000);
             DataSource dataSource = buildPool(properties);
             SqlDialect dialect = new SqlServerDialect();
             ReadOnlyGuard guard = new ReadOnlyGuard(properties);
