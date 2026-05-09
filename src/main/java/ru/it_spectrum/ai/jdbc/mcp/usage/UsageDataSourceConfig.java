@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import org.springframework.core.io.ClassPathResource;
 import org.h2.jdbcx.JdbcDataSource;
@@ -37,7 +38,8 @@ public class UsageDataSourceConfig {
     private static final String SCHEMA_RESOURCE = "usage-catalog-schema.sql";
 
     @Bean
-    public DataSource usageDataSource(UsageProperties properties) throws IOException, SQLException {
+    public DataSource usageDataSource(UsageProperties properties, JdbcMcpProperties jdbcMcpProperties)
+            throws IOException, SQLException {
         JdbcDataSource ds = new JdbcDataSource();
         ds.setURL("jdbc:h2:mem:usage_catalog_" + UUID.randomUUID()
                 + ";MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1");
@@ -45,7 +47,7 @@ public class UsageDataSourceConfig {
         initialiseSchema(ds);
 
         log.info("Usage catalog runtime index ready (enabled={}, sources={})",
-                properties.catalogEnabled(), properties.resolvedCatalogPaths());
+                properties.catalogEnabled(), jdbcMcpProperties.usageCatalogDir());
         return ds;
     }
 

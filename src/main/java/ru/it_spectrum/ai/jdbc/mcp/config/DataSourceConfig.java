@@ -24,7 +24,7 @@ import javax.sql.DataSource;
  * </ul>
  */
 @Configuration
-@EnableConfigurationProperties(JdbcProperties.class)
+@EnableConfigurationProperties({JdbcProperties.class, JdbcMcpProperties.class})
 public class DataSourceConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);

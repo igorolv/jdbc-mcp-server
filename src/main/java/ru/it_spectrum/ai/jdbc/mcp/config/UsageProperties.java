@@ -18,9 +18,10 @@ import java.util.List;
  * <p>Writes are local-only and affect only the runtime index. The inspected JDBC database remains
  * strictly read-only.
  *
- * @param catalogEnabled when {@code false}, ingest tools return a {@code disabled} error and
- *                       lookup tools return empty results with {@code catalog_enabled=false}
- * @param catalogPaths   directories, JSON files, or zip archives to scan for canonical records.
+ * @param catalogEnabled       when {@code false}, ingest tools return a {@code disabled} error and
+ *                             lookup tools return empty results with {@code catalog_enabled=false}
+ * @param catalogPaths         additional directories, JSON files, or zip archives (on top of the
+ *                             default {@code {jdbc-mcp.data-dir}/usage-catalog})
  */
 @ConfigurationProperties(prefix = "usage")
 public record UsageProperties(
@@ -29,7 +30,6 @@ public record UsageProperties(
         boolean indexOnStartup,
         boolean indexBackground,
         boolean indexDiskCacheEnabled,
-        String indexCachePath,
         String dataSourceId,
         boolean nativeCatalogEnabled,
         List<String> nativeSchemas,
@@ -52,18 +52,26 @@ public record UsageProperties(
         }
     }
 
+    /**
+     * Convenience constructor used by tests and the deprecated secondary constructor.
+     */
     public UsageProperties(boolean catalogEnabled,
                            List<String> catalogPaths,
                            boolean indexOnStartup,
                            boolean indexBackground,
                            boolean indexDiskCacheEnabled,
-                           String indexCachePath) {
+                           String unused) {
         this(catalogEnabled, catalogPaths, indexOnStartup, indexBackground,
-                indexDiskCacheEnabled, indexCachePath, "database",
+                indexDiskCacheEnabled, "database",
                 false, List.of(), true, true, true, 1_000);
     }
 
-    public List<Path> resolvedCatalogPaths() {
+    /**
+     * Parse additional catalog paths from the configured comma-separated strings.
+     * Does NOT include the default {@code {dataDir}/usage-catalog} — consumers must
+     * combine this with {@link JdbcMcpProperties#usageCatalogDir()}.
+     */
+    public List<Path> additionalCatalogPaths() {
         List<Path> out = new ArrayList<>();
         for (String raw : catalogPaths) {
             if (raw == null || raw.isBlank()) continue;
@@ -72,17 +80,6 @@ public record UsageProperties(
             }
         }
         return List.copyOf(out);
-    }
-
-    public Path resolvedIndexCachePath() {
-        if (indexCachePath != null && !indexCachePath.isBlank()) {
-            return Paths.get(indexCachePath);
-        }
-        String home = System.getProperty("user.home");
-        if (home == null || home.isBlank()) {
-            home = ".";
-        }
-        return Paths.get(home, ".jdbc-mcp", "usage-index-cache");
     }
 
     public String effectiveDataSourceId() {

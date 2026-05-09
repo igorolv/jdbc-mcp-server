@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
@@ -118,7 +119,7 @@ class UsageCatalogIndexerTest {
             }
         };
         UsageCatalogIndexer indexer = new UsageCatalogIndexer(
-                properties(List.of()), service, new ObjectMapper(), List.of(source));
+                properties(List.of()), new JdbcMcpProperties(""), service, new ObjectMapper(), List.of(source));
 
         IndexerStatusResponse status = indexer.refreshBlocking();
 
@@ -130,13 +131,14 @@ class UsageCatalogIndexerTest {
 
     private UsageCatalogService service(List<String> paths) throws Exception {
         UsageProperties properties = properties(paths);
-        DataSource ds = new UsageDataSourceConfig().usageDataSource(properties);
+        JdbcMcpProperties jdbcMcpProperties = new JdbcMcpProperties("");
+        DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
         return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
                 new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()));
     }
 
     private UsageCatalogIndexer indexer(UsageCatalogService service, List<String> paths) {
-        return new UsageCatalogIndexer(properties(paths), service, new ObjectMapper());
+        return new UsageCatalogIndexer(properties(paths), new JdbcMcpProperties(""), service, new ObjectMapper());
     }
 
     private static UsageProperties properties(List<String> paths) {

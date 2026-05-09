@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
@@ -34,20 +35,24 @@ public class UsageCatalogIndexer implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(UsageCatalogIndexer.class);
 
     private final UsageProperties properties;
+    private final JdbcMcpProperties jdbcMcpProperties;
     private final UsageCatalogService service;
     private final ObjectMapper mapper;
     private final List<UsageCatalogSource> catalogSources;
     private final AtomicBoolean indexing = new AtomicBoolean(false);
     private volatile IndexerStatusResponse status;
 
-    public UsageCatalogIndexer(UsageProperties properties, UsageCatalogService service, ObjectMapper mapper) {
-        this(properties, service, mapper, List.of());
+    public UsageCatalogIndexer(UsageProperties properties, JdbcMcpProperties jdbcMcpProperties,
+                               UsageCatalogService service, ObjectMapper mapper) {
+        this(properties, jdbcMcpProperties, service, mapper, List.of());
     }
 
     @Autowired
-    public UsageCatalogIndexer(UsageProperties properties, UsageCatalogService service, ObjectMapper mapper,
+    public UsageCatalogIndexer(UsageProperties properties, JdbcMcpProperties jdbcMcpProperties,
+                               UsageCatalogService service, ObjectMapper mapper,
                                List<UsageCatalogSource> catalogSources) {
         this.properties = properties;
+        this.jdbcMcpProperties = jdbcMcpProperties;
         this.service = service;
         this.mapper = mapper;
         this.catalogSources = catalogSources == null ? List.of() : List.copyOf(catalogSources);
@@ -113,7 +118,7 @@ public class UsageCatalogIndexer implements ApplicationRunner {
         var sources = configuredSources();
         var startedAt = Instant.ofEpochMilli(started).toString();
         var diskCacheEnabled = properties.indexDiskCacheEnabled();
-        var diskCachePath = properties.resolvedIndexCachePath().toString();
+        var diskCachePath = jdbcMcpProperties.usageIndexCacheDir().toString();
         try {
             var rebuildResult = service.rebuild(loaded.records());
             status = IndexerStatusResponse.ready(
@@ -148,12 +153,12 @@ public class UsageCatalogIndexer implements ApplicationRunner {
         }
     }
 
-    private LoadResult loadRecords() {
+private LoadResult loadRecords() {
         Map<String, QueryUsage> records = new LinkedHashMap<>();
         Set<String> duplicateUids = new LinkedHashSet<>();
         List<String> errors = new ArrayList<>();
         int[] filesScanned = {0};
-        for (Path source : properties.resolvedCatalogPaths()) {
+        for (Path source : resolvedCatalogPaths()) {
             try {
                 loadSource(source, records, duplicateUids, errors, filesScanned);
             } catch (RuntimeException | IOException e) {
@@ -236,7 +241,7 @@ public class UsageCatalogIndexer implements ApplicationRunner {
                 properties.catalogEnabled(),
                 configuredSources(),
                 properties.indexDiskCacheEnabled(),
-                properties.resolvedIndexCachePath().toString()
+                jdbcMcpProperties.usageIndexCacheDir().toString()
         );
     }
 
@@ -251,15 +256,25 @@ public class UsageCatalogIndexer implements ApplicationRunner {
             return;
         }
         records.put(uid, usage);
-    }
+}
 
     private List<String> configuredSources() {
         List<String> out = new ArrayList<>(
-                properties.resolvedCatalogPaths().stream().map(Path::toString).toList());
+                resolvedCatalogPaths().stream().map(Path::toString).toList());
         for (UsageCatalogSource source : catalogSources) {
             out.add(source.name());
         }
         return List.copyOf(out);
+    }
+
+    private List<Path> resolvedCatalogPaths() {
+        List<Path> paths = new ArrayList<>();
+        Path defaultDir = jdbcMcpProperties.usageCatalogDir();
+        if (Files.isDirectory(defaultDir)) {
+            paths.add(defaultDir);
+        }
+        paths.addAll(properties.additionalCatalogPaths());
+        return List.copyOf(paths);
     }
 
     private static List<String> appendError(List<String> errors, String error) {

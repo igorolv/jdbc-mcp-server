@@ -15,6 +15,10 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 
+# Top-level server data directory — all local storage is rooted here.
+jdbc-mcp:
+  data-dir: ${JDBC_MCP_DATA_DIR:}
+
 jdbc:
   url: ${JDBC_URL:}
   username: ${JDBC_USERNAME:}
@@ -33,13 +37,13 @@ jdbc:
 
 usage:
   catalog-enabled: ${JDBC_USAGE_CATALOG_ENABLED:true}
-  # Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON.
+  # Additional directories, JSON files, or zip archives with canonical QueryUsage records.
+  # The default {dataDir}/usage-catalog is always included.
   catalog-paths: ${JDBC_USAGE_CATALOG_PATHS:}
   data-source-id: ${JDBC_USAGE_DATA_SOURCE_ID:database}
   index-on-startup: ${JDBC_USAGE_INDEX_ON_STARTUP:true}
   index-background: ${JDBC_USAGE_INDEX_BACKGROUND:true}
   index-disk-cache-enabled: ${JDBC_USAGE_INDEX_DISK_CACHE_ENABLED:false}
-  index-cache-path: ${JDBC_USAGE_INDEX_CACHE_PATH:}
   native-catalog-enabled: ${JDBC_USAGE_NATIVE_CATALOG_ENABLED:true}
   native-schemas: ${JDBC_USAGE_NATIVE_SCHEMAS:}
   native-include-views: ${JDBC_USAGE_NATIVE_INCLUDE_VIEWS:true}

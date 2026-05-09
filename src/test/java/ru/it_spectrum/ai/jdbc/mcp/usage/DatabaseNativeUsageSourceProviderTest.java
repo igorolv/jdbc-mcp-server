@@ -95,7 +95,6 @@ class DatabaseNativeUsageSourceProviderTest {
                 false,
                 false,
                 false,
-                "",
                 "SHOP",
                 nativeEnabled,
                 List.of(),

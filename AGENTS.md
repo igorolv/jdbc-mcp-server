@@ -61,6 +61,9 @@ Before building, ask the user for:
 
 Optionally:
 
+- **Data directory** — `JDBC_MCP_DATA_DIR` (default `~/.jdbc-mcp-server`). All server-local data
+  lives under this root: `usage-catalog/` (catalog source files), `usage-index-cache/` (H2 disk cache),
+  and `logs/` (future). Each subdirectory is hardcoded and not individually configurable.
 - **Default schema** for metadata tools (`JDBC_DEFAULT_SCHEMA`). If omitted, the server uses the
   connection's current schema. On Oracle, this defaults to the connecting user's schema (UPPER CASE).
   On SQL Server, this is normally the login user's default schema (often `dbo`).
@@ -247,7 +250,8 @@ business context they belong to.
 
 Configured via environment variables:
 - `JDBC_USAGE_CATALOG_ENABLED` (default `true`) — master switch
-- `JDBC_USAGE_CATALOG_PATHS` — comma-separated paths to JSON/ZIP files with `QueryUsage` records
+- `JDBC_USAGE_CATALOG_PATHS` — comma-separated paths to JSON/ZIP files with `QueryUsage` records.
+  These are additional to the default `{dataDir}/usage-catalog` directory.
 - `JDBC_USAGE_DATA_SOURCE_ID` (default `database`) — logical name for the inspected database
 - `JDBC_USAGE_INDEX_ON_STARTUP` / `JDBC_USAGE_INDEX_BACKGROUND` (both default `true`)
 - `JDBC_USAGE_NATIVE_CATALOG_ENABLED` (default `true`) — index the database's own views/routines
