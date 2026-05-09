@@ -4,6 +4,8 @@ import net.sf.jsqlparser.JSQLParserException;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryWarning;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
 
 import java.sql.SQLException;
@@ -52,7 +54,7 @@ public class QueryLintService {
         }
 
         Map<String, TableInfo> tables = loadTables(model, schema);
-        List<Map<String, Object>> warnings = new ArrayList<>();
+        List<QueryWarning> warnings = new ArrayList<>();
         warnings.addAll(model.warnings);
 
         if (model.hasSelectStar) {
@@ -98,9 +100,9 @@ public class QueryLintService {
     }
 
     private void lintColumns(QueryAnalysisService.QueryModel model, Map<String, TableInfo> tables,
-                             List<Map<String, Object>> warnings) {
-        for (Map<String, Object> column : model.columns) {
-            String name = str(column.get("name"));
+                             List<QueryWarning> warnings) {
+        for (QueryColumnRef column : model.columns) {
+            String name = str(column.name());
             if (name == null || "*".equals(name)) continue;
             TableInfo table = resolveColumnTable(column, model, tables);
             if (table == null || !table.exists()) continue;
@@ -112,11 +114,11 @@ public class QueryLintService {
     }
 
     private void lintIndexes(QueryAnalysisService.QueryModel model, Map<String, TableInfo> tables,
-                             List<Map<String, Object>> warnings) {
-        for (Map<String, Object> column : model.columns) {
-            String context = str(column.get("context"));
+                             List<QueryWarning> warnings) {
+        for (QueryColumnRef column : model.columns) {
+            String context = str(column.context());
             if (!"where".equals(context) && !"having".equals(context) && !"order_by".equals(context)) continue;
-            String name = str(column.get("name"));
+            String name = str(column.name());
             if (name == null) continue;
             TableInfo table = resolveColumnTable(column, model, tables);
             if (table == null || !table.exists() || !table.hasColumn(name)) continue;
@@ -130,7 +132,7 @@ public class QueryLintService {
     }
 
     private void lintFkCoverage(QueryAnalysisService.QueryModel model, String schema,
-                                List<Map<String, Object>> warnings) throws SQLException {
+                                List<QueryWarning> warnings) throws SQLException {
         Set<String> scanned = new LinkedHashSet<>();
         for (String tableName : model.physicalTableNames()) {
             if (!scanned.add(norm(tableName))) continue;
@@ -147,9 +149,9 @@ public class QueryLintService {
         }
     }
 
-    private TableInfo resolveColumnTable(Map<String, Object> column, QueryAnalysisService.QueryModel model,
+    private TableInfo resolveColumnTable(QueryColumnRef column, QueryAnalysisService.QueryModel model,
                                          Map<String, TableInfo> tables) {
-        String qualifier = str(column.get("qualifier"));
+        String qualifier = str(column.qualifier());
         if (qualifier != null) {
             String target = model.aliases.get(qualifier);
             if (target == null) target = qualifier;
@@ -174,26 +176,22 @@ public class QueryLintService {
         return out;
     }
 
-    private static List<Map<String, Object>> dedupeWarnings(List<Map<String, Object>> warnings) {
+    private static List<QueryWarning> dedupeWarnings(List<QueryWarning> warnings) {
         Set<String> seen = new LinkedHashSet<>();
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> warning : warnings) {
-            String key = str(warning.get("code")) + "|" + str(warning.get("message"));
+        List<QueryWarning> out = new ArrayList<>();
+        for (QueryWarning warning : warnings) {
+            String key = str(warning.code()) + "|" + str(warning.message());
             if (seen.add(key)) out.add(warning);
         }
         return out;
     }
 
-    private static String columnText(Map<String, Object> column) {
-        Object text = column.get("text");
-        return text == null ? String.valueOf(column.get("name")) : String.valueOf(text);
+    private static String columnText(QueryColumnRef column) {
+        return column.text() == null ? String.valueOf(column.name()) : column.text();
     }
 
-    private static Map<String, Object> warning(String code, String message) {
-        Map<String, Object> w = new LinkedHashMap<>();
-        w.put("code", code);
-        w.put("message", message);
-        return w;
+    private static QueryWarning warning(String code, String message) {
+        return new QueryWarning(code, message);
     }
 
     private static String rootMessage(Throwable e) {

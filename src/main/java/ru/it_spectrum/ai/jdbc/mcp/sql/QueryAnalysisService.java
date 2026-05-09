@@ -28,6 +28,16 @@ import net.sf.jsqlparser.statement.select.SelectVisitorAdapter;
 import net.sf.jsqlparser.statement.select.SetOperationList;
 import net.sf.jsqlparser.statement.select.WithItem;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryFeatures;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryInspection;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryJoin;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryOrderBy;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryParameter;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryPredicate;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QuerySelectItem;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryWarning;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -45,12 +55,9 @@ import java.util.Set;
 @Service
 public class QueryAnalysisService {
 
-    public Map<String, Object> inspect(String sql) {
-        Map<String, Object> out = new LinkedHashMap<>();
+    public QueryInspection inspect(String sql) {
         if (sql == null || sql.isBlank()) {
-            out.put("parseable", false);
-            out.put("error", "SQL is empty");
-            return out;
+            return QueryInspection.error("SQL is empty");
         }
         try {
             Statement statement = CCJSqlParserUtil.parse(sql);
@@ -71,26 +78,25 @@ public class QueryAnalysisService {
                         "JSqlParser parsed this as " + model.statementType + ", not as SELECT/EXPLAIN."));
             }
 
-            out.put("parseable", true);
-            out.put("statementType", model.statementType);
-            out.put("explain", model.explain);
-            out.put("tables", dedupeTables(model.tables));
-            out.put("aliases", model.aliases);
-            out.put("cteNames", new ArrayList<>(model.cteNames));
-            out.put("selectItems", model.selectItems);
-            out.put("joins", model.joins);
-            out.put("predicates", model.predicates);
-            out.put("orderBy", model.orderBy);
-            out.put("columns", dedupeColumns(model.columns));
-            out.put("parameters", model.parameters);
-            out.put("features", features(model));
-            out.put("warnings", model.warnings);
-            out.put("normalizedSql", model.normalizedSql);
-            return out;
+            return new QueryInspection(
+                    true,
+                    null,
+                    model.statementType,
+                    model.explain,
+                    dedupeTables(model.tables),
+                    model.aliases,
+                    new ArrayList<>(model.cteNames),
+                    model.selectItems,
+                    model.joins,
+                    model.predicates,
+                    model.orderBy,
+                    dedupeColumns(model.columns),
+                    model.parameters,
+                    features(model),
+                    model.warnings,
+                    model.normalizedSql);
         } catch (JSQLParserException | RuntimeException e) {
-            out.put("parseable", false);
-            out.put("error", rootMessage(e));
-            return out;
+            return QueryInspection.error(rootMessage(e));
         }
     }
 
@@ -150,16 +156,17 @@ public class QueryAnalysisService {
 
         if (plain.getSelectItems() != null) {
             for (SelectItem<?> item : plain.getSelectItems()) {
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("expression", item.toString());
-                if (item.getAliasName() != null) entry.put("alias", item.getAliasName());
+                String alias = item.getAliasName();
+                boolean star = item.toString().contains("*");
                 if (item.toString().contains("*")) {
                     model.hasSelectStar = true;
-                    entry.put("star", true);
                 }
-                List<Map<String, Object>> cols = collectColumns(item.getExpression(), model, "select");
-                if (!cols.isEmpty()) entry.put("columns", cols);
-                model.selectItems.add(entry);
+                List<QueryColumnRef> cols = collectColumns(item.getExpression(), model, "select");
+                model.selectItems.add(new QuerySelectItem(
+                        item.toString(),
+                        alias,
+                        star ? Boolean.TRUE : null,
+                        cols.isEmpty() ? null : cols));
             }
         }
 
@@ -173,27 +180,31 @@ public class QueryAnalysisService {
         if (plain.getJoins() != null) {
             for (Join join : plain.getJoins()) {
                 registerFromItem(join.getRightItem(), model, "join");
-                Map<String, Object> j = new LinkedHashMap<>();
-                j.put("type", joinType(join));
-                j.put("rightItem", String.valueOf(join.getRightItem()));
+                String on = null;
+                List<String> using = null;
                 if (join.getOnExpression() != null) {
-                    j.put("on", join.getOnExpression().toString());
+                    on = join.getOnExpression().toString();
                     collectColumns(join.getOnExpression(), model, "join");
                     extractJoinPairs(join, join.getOnExpression(), model);
                 }
                 if (join.getUsingColumns() != null && !join.getUsingColumns().isEmpty()) {
-                    List<String> cols = join.getUsingColumns().stream().map(Column::getColumnName).toList();
-                    j.put("using", cols);
+                    using = join.getUsingColumns().stream().map(Column::getColumnName).toList();
                     for (Column c : join.getUsingColumns()) addColumn(c, model, "join");
                 }
+                boolean conditionless = false;
                 if (join.isSimple() || join.isCross() ||
                         (join.getOnExpression() == null &&
                                 (join.getUsingColumns() == null || join.getUsingColumns().isEmpty()))) {
-                    j.put("conditionless", true);
+                    conditionless = true;
                     model.warnings.add(warning("join_without_condition",
                             "Join has no ON/USING condition: " + join));
                 }
-                model.joins.add(j);
+                model.joins.add(new QueryJoin(
+                        joinType(join),
+                        String.valueOf(join.getRightItem()),
+                        on,
+                        using,
+                        conditionless ? Boolean.TRUE : null));
             }
         }
 
@@ -223,7 +234,7 @@ public class QueryAnalysisService {
         item.accept(new FromItemVisitorAdapter<Void>() {
             @Override
             public <S> Void visit(Table table, S context) {
-                Map<String, Object> ref = tableRef(table, source);
+                QueryTableRef ref = tableRef(table, source);
                 model.tables.add(ref);
                 String alias = aliasName(table);
                 if (alias != null) model.aliases.put(alias, table.getFullyQualifiedName());
@@ -271,20 +282,19 @@ public class QueryAnalysisService {
 
     private void addPredicate(String scope, Expression expression, QueryModel model) {
         for (Expression part : splitAnd(expression)) {
-            Map<String, Object> p = new LinkedHashMap<>();
-            p.put("scope", scope);
-            p.put("expression", part.toString());
-            p.put("operator", simpleType(part));
-            List<Map<String, Object>> cols = collectColumns(part, model, scope);
-            if (!cols.isEmpty()) p.put("columns", cols);
+            List<QueryColumnRef> cols = collectColumns(part, model, scope);
             if (part instanceof LikeExpression like && like.getRightExpression() != null) {
                 String rhs = like.getRightExpression().toString();
                 if (rhs.length() >= 2 && rhs.startsWith("'%")) {
                     model.warnings.add(warning("leading_wildcard_like",
-                            "LIKE predicate starts with a wildcard and usually cannot use a normal B-tree index: " + part));
+                        "LIKE predicate starts with a wildcard and usually cannot use a normal B-tree index: " + part));
                 }
             }
-            model.predicates.add(p);
+            model.predicates.add(new QueryPredicate(
+                    scope,
+                    part.toString(),
+                    simpleType(part),
+                    cols.isEmpty() ? null : cols));
         }
     }
 
@@ -299,34 +309,34 @@ public class QueryAnalysisService {
         return out;
     }
 
-    private List<Map<String, Object>> collectColumns(Expression expression, QueryModel model, String context) {
+    private List<QueryColumnRef> collectColumns(Expression expression, QueryModel model, String context) {
         if (expression == null) return List.of();
-        List<Map<String, Object>> found = new ArrayList<>();
+        List<QueryColumnRef> found = new ArrayList<>();
         expression.accept(new ExpressionVisitorAdapter<Void>() {
             @Override
             public <S> Void visit(Column column, S ctx) {
-                Map<String, Object> c = addColumn(column, model, context);
+                QueryColumnRef c = addColumn(column, model, context);
                 found.add(c);
                 return null;
             }
 
             @Override
             public <S> Void visit(JdbcParameter parameter, S ctx) {
-                Map<String, Object> p = new LinkedHashMap<>();
-                p.put("type", "positional");
-                p.put("text", parameter.toString());
-                if (parameter.getIndex() != null) p.put("index", parameter.getIndex());
-                model.parameters.add(p);
+                model.parameters.add(new QueryParameter(
+                        "positional",
+                        null,
+                        parameter.toString(),
+                        parameter.getIndex()));
                 return null;
             }
 
             @Override
             public <S> Void visit(JdbcNamedParameter parameter, S ctx) {
-                Map<String, Object> p = new LinkedHashMap<>();
-                p.put("type", "named");
-                p.put("name", parameter.getName());
-                p.put("text", parameter.toString());
-                model.parameters.add(p);
+                model.parameters.add(new QueryParameter(
+                        "named",
+                        parameter.getName(),
+                        parameter.toString(),
+                        null));
                 return null;
             }
 
@@ -344,14 +354,12 @@ public class QueryAnalysisService {
         return dedupeColumns(found);
     }
 
-    private Map<String, Object> addColumn(Column column, QueryModel model, String context) {
-        Map<String, Object> c = new LinkedHashMap<>();
-        c.put("name", column.getColumnName());
-        if (column.getTableName() != null && !column.getTableName().isBlank()) {
-            c.put("qualifier", column.getTableName());
-        }
-        c.put("text", column.toString());
-        c.put("context", context);
+    private QueryColumnRef addColumn(Column column, QueryModel model, String context) {
+        QueryColumnRef c = new QueryColumnRef(
+                column.getColumnName(),
+                column.getTableName() != null && !column.getTableName().isBlank() ? column.getTableName() : null,
+                column.toString(),
+                context);
         model.columns.add(c);
         return c;
     }
@@ -359,26 +367,24 @@ public class QueryAnalysisService {
     private void collectOrderBy(List<OrderByElement> elements, QueryModel model, String source) {
         if (elements == null) return;
         for (OrderByElement element : elements) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("expression", element.toString());
-            row.put("source", source);
+            List<QueryColumnRef> cols = List.of();
             if (element.getExpression() != null) {
-                List<Map<String, Object>> cols = collectColumns(element.getExpression(), model, "order_by");
-                if (!cols.isEmpty()) row.put("columns", cols);
+                cols = collectColumns(element.getExpression(), model, "order_by");
             }
-            model.orderBy.add(row);
+            model.orderBy.add(new QueryOrderBy(
+                    element.toString(),
+                    source,
+                    cols.isEmpty() ? null : cols));
         }
     }
 
-    private Map<String, Object> tableRef(Table table, String source) {
-        Map<String, Object> ref = new LinkedHashMap<>();
-        if (table.getSchemaName() != null) ref.put("schema", table.getSchemaName());
-        ref.put("name", table.getName());
-        ref.put("fullName", table.getFullyQualifiedName());
-        String alias = aliasName(table);
-        if (alias != null) ref.put("alias", alias);
-        ref.put("source", source);
-        return ref;
+    private QueryTableRef tableRef(Table table, String source) {
+        return new QueryTableRef(
+                table.getSchemaName(),
+                table.getName(),
+                table.getFullyQualifiedName(),
+                aliasName(table),
+                source);
     }
 
     private static String aliasName(Table table) {
@@ -399,43 +405,39 @@ public class QueryAnalysisService {
         return "JOIN";
     }
 
-    private static List<Map<String, Object>> dedupeTables(Collection<Map<String, Object>> rows) {
-        return dedupeMaps(rows, row -> String.valueOf(row.get("fullName")) + "|" + row.get("alias"));
+    private static List<QueryTableRef> dedupeTables(Collection<QueryTableRef> rows) {
+        return dedupeItems(rows, row -> String.valueOf(row.fullName()) + "|" + row.alias());
     }
 
-    private static List<Map<String, Object>> dedupeColumns(Collection<Map<String, Object>> rows) {
-        return dedupeMaps(rows, row -> String.valueOf(row.get("context")) + "|"
-                + String.valueOf(row.get("qualifier")) + "." + row.get("name"));
+    private static List<QueryColumnRef> dedupeColumns(Collection<QueryColumnRef> rows) {
+        return dedupeItems(rows, row -> String.valueOf(row.context()) + "|"
+                + String.valueOf(row.qualifier()) + "." + row.name());
     }
 
-    private static List<Map<String, Object>> dedupeMaps(Collection<Map<String, Object>> rows,
-                                                       java.util.function.Function<Map<String, Object>, String> keyFn) {
+    private static <T> List<T> dedupeItems(Collection<T> rows,
+                                          java.util.function.Function<T, String> keyFn) {
         Set<String> seen = new LinkedHashSet<>();
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
+        List<T> out = new ArrayList<>();
+        for (T row : rows) {
             if (seen.add(keyFn.apply(row).toLowerCase(Locale.ROOT))) out.add(row);
         }
         return out;
     }
 
-    private static Map<String, Object> features(QueryModel model) {
-        Map<String, Object> features = new LinkedHashMap<>();
-        features.put("selectStar", model.hasSelectStar);
-        features.put("setOperation", model.hasSetOperation);
-        features.put("groupBy", model.hasGroupBy);
-        features.put("limitOrFetch", model.hasLimit);
-        features.put("offset", model.hasOffset);
-        features.put("selectInto", model.hasSelectInto);
-        features.put("forUpdate", model.hasForUpdate);
-        features.put("functions", new ArrayList<>(model.functions));
-        return features;
+    private static QueryFeatures features(QueryModel model) {
+        return new QueryFeatures(
+                model.hasSelectStar,
+                model.hasSetOperation,
+                model.hasGroupBy,
+                model.hasLimit,
+                model.hasOffset,
+                model.hasSelectInto,
+                model.hasForUpdate,
+                new ArrayList<>(model.functions));
     }
 
-    private static Map<String, Object> warning(String code, String message) {
-        Map<String, Object> w = new LinkedHashMap<>();
-        w.put("code", code);
-        w.put("message", message);
-        return w;
+    private static QueryWarning warning(String code, String message) {
+        return new QueryWarning(code, message);
     }
 
     private static String rootMessage(Throwable e) {
@@ -455,17 +457,17 @@ public class QueryAnalysisService {
         public boolean hasOffset;
         public boolean hasSelectInto;
         public boolean hasForUpdate;
-        public final List<Map<String, Object>> tables = new ArrayList<>();
+        public final List<QueryTableRef> tables = new ArrayList<>();
         public final Map<String, String> aliases = new LinkedHashMap<>();
         public final Set<String> cteNames = new LinkedHashSet<>();
-        public final List<Map<String, Object>> selectItems = new ArrayList<>();
-        public final List<Map<String, Object>> joins = new ArrayList<>();
-        public final List<Map<String, Object>> predicates = new ArrayList<>();
-        public final List<Map<String, Object>> orderBy = new ArrayList<>();
-        public final List<Map<String, Object>> columns = new ArrayList<>();
-        public final List<Map<String, Object>> parameters = new ArrayList<>();
+        public final List<QuerySelectItem> selectItems = new ArrayList<>();
+        public final List<QueryJoin> joins = new ArrayList<>();
+        public final List<QueryPredicate> predicates = new ArrayList<>();
+        public final List<QueryOrderBy> orderBy = new ArrayList<>();
+        public final List<QueryColumnRef> columns = new ArrayList<>();
+        public final List<QueryParameter> parameters = new ArrayList<>();
         public final Set<String> functions = new LinkedHashSet<>();
-        public final List<Map<String, Object>> warnings = new ArrayList<>();
+        public final List<QueryWarning> warnings = new ArrayList<>();
         public final List<JoinPair> joinPairs = new ArrayList<>();
 
         /**
@@ -485,10 +487,9 @@ public class QueryAnalysisService {
 
         public Set<String> physicalTableNames() {
             Set<String> names = new LinkedHashSet<>();
-            for (Map<String, Object> table : tables) {
-                Object name = table.get("name");
-                if (name == null) continue;
-                String n = String.valueOf(name);
+            for (QueryTableRef table : tables) {
+                String n = table.name();
+                if (n == null) continue;
                 if (!cteNames.contains(n)) names.add(n);
             }
             return names;

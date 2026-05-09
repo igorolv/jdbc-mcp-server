@@ -308,7 +308,7 @@ public class QueryTools {
         }
     }
 
-    private String validationFailure(String stage, String message, Map<String, Object> inspection) {
+    private String validationFailure(String stage, String message, Object inspection) {
         java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("valid", false);
         body.put("stage", stage);

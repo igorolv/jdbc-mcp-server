@@ -10,6 +10,9 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryParameter;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService.QueryModel;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
@@ -250,9 +253,9 @@ public class UsageCatalogService {
         Set<String> claimedNames = new LinkedHashSet<>();
         int ordinal = 0;
 
-        for (Map<String, Object> parsed : model.parameters) {
+        for (QueryParameter parsed : model.parameters) {
             ordinal++;
-            String name = stringValue(parsed.get("name"));
+            String name = stringValue(parsed.name());
             QueryUsageParameter payload = name != null ? findParamByName(payloadParams, name) : null;
             if (payload == null && payloadParams != null && ordinal - 1 < payloadParams.size()
                     && (name == null || payloadParams.get(ordinal - 1).name() == null)) {
@@ -322,11 +325,11 @@ public class UsageCatalogService {
                 """;
         List<TableInsertResult> results = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            for (Map<String, Object> table : model.tables) {
-                String rawName = stringValue(table.get("name"));
-                String schema = stringValue(table.get("schema"));
-                String alias = stringValue(table.get("alias"));
-                String role = stringValue(table.get("source"));
+            for (QueryTableRef table : model.tables) {
+                String rawName = stringValue(table.name());
+                String schema = stringValue(table.schema());
+                String alias = stringValue(table.alias());
+                String role = stringValue(table.source());
                 if (role == null) role = "from";
                 String resolutionStatus = model.cteNames.contains(rawName) ? "cte" : "unresolved";
                 String resolvedTable = rawName == null ? null : rawName.toUpperCase(Locale.ROOT);
@@ -360,11 +363,11 @@ public class UsageCatalogService {
                 """;
         int count = 0;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            for (Map<String, Object> col : model.columns) {
-                String columnName = stringValue(col.get("name"));
+            for (QueryColumnRef col : model.columns) {
+                String columnName = stringValue(col.name());
                 if (columnName == null) continue;
-                String qualifier = stringValue(col.get("qualifier"));
-                String context = stringValue(col.get("context"));
+                String qualifier = stringValue(col.qualifier());
+                String context = stringValue(col.context());
                 Resolved resolved = resolveQualifier(qualifier, model.aliases);
                 Long tableId = matchTableId(tableInserts, qualifier, resolved);
 
