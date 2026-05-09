@@ -13,6 +13,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryInspection;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryValidationResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLineageService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
@@ -56,6 +57,7 @@ public class QueryTools {
     private final ReadOnlyGuard guard;
     private final PlanParser planParser;
     private final QueryAnalysisService analysis;
+    private final QueryLineageService lineage;
     private final QueryLintService lint;
     private final JsonResponses json;
     private final ToolErrors errors;
@@ -64,6 +66,7 @@ public class QueryTools {
                       JdbcProperties properties, ReadOnlyGuard guard,
                       PlanParser planParser,
                       QueryAnalysisService analysis,
+                      QueryLineageService lineage,
                       QueryLintService lint,
                       JsonResponses json,
                       ToolErrors errors) {
@@ -73,6 +76,7 @@ public class QueryTools {
         this.guard = guard;
         this.planParser = planParser;
         this.analysis = analysis;
+        this.lineage = lineage;
         this.lint = lint;
         this.json = json;
         this.errors = errors;
@@ -299,6 +303,26 @@ public class QueryTools {
     ) {
         try {
             return json.write(lint.lint(normalizeSql(sql), schema));
+        } catch (SQLException e) {
+            return errors.sql(e);
+        } catch (IllegalArgumentException e) {
+            return errors.argument(e);
+        }
+    }
+
+    @McpTool(description = "Resolve metadata-aware lineage for a SQL SELECT / WITH / EXPLAIN statement. " +
+            "Returns direct objects named in FROM/JOIN and expands database views and routines to the " +
+            "underlying physical tables when enabled. Routine expansion is best-effort: it extracts " +
+            "embedded SELECT/WITH statements from function/procedure source and may miss dynamic SQL.")
+    public String resolveQueryLineage(
+            @McpToolParam(description = "SQL statement to resolve") String sql,
+            @McpToolParam(description = "Default schema for unqualified names (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Expand database views and materialized views recursively. Default true.", required = false) Boolean expandViews,
+            @McpToolParam(description = "Expand database functions/procedures referenced by the query, best-effort. Default true.", required = false) Boolean expandRoutines,
+            @McpToolParam(description = "Maximum recursive expansion depth. Default 5, hard cap 20.", required = false) Integer maxDepth
+    ) {
+        try {
+            return json.write(lineage.resolve(normalizeSql(sql), schema, expandViews, expandRoutines, maxDepth));
         } catch (SQLException e) {
             return errors.sql(e);
         } catch (IllegalArgumentException e) {

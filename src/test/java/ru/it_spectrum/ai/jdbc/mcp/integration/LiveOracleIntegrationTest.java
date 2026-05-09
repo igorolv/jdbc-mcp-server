@@ -15,6 +15,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLineageService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
@@ -22,6 +23,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.ToolErrors;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.usage.ProceduralSqlExtractor;
 
 import javax.sql.DataSource;
 import java.util.List;
@@ -97,10 +99,11 @@ class LiveOracleIntegrationTest {
         metadata = new MetadataService(executor, dialect, props);
         stats = new StatsService(executor, dialect, props);
         QueryAnalysisService analysis = new QueryAnalysisService();
+        QueryLineageService lineage = new QueryLineageService(analysis, metadata, new ProceduralSqlExtractor());
         QueryLintService lint = new QueryLintService(analysis, metadata, stats);
         JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
         ToolErrors errors = new ToolErrors(json);
-        queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lint, json, errors);
+        queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lineage, lint, json, errors);
     }
 
     private DataSource buildPool(JdbcProperties p) {

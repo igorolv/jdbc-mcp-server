@@ -21,7 +21,7 @@ With this server, the LLM can:
 
 1. call `schemaOverview`, `schemaBrief`, or `queryContext` to get ready-to-use schema context: tables, columns, relationships, and constraints;
 2. refine the context with `tableContext` around a specific table or `findJoinPaths` for JOIN path discovery;
-3. write a query and optionally call `inspectQuery` or `queryLint` for an AST summary and metadata-based advisory warnings;
+3. write a query and optionally call `inspectQuery`, `queryLint`, or `resolveQueryLineage` for AST, metadata, and view/routine lineage checks;
 4. call `validateQuery` with the same `params` or `namedParams` that will be used for execution, validating syntax without running the query;
 5. call `explainQuery` when a plan is needed;
 6. call `executeQuery` to fetch data.
@@ -62,6 +62,7 @@ The protocol is `stdio` only. The client starts the server as a child process.
 | `validateQuery` | Validate syntax without execution: read-only guard plus driver `prepareStatement`, with a JSqlParser-derived `inspection` summary when parsing succeeds. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). Useful for LLM self-correction |
 | `inspectQuery` | Parse SQL through JSqlParser without touching the database and return an AST summary: tables, aliases, CTEs, select items, joins, predicates, order by, columns, parameters, features, and parser warnings |
 | `queryLint` | Parse SQL and combine the AST with metadata, index, and FK checks. Returns advisory warnings such as unknown tables or columns, `SELECT *`, joins without conditions, FKs without supporting indexes, and predicate/order-by columns that are not leading index columns. SQL is not executed |
+| `resolveQueryLineage` | Resolve direct objects referenced by a query and recursively expand database views/materialized views to underlying physical tables. Function/procedure expansion is best-effort: embedded `SELECT` / `WITH` statements are extracted from routine source when available. Parameters: `sql`, `schema`, `expandViews`, `expandRoutines`, `maxDepth` |
 
 ### Benchmarking
 
@@ -643,7 +644,7 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |   |   +-- format/
 |   |   |   +-- QueryUsage.java         - canonical query usage record DTO
 |   +-- tools/
-|       +-- QueryTools.java             - executeQuery, explainQuery, analyzePlan, validateQuery, inspectQuery, queryLint
+|       +-- QueryTools.java             - executeQuery, explainQuery, analyzePlan, validateQuery, inspectQuery, queryLint, resolveQueryLineage
 |       +-- MetadataTools.java          - schemas / tables / describe / view / routines / sequences / search
 |       +-- SampleTools.java            - sampleRows
 |       +-- DistributionTools.java      - columnStats, columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality

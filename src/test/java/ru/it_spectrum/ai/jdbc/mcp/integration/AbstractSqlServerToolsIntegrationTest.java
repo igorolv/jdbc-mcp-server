@@ -16,6 +16,7 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.SqlServerPlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
+import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLineageService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -29,6 +30,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SnapshotTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.ToolErrors;
+import ru.it_spectrum.ai.jdbc.mcp.usage.ProceduralSqlExtractor;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -69,13 +71,14 @@ abstract class AbstractSqlServerToolsIntegrationTest extends AbstractToolsIntegr
                     executor, dialect, properties, planParser);
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
             QueryAnalysisService analysis = new QueryAnalysisService();
+            QueryLineageService lineage = new QueryLineageService(analysis, metadata, new ProceduralSqlExtractor());
             QueryLintService lint = new QueryLintService(analysis, metadata, stats);
             JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
             ToolErrors errors = new ToolErrors(json);
 
             return new IntegrationTestContext(
                     properties.defaultSchema(),
-                    new QueryTools(executor, dialect, properties, guard, planParser, analysis, lint, json, errors),
+                    new QueryTools(executor, dialect, properties, guard, planParser, analysis, lineage, lint, json, errors),
                     new MetadataTools(metadata, json, errors),
                     new SampleTools(executor, dialect, json, errors),
                     new StatsTools(stats, json, errors),

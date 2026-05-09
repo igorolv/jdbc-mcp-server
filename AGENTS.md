@@ -8,7 +8,7 @@
 > - Full build: `./gradlew build`
 
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
-It exposes 40 read-only tools across eight groups:
+It exposes 41 read-only tools across eight groups:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarised plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
@@ -143,7 +143,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **40 read-only MCP tools**.
+The server exposes **41 read-only MCP tools**.
 
 ### Query tools
 
@@ -155,6 +155,7 @@ The server exposes **40 read-only MCP tools**.
 | `validateQuery` | Validate a statement without running it — read-only guard + driver-side `prepareStatement` plus a JSqlParser-derived `inspection` summary when possible. Params: `sql`, `params` (`?`) or `namedParams` (`:name`) |
 | `inspectQuery` | Parse SQL with JSqlParser and return an AST-derived authoring summary without touching the database: tables, aliases, CTEs, select items, joins, predicates, order-by, referenced columns, parameters, features and parser-level warnings. Params: `sql` |
 | `queryLint` | Parse SQL and combine the AST with metadata/index/FK checks. Returns advisory warnings such as unknown table/column, `SELECT *`, joins without conditions, missing FK indexes, and predicate/order-by columns that are not leading index columns. Does not execute SQL. Params: `sql`, `schema` |
+| `resolveQueryLineage` | Resolve direct objects referenced by a query and recursively expand database views/materialized views to underlying physical tables. Function/procedure expansion is best-effort: embedded `SELECT` / `WITH` statements are extracted from routine source when available. Params: `sql`, `schema`, `expandViews`, `expandRoutines`, `maxDepth` |
 
 ### Benchmark tools
 
@@ -277,7 +278,7 @@ Recommended flow when the user asks a data question:
 2. If a single table is the focus, call `describeTable` — one call returns columns, PK, FKs,
    indexes, constraints, allowed values from CHECKs, and triggers.
 3. Optionally call `sampleRows` to peek at actual data shape.
-4. Write the SQL and call `inspectQuery` or `queryLint` when you want an AST/metadata sanity pass before touching the database.
+4. Write the SQL and call `inspectQuery`, `queryLint`, or `resolveQueryLineage` when you want an AST/metadata/lineage sanity pass before touching the database.
 5. Call `validateQuery` with the same `params` / `namedParams` you intend to use for execution — fix errors without wasting executions.
 6. Call `analyzePlan` (compact LLM-friendly summary) or `explainQuery` (full textual plan) if the query might be expensive.
 7. Call `executeQuery`. Use `limit` to keep the response small.
