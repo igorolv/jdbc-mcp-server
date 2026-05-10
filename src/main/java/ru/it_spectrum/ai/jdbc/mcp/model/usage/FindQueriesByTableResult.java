@@ -9,7 +9,6 @@ public record FindQueriesByTableResult(
         int count
 ) {
     public record Match(
-            String uid,
             String sourceKind,
             String sourcePath,
             String sourceUnit,

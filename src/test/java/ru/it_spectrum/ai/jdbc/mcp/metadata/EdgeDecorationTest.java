@@ -77,7 +77,7 @@ class EdgeDecorationTest {
         assertThat(evidence.declaredSchema()).isNotNull();
         assertThat(evidence.observedQuery()).isNotNull();
         assertThat(evidence.observedQuery().joinSupport()).isEqualTo(3);
-        assertThat(evidence.observedQuery().queryUids()).hasSize(3);
+        assertThat(evidence.observedQuery().sourceRefs()).hasSize(3);
     }
 
     @Test

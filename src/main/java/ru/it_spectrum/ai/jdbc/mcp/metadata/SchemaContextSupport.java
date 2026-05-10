@@ -513,7 +513,7 @@ abstract class SchemaContextSupport {
             UsageCatalogService.ObservedEdge oe = byPair.get(key);
             if (oe == null) continue;
             builderFor(edge, builders).observedQuery = new ObservedQueryEdgeEvidence(
-                    oe.support(), capQueryUids(oe.queryUids()));
+                    oe.support(), capSourceRefs(oe.sourceRefs()));
             consumed.add(key);
         }
 
@@ -536,7 +536,7 @@ abstract class SchemaContextSupport {
                     true, null);
             edges.add(edge);
             RelationshipEvidence.Builder b = builderFor(edge, builders);
-            b.observedQuery = new ObservedQueryEdgeEvidence(oe.support(), capQueryUids(oe.queryUids()));
+            b.observedQuery = new ObservedQueryEdgeEvidence(oe.support(), capSourceRefs(oe.sourceRefs()));
         }
 
         for (Map.Entry<RelationshipEdge, RelationshipEvidence.Builder> entry : builders.entrySet()) {
@@ -572,9 +572,10 @@ abstract class SchemaContextSupport {
         }
     }
 
-    private static List<String> capQueryUids(List<String> uids) {
-        if (uids == null || uids.size() <= 5) return uids == null ? List.of() : List.copyOf(uids);
-        return List.copyOf(uids.subList(0, 5));
+    private static List<ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef> capSourceRefs(
+            List<ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef> refs) {
+        if (refs == null || refs.size() <= 5) return refs == null ? List.of() : List.copyOf(refs);
+        return List.copyOf(refs.subList(0, 5));
     }
 
     private static String undirectedPairKey(String tableA, String columnA, String tableB, String columnB) {

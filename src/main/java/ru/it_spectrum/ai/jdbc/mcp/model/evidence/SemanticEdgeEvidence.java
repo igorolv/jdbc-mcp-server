@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.evidence;
 
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
+
 import java.util.List;
 
 public record SemanticEdgeEvidence(
@@ -7,13 +9,13 @@ public record SemanticEdgeEvidence(
         List<SemanticTermEvidence> sharedBusinessObjects,
         List<SemanticTermEvidence> sharedOutputLabels,
         int coOccurringQueryCount,
-        List<String> coOccurringQueryUids
+        List<QuerySourceRef> coOccurringSourceRefs
 ) {
     public SemanticEdgeEvidence {
         sharedBusinessDomains = sharedBusinessDomains == null ? List.of() : List.copyOf(sharedBusinessDomains);
         sharedBusinessObjects = sharedBusinessObjects == null ? List.of() : List.copyOf(sharedBusinessObjects);
         sharedOutputLabels = sharedOutputLabels == null ? List.of() : List.copyOf(sharedOutputLabels);
-        coOccurringQueryUids = coOccurringQueryUids == null ? List.of() : List.copyOf(coOccurringQueryUids);
+        coOccurringSourceRefs = coOccurringSourceRefs == null ? List.of() : List.copyOf(coOccurringSourceRefs);
     }
 
     public boolean isEmpty() {

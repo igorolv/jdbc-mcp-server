@@ -45,14 +45,16 @@ public class UsageTools {
         }
     }
 
-    @McpTool(description = "Return the full usage-catalog record for one query: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns) and field usages. Compose uid as '{sourceKind}/{path}#{unit}' (without '#unit' when there is no unit).")
+    @McpTool(description = "Return the full usage-catalog record for one query: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns) and field usages.")
     public String getQuery(
-            @McpToolParam(description = "Query uid. Format: '{sourceKind}/{source.path}#{source.unit}' (without '#unit' when there is no unit).") String uid
+            @McpToolParam(description = "Source kind (e.g. 'dao', 'report', 'database-view').") String sourceKind,
+            @McpToolParam(description = "Source path — stable identifier, e.g. file path.") String sourcePath,
+            @McpToolParam(description = "Source unit — sub-unit, e.g. method name (optional).", required = false) String sourceUnit
     ) {
-        log.info("Tool call: getQuery (uid={})", uid);
+        log.info("Tool call: getQuery (kind={}, path={}, unit={})", sourceKind, sourcePath, sourceUnit);
         if (!service.enabled()) return disabled("getQuery");
         try {
-            return json.write(service.getQuery(uid));
+            return json.write(service.getQuery(sourceKind, sourcePath, sourceUnit));
         } catch (IllegalArgumentException e) {
             return errors.argument(e);
         } catch (RuntimeException e) {

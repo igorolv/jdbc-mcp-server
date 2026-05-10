@@ -9,7 +9,6 @@ public record ListQueriesResult(
         int count
 ) {
     public record QueryEntry(
-            String uid,
             String sourceKind,
             String sourcePath,
             String sourceUnit,

@@ -13,8 +13,11 @@ public record ObservedRelationshipsResult(
             SchemaRef left,
             SchemaRef right,
             int support,
-            String uids
+            List<QuerySourceRef> sourceRefs
     ) {
+        public Relationship {
+            sourceRefs = sourceRefs == null ? List.of() : List.copyOf(sourceRefs);
+        }
     }
 
     public record SchemaRef(

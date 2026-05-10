@@ -1,13 +1,15 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.evidence;
 
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
+
 import java.util.List;
 
 public record SemanticTermEvidence(
         String value,
         int support,
-        List<String> queryUids
+        List<QuerySourceRef> sourceRefs
 ) {
     public SemanticTermEvidence {
-        queryUids = queryUids == null ? List.of() : List.copyOf(queryUids);
+        sourceRefs = sourceRefs == null ? List.of() : List.copyOf(sourceRefs);
     }
 }

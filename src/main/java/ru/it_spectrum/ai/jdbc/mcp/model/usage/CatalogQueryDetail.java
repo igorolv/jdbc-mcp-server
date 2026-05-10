@@ -3,7 +3,6 @@ package ru.it_spectrum.ai.jdbc.mcp.model.usage;
 import java.util.List;
 
 public record CatalogQueryDetail(
-        String uid,
         String sourceKind,
         String sourcePath,
         String sourceUnit,
