@@ -115,13 +115,21 @@ public class UsageCatalogIndexer implements ApplicationRunner {
 
     private void rebuild() {
         long started = System.currentTimeMillis();
+        log.info("Index rebuild: loading records...");
         LoadResult loaded = loadRecords();
+        log.info("Index rebuild: {} records loaded from {} sources ({} errors, {} duplicates)",
+                loaded.records().size(), loaded.filesScanned(),
+                loaded.errors().size(), loaded.duplicateUids().size());
         var sources = configuredSources();
         var startedAt = Instant.ofEpochMilli(started).toString();
         var diskCacheEnabled = properties.indexDiskCacheEnabled();
         var diskCachePath = jdbcMcpProperties.usageIndexCacheDir().toString();
         try {
+            log.info("Index rebuild: inserting {} records into H2...", loaded.records().size());
             var rebuildResult = service.rebuild(loaded.records());
+            log.info("Index rebuild: H2 insert complete (parseFailed={}, tables={}, joins={}, ms={})",
+                    rebuildResult.parseFailed(), rebuildResult.tablesExtracted(),
+                    rebuildResult.joinPairsExtracted(), rebuildResult.indexBuildMs());
             status = IndexerStatusResponse.ready(
                     properties.catalogEnabled(), "ready", sources,
                     startedAt, loaded.filesScanned(), loaded.records().size(),
@@ -150,7 +158,7 @@ public class UsageCatalogIndexer implements ApplicationRunner {
                     diskCacheEnabled, diskCachePath,
                     null, null, null, null, null, null, null, null
             );
-            log.warn("Usage catalog index rebuild failed: {}", e.getMessage(), e);
+            log.warn("Index rebuild FAILED after {} ms: {}", System.currentTimeMillis() - started, e.getMessage(), e);
         }
     }
 
@@ -182,17 +190,21 @@ public class UsageCatalogIndexer implements ApplicationRunner {
     private void loadSource(Path source, Map<String, QueryUsage> records, Set<String> duplicateUids,
                             List<String> errors, int[] filesScanned) throws IOException {
         if (!Files.exists(source)) {
+            log.warn("Index source does not exist: {}", source);
             errors.add(source + ": source does not exist");
             return;
         }
         if (Files.isDirectory(source)) {
+            log.info("Scanning index directory: {}", source);
             try (Stream<Path> paths = Files.walk(source)) {
                 List<Path> jsonFiles = paths
                         .filter(Files::isRegularFile)
                         .filter(UsageCatalogIndexer::isJsonFile)
                         .sorted()
                         .toList();
+                log.info("Found {} JSON files in {}", jsonFiles.size(), source);
                 for (Path file : jsonFiles) {
+                    log.debug("Loading index file: {}", file);
                     loadJson(file.toString(), Files.readAllBytes(file), records,
                             duplicateUids, errors, filesScanned);
                 }
@@ -200,10 +212,12 @@ public class UsageCatalogIndexer implements ApplicationRunner {
             return;
         }
         if (isZipFile(source)) {
+            log.info("Scanning index ZIP: {}", source);
             loadZip(source, records, duplicateUids, errors, filesScanned);
             return;
         }
         if (isJsonFile(source)) {
+            log.debug("Loading index file: {}", source);
             loadJson(source.toString(), Files.readAllBytes(source), records,
                     duplicateUids, errors, filesScanned);
         }
@@ -217,7 +231,9 @@ public class UsageCatalogIndexer implements ApplicationRunner {
                     .filter(e -> e.getName().toLowerCase().endsWith(".json"))
                     .sorted((a, b) -> a.getName().compareToIgnoreCase(b.getName()))
                     .toList();
+            log.info("Found {} JSON entries in ZIP {}", entries.size(), source);
             for (ZipEntry entry : entries) {
+                log.debug("Loading ZIP entry: {}!{}", source, entry.getName());
                 try (InputStream in = zip.getInputStream(entry)) {
                     loadJson(source + "!" + entry.getName(), in.readAllBytes(), records,
                             duplicateUids, errors, filesScanned);

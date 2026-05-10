@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,8 @@ import java.util.Collections;
  */
 @Service
 public class SampleTools {
+
+    private static final Logger log = LoggerFactory.getLogger(SampleTools.class);
 
     private final SqlExecutor executor;
     private final SqlDialect dialect;
@@ -36,6 +40,7 @@ public class SampleTools {
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Number of rows to return (default 10, max 100)", required = false) Integer limit
     ) {
+        log.info("Tool call: sampleRows (schema={}, table={})", schema, table);
         if (table == null || table.isBlank()) return errors.argument("table must be provided");
         int n = limit == null ? 10 : Math.max(1, Math.min(limit, 100));
         String qualified = qualify(schema, table);

@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,8 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 @Service
 public class SnapshotTools {
 
+    private static final Logger log = LoggerFactory.getLogger(SnapshotTools.class);
+
     private final MetadataService metadata;
     private final SchemaSnapshotCache cache;
     private final JsonResponses json;
@@ -43,6 +47,7 @@ public class SnapshotTools {
     public String getSchemaSnapshot(
             @McpToolParam(description = "Schema name (optional — omit to see all cached schemas)", required = false) String schema
     ) {
+        log.info("Tool call: getSchemaSnapshot (schema={})", schema);
         return json.write(cache.snapshotInfo(schema));
     }
 
@@ -56,6 +61,7 @@ public class SnapshotTools {
             @McpToolParam(description = "Single table to refresh (optional)", required = false) String table,
             @McpToolParam(description = "Maximum tables to warm when refreshing a whole schema. Default 300.", required = false) Integer maxTables
     ) {
+        log.info("Tool call: refreshSchemaSnapshot (schema={}, table={})", schema, table);
         long startedAt = System.currentTimeMillis();
         RefreshSchemaSnapshotResult result;
         try {
@@ -105,6 +111,7 @@ public class SnapshotTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Single table to invalidate (optional)", required = false) String table
     ) {
+        log.info("Tool call: invalidateSnapshot (schema={}, table={})", schema, table);
         InvalidateSnapshotResult result;
         if (table != null && !table.isBlank()) {
             cache.invalidateTable(schema, table);

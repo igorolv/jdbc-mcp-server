@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -12,6 +14,8 @@ import java.sql.SQLException;
  */
 @Service
 public class SchemaContextTools {
+
+    private static final Logger log = LoggerFactory.getLogger(SchemaContextTools.class);
 
     private final SchemaContextService schemaContext;
     private final JsonResponses json;
@@ -35,6 +39,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Augment relationships with a typed three-layer 'evidence' bundle from the local usage catalog: 'declaredSchema' for catalog FKs, 'observedQuery' (joinSupport + queryUids) when matching equi-joins exist in stored application queries, and 'semanticUsage' (shared business domains/objects/output labels across queries that touch both tables). Observed-only equi-join pairs are appended as new edges with 'relationshipType: observed'. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved,
             @McpToolParam(description = "Maximum tables/views to describe. Default 50, capped at 300.", required = false) Integer maxTables
     ) {
+        log.info("Tool call: schemaOverview (schema={})", schema);
         try {
             var result = schemaContext.schemaOverview(
                     schema, namePattern, includeViews, includeStats, includeObserved, maxTables);
@@ -58,6 +63,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
             @McpToolParam(description = "Augment relationships with the three-layer 'evidence' bundle from the local usage catalog (see schemaOverview for the layer breakdown). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
+        log.info("Tool call: tableContext (schema={}, table={})", schema, table);
         try {
             var result = schemaContext.tableContext(
                     schema, table, depth, includeIncoming, includeStats, includeObserved);
@@ -83,6 +89,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum schema tables to scan when building the graph. Default 300, capped at 300.", required = false) Integer scanLimit,
             @McpToolParam(description = "Include observed equi-join pairs from the local usage catalog as additional edges in the search graph. Each path step then carries an 'evidence' bundle with 'declaredSchema', 'observedQuery' and 'semanticUsage' layers (any of which may be absent). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
+        log.info("Tool call: findJoinPaths ({}.{} -> {}.{})", fromSchema, fromTable, toSchema, toTable);
         try {
             var result = schemaContext.findJoinPaths(
                     fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, scanLimit,
@@ -107,6 +114,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum schema tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
             @McpToolParam(description = "Maximum findings to return. Default 200, capped at 1000.", required = false) Integer maxFindings
     ) {
+        log.info("Tool call: schemaLint (schema={}, table={})", schema, table);
         try {
             var result = schemaContext.schemaLint(
                     schema, table, checks, maxTables, maxFindings);
@@ -127,6 +135,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Optional search terms to narrow table discovery; falls back to whole schema if no table matches.", required = false) String terms,
             @McpToolParam(description = "Maximum tables to scan. Default 50, capped at 300.", required = false) Integer maxTables
     ) {
+        log.info("Tool call: schemaBrief (schema={})", schema);
         try {
             return schemaContext.schemaBrief(schema, terms, maxTables);
         } catch (SQLException e) {
@@ -146,6 +155,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Optional target table for shortestPath.", required = false) String toTable,
             @McpToolParam(description = "Maximum hops for shortestPath. Default 4, capped at 4.", required = false) Integer maxDepth
     ) {
+        log.info("Tool call: schemaGraph (schema={})", schema);
         try {
             var result = schemaContext.schemaGraph(
                     schema, maxTables, fromTable, toTable, maxDepth);
@@ -167,6 +177,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Include up to 3 sample rows per selected table. Default false.", required = false) Boolean includeSamples,
             @McpToolParam(description = "Maximum tables to include. Default 12, capped at 50.", required = false) Integer maxTables
     ) {
+        log.info("Tool call: queryContext (schema={})", schema);
         try {
             var result = schemaContext.queryContext(
                     schema, terms, tables, includeSamples, maxTables);
@@ -186,6 +197,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Comma-separated table names to include, e.g. 'customers,orders' (optional — all tables if omitted)", required = false) String tables
     ) {
+        log.info("Tool call: schemaGraphDot (schema={})", schema);
         try {
             return schemaContext.schemaGraphDot(schema, tables);
         } catch (SQLException e) {

@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,8 @@ import java.util.Map;
  */
 @Service
 public class BenchmarkTools {
+
+    private static final Logger log = LoggerFactory.getLogger(BenchmarkTools.class);
 
     private static final String BINDING_RULES =
             "Binding rules: if SQL has no placeholders, omit both 'params' and 'namedParams'. " +
@@ -64,6 +68,7 @@ public class BenchmarkTools {
             @McpToolParam(description = "Number of cold runs (default 1). Executed first.", required = false) Integer coldRuns,
             @McpToolParam(description = "Number of warm runs (default 3). Aggregated into min/median/max.", required = false) Integer warmRuns
     ) {
+        log.info("Tool call: benchmarkQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={}, coldRuns={}, warmRuns={})", sql, params, namedParams, limit, timeoutSeconds, coldRuns, warmRuns);
         if (limit == null) return errors.argument("limit is required");
         if (timeoutSeconds == null) return errors.argument("timeoutSeconds is required");
         int cold = coldRuns == null ? 1 : coldRuns;
@@ -95,6 +100,7 @@ public class BenchmarkTools {
             @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {
+        log.info("Tool call: timedQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
         try {
             TimedQueryResult result = benchmarks.timed(sql, params, namedParams, limit, timeoutSeconds);
             return json.write(result);

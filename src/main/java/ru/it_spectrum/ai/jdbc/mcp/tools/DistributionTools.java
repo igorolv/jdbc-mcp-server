@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,8 @@ import java.sql.SQLException;
  */
 @Service
 public class DistributionTools {
+
+    private static final Logger log = LoggerFactory.getLogger(DistributionTools.class);
 
     private final DistributionService distribution;
     private final JsonResponses json;
@@ -35,6 +39,7 @@ public class DistributionTools {
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Column name") String column
     ) {
+        log.info("Tool call: columnStats (schema={}, table={}, column={})", schema, table, column);
         try {
             QueryResult r = distribution.columnStats(schema, table, column);
             return json.write(r);
@@ -56,6 +61,7 @@ public class DistributionTools {
             @McpToolParam(description = "Column name") String column,
             @McpToolParam(description = "Number of top values to return (default 20, max 1000)", required = false) Integer topN
     ) {
+        log.info("Tool call: columnDistribution (schema={}, table={}, column={})", schema, table, column);
         try {
             var r = distribution.columnDistribution(schema, table, column, topN);
             return json.write(r);
@@ -76,6 +82,7 @@ public class DistributionTools {
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Column name") String column
     ) {
+        log.info("Tool call: columnHistogram (schema={}, table={}, column={})", schema, table, column);
         try {
             var r = distribution.columnHistogram(schema, table, column);
             return json.write(r);
@@ -94,6 +101,7 @@ public class DistributionTools {
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table
     ) {
+        log.info("Tool call: nullRatio (schema={}, table={})", schema, table);
         try {
             var r = distribution.nullRatio(schema, table);
             return json.write(r);
@@ -116,6 +124,7 @@ public class DistributionTools {
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Boolean predicate expression — raw SQL, without the WHERE keyword") String predicate
     ) {
+        log.info("Tool call: estimateSelectivity (schema={}, table={})", schema, table);
         try {
             var r = distribution.estimateSelectivity(schema, table, predicate);
             return json.write(r);
@@ -140,6 +149,7 @@ public class DistributionTools {
             @McpToolParam(description = "To-side join column") String rightColumn,
             @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType
     ) {
+        log.info("Tool call: joinCardinality ({}.{} <-> {}.{})", fromTable, leftColumn, toTable, rightColumn);
         try {
             var r = distribution.joinCardinality(fromSchema, fromTable, leftColumn,
                     toSchema, toTable, rightColumn, joinType);

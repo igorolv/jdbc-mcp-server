@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -38,6 +40,8 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 @Service
 public class QueryTools {
+
+    private static final Logger log = LoggerFactory.getLogger(QueryTools.class);
 
     private static final String BINDING_RULES =
             "Binding rules: if SQL has no placeholders, omit both 'params' and 'namedParams'. " +
@@ -95,6 +99,7 @@ public class QueryTools {
             @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {
+        log.info("Tool call: executeQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
         try {
             String normalizedSql = normalizeSql(sql);
             QueryResult result = query(normalizedSql, params, namedParams, limit, timeoutSeconds);
@@ -122,6 +127,7 @@ public class QueryTools {
             @McpToolParam(description = "PostgreSQL only: collect actual run-time stats via EXPLAIN ANALYZE. " +
                     "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
     ) {
+        log.info("Tool call: explainQuery (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
         try {
             String normalizedSql = normalizeSql(sql);
             guard.check(normalizedSql);
@@ -184,6 +190,7 @@ public class QueryTools {
             @McpToolParam(description = "PostgreSQL only: collect actual row counts / timings via EXPLAIN ANALYZE. " +
                     "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
     ) {
+        log.info("Tool call: analyzePlan (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
         try {
             String normalizedSql = normalizeSql(sql);
             guard.check(normalizedSql);
@@ -244,6 +251,7 @@ public class QueryTools {
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams
     ) {
+        log.info("Tool call: validateQuery (sql={}, params={}, namedParams={})", sql, params, namedParams);
         String normalizedSql = normalizeSql(sql);
         try {
             guard.check(normalizedSql);
@@ -290,6 +298,7 @@ public class QueryTools {
     public String inspectQuery(
             @McpToolParam(description = "SQL statement to inspect") String sql
     ) {
+        log.info("Tool call: inspectQuery (sql={})", sql);
         return json.write(analysis.inspect(normalizeSql(sql)));
     }
 
@@ -301,6 +310,7 @@ public class QueryTools {
             @McpToolParam(description = "SQL statement to lint") String sql,
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema
     ) {
+        log.info("Tool call: queryLint (sql={}, schema={})", sql, schema);
         try {
             return json.write(lint.lint(normalizeSql(sql), schema));
         } catch (SQLException e) {
@@ -321,6 +331,7 @@ public class QueryTools {
             @McpToolParam(description = "Expand database functions/procedures referenced by the query, best-effort. Default true.", required = false) Boolean expandRoutines,
             @McpToolParam(description = "Maximum recursive expansion depth. Default 5, hard cap 20.", required = false) Integer maxDepth
     ) {
+        log.info("Tool call: resolveQueryLineage (sql={}, schema={}, expandViews={}, expandRoutines={}, maxDepth={})", sql, schema, expandViews, expandRoutines, maxDepth);
         try {
             return json.write(lineage.resolve(normalizeSql(sql), schema, expandViews, expandRoutines, maxDepth));
         } catch (SQLException e) {

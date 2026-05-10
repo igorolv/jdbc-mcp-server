@@ -26,4 +26,6 @@
         <appender-ref ref="FILE"/>
         <appender-ref ref="STDERR"/>
     </root>
+
+    <logger name="ru.it_spectrum.ai.jdbc.mcp.usage" level="INFO"/>
 </configuration>

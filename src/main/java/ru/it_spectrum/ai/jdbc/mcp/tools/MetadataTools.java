@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,8 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 @Service
 public class MetadataTools {
 
+    private static final Logger log = LoggerFactory.getLogger(MetadataTools.class);
+
     private final MetadataService metadata;
     private final JsonResponses json;
     private final ToolErrors errors;
@@ -36,6 +40,7 @@ public class MetadataTools {
     public String listSchemas(
             @McpToolParam(description = "Include system schemas. Default false.", required = false) Boolean includeSystem
     ) {
+        log.info("Tool call: listSchemas (includeSystem={})", includeSystem);
         try {
             List<String> schemas = metadata.listSchemas(Boolean.TRUE.equals(includeSystem));
             return json.write(schemas);
@@ -53,6 +58,7 @@ public class MetadataTools {
             @McpToolParam(description = "Name pattern with JDBC wildcards, e.g. '%user%' (optional)", required = false) String namePattern,
             @McpToolParam(description = "Comma-separated list of types: TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM (optional)", required = false) String types
     ) {
+        log.info("Tool call: listTables (schema={}, pattern={})", schema, namePattern);
         try {
             String[] typeArr = parseTypes(types);
             List<TableEntry> entries = metadata.listTables(schema, namePattern, typeArr);
@@ -78,6 +84,7 @@ public class MetadataTools {
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table
     ) {
+        log.info("Tool call: describeTable (schema={}, table={})", schema, table);
         try {
             TableDescription info = metadata.describeTable(schema, table);
             return json.write(info);
@@ -94,6 +101,7 @@ public class MetadataTools {
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Trigger name") String trigger
     ) {
+        log.info("Tool call: getTriggerDefinition (schema={}, table={}, trigger={})", schema, table, trigger);
         try {
             String def = metadata.triggerDefinition(schema, table, trigger);
             return def == null || def.isBlank() ? errors.notFound("trigger", trigger) : def;
@@ -109,6 +117,7 @@ public class MetadataTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "View name") String name
     ) {
+        log.info("Tool call: getViewDefinition (schema={}, name={})", schema, name);
         try {
             String def = metadata.viewDefinition(schema, name);
             return def == null ? errors.notFound("view", name) : def;
@@ -123,6 +132,7 @@ public class MetadataTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Name pattern (optional, e.g. '%calculate%')", required = false) String namePattern
     ) {
+        log.info("Tool call: listRoutines (schema={}, pattern={})", schema, namePattern);
         try {
             QueryResult r = metadata.listRoutines(schema, namePattern);
             return json.write(r);
@@ -137,6 +147,7 @@ public class MetadataTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Routine name") String name
     ) {
+        log.info("Tool call: getRoutineDefinition (schema={}, name={})", schema, name);
         try {
             String source = metadata.routineSource(schema, name);
             return source == null || source.isEmpty() ? errors.notFound("routine", name) : source;
@@ -149,6 +160,7 @@ public class MetadataTools {
     public String listSequences(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema
     ) {
+        log.info("Tool call: listSequences (schema={})", schema);
         try {
             QueryResult r = metadata.listSequences(schema);
             return json.write(r);
@@ -164,6 +176,7 @@ public class MetadataTools {
     public String searchObjects(
             @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String namePattern
     ) {
+        log.info("Tool call: searchObjects (pattern={})", namePattern);
         try {
             QueryResult r = metadata.searchObjects(namePattern);
             return json.write(r);

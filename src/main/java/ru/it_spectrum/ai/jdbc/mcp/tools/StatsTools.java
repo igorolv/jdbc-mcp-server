@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,8 @@ import java.sql.SQLException;
  */
 @Service
 public class StatsTools {
+
+    private static final Logger log = LoggerFactory.getLogger(StatsTools.class);
 
     private final StatsService stats;
     private final JsonResponses json;
@@ -37,6 +41,7 @@ public class StatsTools {
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Table name") String table
     ) {
+        log.info("Tool call: tableStats (schema={}, table={})", schema, table);
         try {
             TableStats info = stats.tableStats(schema, table);
             return json.write(info);
@@ -56,6 +61,7 @@ public class StatsTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
+        log.info("Tool call: indexStats (schema={}, table={})", schema, table);
         try {
             QueryResult r = stats.indexStats(schema, table);
             return json.write(r);
@@ -74,6 +80,7 @@ public class StatsTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Minimum index size in bytes to report (optional — filters out tiny indexes)", required = false) Long minSizeBytes
     ) {
+        log.info("Tool call: unusedIndexes (schema={})", schema);
         try {
             var result = stats.unusedIndexes(schema, minSizeBytes);
             return json.write(result);
@@ -90,6 +97,7 @@ public class StatsTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
+        log.info("Tool call: redundantIndexes (schema={}, table={})", schema, table);
         try {
             var result = stats.redundantIndexes(schema, table);
             return json.write(result);
@@ -107,6 +115,7 @@ public class StatsTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
+        log.info("Tool call: fkIndexCoverage (schema={}, table={})", schema, table);
         try {
             var result = stats.fkIndexCoverage(schema, table);
             return json.write(result);

@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,8 @@ import java.util.List;
 @Service
 public class UsageTools {
 
+    private static final Logger log = LoggerFactory.getLogger(UsageTools.class);
+
     private final UsageCatalogService service;
     private final MetadataService metadata;
     private final UsageCatalogIndexer indexer;
@@ -37,11 +41,13 @@ public class UsageTools {
 
     @McpTool(description = "Return the runtime usage-catalog index status: configured JSON/zip sources, indexing state, record counts, parse failures, duplicate UIDs and load errors.")
     public String usageCatalogStatus() {
+        log.info("Tool call: usageCatalogStatus");
         return json.write(indexer.status());
     }
 
     @McpTool(description = "Refresh the runtime usage-catalog index from the configured directories, JSON files, and zip archives. When background indexing is enabled this starts a rebuild and returns the current status immediately.")
     public String refreshUsageCatalog() {
+        log.info("Tool call: refreshUsageCatalog");
         if (!service.enabled()) return disabled("refreshUsageCatalog");
         try {
             return json.write(indexer.refresh());
@@ -54,6 +60,7 @@ public class UsageTools {
     public String getQuery(
             @McpToolParam(description = "Query uid. Format: '{dataSource}/{source.path}#{source.unit}' (without '#unit' when there is no unit).") String uid
     ) {
+        log.info("Tool call: getQuery (uid={})", uid);
         if (!service.enabled()) return disabled("getQuery");
         try {
             return json.write(service.getQuery(uid));
@@ -75,6 +82,7 @@ public class UsageTools {
             @McpToolParam(description = "Maximum rows to return (default 100, max 1000).", required = false) Integer limit,
             @McpToolParam(description = "Skip this many rows (for paging, default 0).", required = false) Integer offset
     ) {
+        log.info("Tool call: listQueries");
         if (!service.enabled()) return disabledWithRows("listQueries", "queries");
         try {
             return json.write(service.listQueries(
@@ -91,6 +99,7 @@ public class UsageTools {
             @McpToolParam(description = "Schema name (optional; case-insensitive).", required = false) String schema,
             @McpToolParam(description = "Table name (required; case-insensitive).") String table
     ) {
+        log.info("Tool call: findQueriesByTable (schema={}, table={})", schema, table);
         if (!service.enabled()) return disabledWithRows("findQueriesByTable", "matches");
         try {
             return json.write(service.findQueriesByTable(schema, table));
@@ -107,6 +116,7 @@ public class UsageTools {
             @McpToolParam(description = "Table name (optional; case-insensitive).", required = false) String table,
             @McpToolParam(description = "Column name (required; case-insensitive).") String column
     ) {
+        log.info("Tool call: findQueriesByColumn (schema={}, table={}, column={})", schema, table, column);
         if (!service.enabled()) return disabledWithRows("findQueriesByColumn", "matches");
         try {
             return json.write(service.findQueriesByColumn(schema, table, column));
@@ -123,6 +133,7 @@ public class UsageTools {
             @McpToolParam(description = "Optional table filter — at least one side of the join must reference this table (case-insensitive).", required = false) String table,
             @McpToolParam(description = "Minimum number of distinct queries that must agree on the pair (default 1).", required = false) Integer minSupport
     ) {
+        log.info("Tool call: observedRelationships (schema={}, table={})", schema, table);
         if (!service.enabled()) return disabledWithRows("observedRelationships", "relationships");
         try {
             return json.write(service.observedRelationships(schema, table, minSupport == null ? 1 : minSupport));
@@ -142,6 +153,7 @@ public class UsageTools {
     public String reresolveQueries(
             @McpToolParam(description = "Logical database identifier (matches the dataSource used during ingest). When omitted, all queries in the catalog are re-resolved.", required = false) String dataSource
     ) {
+        log.info("Tool call: reresolveQueries (dataSource={})", dataSource);
         if (!service.enabled()) return disabled("reresolveQueries");
         try {
             return json.write(service.reresolve(dataSource, name -> {
@@ -163,6 +175,7 @@ public class UsageTools {
     public String listKnownTags(
             @McpToolParam(description = "Optional dataSource filter.", required = false) String dataSource
     ) {
+        log.info("Tool call: listKnownTags (dataSource={})", dataSource);
         if (!service.enabled()) return disabledWithRows("listKnownTags", "tags");
         try {
             return json.write(service.listKnownTags(dataSource));
@@ -175,6 +188,7 @@ public class UsageTools {
     public String listKnownDomains(
             @McpToolParam(description = "Optional dataSource filter.", required = false) String dataSource
     ) {
+        log.info("Tool call: listKnownDomains (dataSource={})", dataSource);
         if (!service.enabled()) return disabledWithRows("listKnownDomains", "domains");
         try {
             return json.write(service.listKnownDomains(dataSource));
