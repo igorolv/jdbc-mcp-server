@@ -81,6 +81,7 @@ can see actual milliseconds and buffer counters.
 | `listSchemas` | List schemas. System schemas are hidden by default; use `includeSystem=true` to show all |
 | `listTables` | List tables and views in a schema. Parameters: `schema`, `namePattern` (with `%` / `_`), `types` (comma-separated, for example `TABLE,VIEW,MATERIALIZED VIEW`) |
 | `describeTable` | Full object description in one call: columns (type, size, nullable, default, remarks), primary key, unique constraints, indexes, outgoing FKs, and incoming FKs |
+| `getTriggerDefinition` | Trigger body for one named trigger. Parameters: `schema`, `table`, `trigger` |
 | `getViewDefinition` | SQL definition of a view |
 | `listRoutines` | Functions, procedures, and packages in a schema |
 | `getRoutineDefinition` | Function or procedure source code. On Oracle, all `ALL_SOURCE` lines are concatenated in order |
@@ -279,6 +280,7 @@ implemented inside the JDBC MCP server.
 | `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `observedQuery` layer of the relationship `evidence` bundle in `schemaOverview` / `tableContext` / `findJoinPaths` |
 | `listKnownTags` | Tags currently used in the catalog, with query counts. Lets the agent reuse a stable vocabulary across ingest calls |
 | `listKnownDomains` | Same for `businessDomain` values |
+| `listKnownKinds` | Source-kinds currently used in the catalog with their query counts. Helps the agent discover valid values for `listQueries` `sourceKind` filter |
 
 **Resolution.** During indexing, table / column qualifiers are resolved cheaply through the
 parser's alias map and uppercased for case-insensitive matching. An explicit schema in the SQL

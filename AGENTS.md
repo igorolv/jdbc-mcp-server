@@ -8,7 +8,7 @@
 > - Full build: `./gradlew build`
 
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
-It exposes 41 read-only tools across eight groups:
+It exposes 51 read-only tools across nine groups:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarised plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
@@ -17,6 +17,7 @@ It exposes 41 read-only tools across eight groups:
 - **Selectivity / distribution** — top-N, percentiles, null ratios, planner-only predicate and join estimates.
 - **Object statistics** — table/index size and activity, unused/redundant indexes, FK index coverage.
 - **Schema context** — high-level snapshots, table neighbourhoods, FK join paths, schema lint, ERD/DOT export.
+- **Usage catalog** — indexed known SQL queries with business context, observed joins, and semantic evidence.
 - **Snapshot / cache** — in-memory metadata snapshot with TTL plus refresh / inspect / invalidate tools.
 
 The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, and SQL Server JDBC drivers
@@ -269,6 +270,7 @@ Called methods return `{"catalog_enabled":false,"rows":[]}` when the catalog is 
 | `observedRelationships` | Aggregate equi-join pairs across all queries: `(left_table.left_col = right_table.right_col)` with support count and contributing query uids. Params: `schema`, `table`, `minSupport` |
 | `listKnownTags` | Business tags with their query counts — reuse existing vocabulary. Params: `dataSource` |
 | `listKnownDomains` | Business domains with their query counts. Params: `dataSource` |
+| `listKnownKinds` | Source-kinds with their query counts — discover valid values for `listQueries` `sourceKind` filter |
 
 These tools feed the `evidence` bundle (`observedQuery` / `semanticUsage` layers) in
 `schemaOverview`, `tableContext`, and `findJoinPaths` when `includeObserved=true`.
