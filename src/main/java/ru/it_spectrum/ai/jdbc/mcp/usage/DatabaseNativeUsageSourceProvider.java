@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
@@ -29,6 +31,8 @@ import java.util.regex.Pattern;
 @Service
 public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
 
+    private static final Logger log = LoggerFactory.getLogger(DatabaseNativeUsageSourceProvider.class);
+
     private static final String NATIVE_DATA_SOURCE = "database";
 
     private static final Pattern CREATE_VIEW_AS =
@@ -55,23 +59,40 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
         return "database-native";
     }
 
-@Override
+    @Override
     public List<QueryUsage> load() throws Exception {
         if (!properties.catalogEnabled()) {
             return List.of();
         }
+        long phaseStart = System.currentTimeMillis();
         List<QueryUsage> out = new ArrayList<>();
-        for (String schema : schemas()) {
+        List<String> schemas = schemas();
+        log.info("DatabaseNative: loading from schemas {}...", schemas);
+        for (String schema : schemas) {
             if (properties.nativeIncludeViews()) {
+                long t = System.currentTimeMillis();
+                int before = out.size();
                 addViews(schema, out);
+                log.info("DatabaseNative: {} views loaded from {} in {} ms (total records: {})",
+                        out.size() - before, schema, System.currentTimeMillis() - t, out.size());
             }
             if (properties.nativeIncludeRoutines()) {
+                long t = System.currentTimeMillis();
+                int before = out.size();
                 addRoutines(schema, out);
+                log.info("DatabaseNative: {} routines loaded from {} in {} ms (total records: {})",
+                        out.size() - before, schema, System.currentTimeMillis() - t, out.size());
             }
             if (properties.nativeIncludeTriggers()) {
+                long t = System.currentTimeMillis();
+                int before = out.size();
                 addTriggers(schema, out);
+                log.info("DatabaseNative: {} triggers loaded from {} in {} ms (total records: {})",
+                        out.size() - before, schema, System.currentTimeMillis() - t, out.size());
             }
         }
+        log.info("DatabaseNative: total {} records loaded from {} schemas in {} ms",
+                out.size(), schemas.size(), System.currentTimeMillis() - phaseStart);
         return List.copyOf(out);
     }
 
@@ -83,7 +104,10 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
     }
 
     private void addViews(String schema, List<QueryUsage> out) throws Exception {
-        for (TableEntry view : metadata.listTables(schema, "%", new String[]{"VIEW", "MATERIALIZED VIEW"})) {
+        long t = System.currentTimeMillis();
+        List<TableEntry> viewEntries = metadata.listTables(schema, "%", new String[]{"VIEW", "MATERIALIZED VIEW"});
+        int count = 0;
+        for (TableEntry view : viewEntries) {
             if (limitReached(out)) return;
             String definition = metadata.viewDefinition(view.schema(), view.name());
             if (definition == null || definition.isBlank()) continue;
@@ -103,22 +127,36 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                     null,
                     meta("VIEW", view.schema(), view.name(), null, null)
             ));
+            count++;
         }
+        log.info("DatabaseNative:   {} views found in {}, {} added in {} ms",
+                viewEntries.size(), schema, count, System.currentTimeMillis() - t);
     }
 
     private void addRoutines(String schema, List<QueryUsage> out) throws Exception {
         QueryResult routines = metadata.listRoutines(schema, "%");
+        int totalRoutines = routines.rows().size();
+        log.info("DatabaseNative: processing {} routines/sequences in {}...", totalRoutines, schema);
+        int skippedNoSource = 0;
+        int extracted = 0;
         for (Map<String, Object> row : routines.rows()) {
             if (limitReached(out)) return;
             String objectSchema = stringValue(getCI(row, "schema"));
             String name = stringValue(getCI(row, "name"));
             String kind = stringValue(getCI(row, "kind"));
             if (name == null) continue;
+            long t = System.currentTimeMillis();
             String source = metadata.routineSource(objectSchema, name);
-            if (source == null || source.isBlank()) continue;
+            if (source == null || source.isBlank()) {
+                skippedNoSource++;
+                continue;
+            }
             String sourceKind = "database-" + normalizeKind(kind, "routine");
             if ("PACKAGE".equalsIgnoreCase(kind)) {
+                int before = out.size();
                 addPackageRoutines(out, objectSchema, name, kind, sourceKind, source);
+                log.info("DatabaseNative:   package {} extracted {} stmts in {} ms",
+                        qualified(objectSchema, name), out.size() - before, System.currentTimeMillis() - t);
                 continue;
             }
             List<ExtractedSqlStatement> statements = proceduralSqlExtractor.extract(source);
@@ -137,6 +175,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                 ));
                 continue;
             }
+            extracted++;
             for (ExtractedSqlStatement statement : statements) {
                 if (limitReached(out)) return;
                 out.add(new QueryUsage(
@@ -155,7 +194,14 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                                 "statementKind", statement.kind()))
                 ));
             }
+            long elapsed = System.currentTimeMillis() - t;
+            if (elapsed > 100) {
+                log.info("DatabaseNative:   routine {} ({}) took {} ms, extracted {} stmts",
+                        qualified(objectSchema, name), kind, elapsed, statements.size());
+            }
         }
+        log.info("DatabaseNative: routines done for {}: {} records, {} skipped (no source), {} with extracted stmts",
+                schema, totalRoutines, skippedNoSource, extracted);
     }
 
     private void addPackageRoutines(List<QueryUsage> out, String objectSchema, String packageName,
@@ -202,8 +248,15 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
     }
 
     private void addTriggers(String schema, List<QueryUsage> out) throws Exception {
-        for (TableEntry table : metadata.listTables(schema, "%", new String[]{"TABLE"})) {
+        List<TableEntry> tables = metadata.listTables(schema, "%", new String[]{"TABLE"});
+        log.info("DatabaseNative: processing triggers for {} tables in {}...", tables.size(), schema);
+        int tableCount = 0;
+        int triggerCount = 0;
+        long totalMs = 0;
+        for (TableEntry table : tables) {
             if (limitReached(out)) return;
+            long t = System.currentTimeMillis();
+            int before = out.size();
             for (Trigger trigger : metadata.tableTriggers(table.schema(), table.name(), true)) {
                 if (limitReached(out)) return;
                 String definition = trigger.definition();
@@ -219,7 +272,18 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                             statement.ordinal(), statement.kind()));
                 }
             }
+            int added = out.size() - before;
+            long elapsed = System.currentTimeMillis() - t;
+            totalMs += elapsed;
+            if (added > 0 || elapsed > 50) {
+                log.info("DatabaseNative:   {} triggers from {}.{} in {} ms",
+                        added, table.schema(), table.name(), elapsed);
+            }
+            tableCount++;
+            triggerCount += added;
         }
+        log.info("DatabaseNative: triggers done for {}: {} tables, {} triggers, total {} ms",
+                schema, tableCount, triggerCount, totalMs);
     }
 
     private QueryUsage triggerUsage(TableEntry table, Trigger trigger, String sql,

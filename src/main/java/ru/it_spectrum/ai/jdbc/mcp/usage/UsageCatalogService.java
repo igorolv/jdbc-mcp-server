@@ -220,9 +220,23 @@ public class UsageCatalogService {
             status = IndexerStatusResponse.indexing(
                     properties.catalogEnabled(), configuredSources());
             try {
+                log.info("ensureIndexed: starting index build...");
+                long t = System.currentTimeMillis();
                 LoadResult loaded = loadRecords();
+                log.info("ensureIndexed: loadRecords completed: {} records, {} files, {} ms",
+                        loaded.records().size(), loaded.filesScanned(), System.currentTimeMillis() - t);
+                t = System.currentTimeMillis();
                 RebuildResult rebuildResult = rebuild(loaded.records());
+                log.info("ensureIndexed: rebuild completed: {} records ({} parseFailed, {} joins), {} ms",
+                        rebuildResult.recordsLoaded(), rebuildResult.parseFailed(),
+                        rebuildResult.joinPairsExtracted(), System.currentTimeMillis() - t);
+                t = System.currentTimeMillis();
                 ReresolveResult reresolve = autoReresolve();
+                log.info("ensureIndexed: reresolve completed: {} resolved, {} ambiguous, {} unresolved, {} ms",
+                        reresolve != null ? reresolve.tablesResolved() : 0,
+                        reresolve != null ? reresolve.tablesAmbiguous() : 0,
+                        reresolve != null ? reresolve.tablesUnresolved() : 0,
+                        System.currentTimeMillis() - t);
                 status = IndexerStatusResponse.ready(
                         properties.catalogEnabled(), "ready", configuredSources(),
                         startedAt, loaded.filesScanned(), loaded.records().size(),
@@ -427,6 +441,11 @@ public class UsageCatalogService {
     private void insertAll(Connection conn, List<QueryUsage> records, Counters counters,
                            boolean throwOnDuplicate) throws SQLException {
         Set<String> seen = new LinkedHashSet<>();
+        int total = records.size();
+        int processed = 0;
+        long lastLog = System.currentTimeMillis();
+        long totalParseMs = 0;
+        long totalInsertMs = 0;
         for (QueryUsage req : records) {
             validateRequest(req);
             QueryUsageSource src = req.source();
@@ -442,6 +461,7 @@ public class UsageCatalogService {
             QueryModel model;
             String parseStatus;
             String parseError = null;
+            long t = System.currentTimeMillis();
             try {
                 model = analysis.model(req.sql());
                 parseStatus = "parsed";
@@ -451,8 +471,23 @@ public class UsageCatalogService {
                 parseError = rootMessage(e);
                 counters.parseFailed++;
             }
+            totalParseMs += System.currentTimeMillis() - t;
+            t = System.currentTimeMillis();
             insertAnalyzed(conn, uid, req, src, unit, model, parseStatus, parseError, counters);
+            totalInsertMs += System.currentTimeMillis() - t;
+            processed++;
+
+            long now = System.currentTimeMillis();
+            if (processed % 200 == 0 || now - lastLog > 5000) {
+                log.info("insertAll progress: {}/{} records (failed: {}, parseAvg: {} ms, insertAvg: {} ms, total: {} ms)",
+                        processed, total, counters.parseFailed,
+                        totalParseMs / processed, totalInsertMs / processed, now - lastLog);
+                lastLog = now;
+            }
         }
+        log.info("insertAll done: {}/{} records, {} parseFailed, {} parseMs, {} insertMs, {} tables, {} joins, {} columns",
+                processed, total, counters.parseFailed, totalParseMs, totalInsertMs,
+                counters.tablesExtracted, counters.joinPairsExtracted, counters.columnsExtracted);
     }
 
     private void validateRequest(QueryUsage req) {
@@ -1136,8 +1171,10 @@ public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
         if (!enabled()) {
             return new ReresolveResult(dataSource, 0, 0, 0, 0);
         }
+        long t = System.currentTimeMillis();
         Map<String, List<String[]>> nameLookups = new LinkedHashMap<>();
         Set<String> distinctNames = collectUnresolvedTableNames(dataSource);
+        log.info("reresolve: {} distinct unresolved names to resolve", distinctNames.size());
         for (String name : distinctNames) {
             try {
                 nameLookups.put(name, lookup.findByName(name));
@@ -1147,10 +1184,15 @@ public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
                 throw new IllegalStateException("Name lookup failed for '" + name + "': " + e.getMessage(), e);
             }
         }
+        log.info("reresolve: name lookups done for {} names in {} ms",
+                distinctNames.size(), System.currentTimeMillis() - t);
 
         int resolved = 0;
         int ambiguous = 0;
         int unresolved = 0;
+        int totalNames = nameLookups.size();
+        int processed = 0;
+        long lastLog = System.currentTimeMillis();
         try (Connection conn = catalogDs.getConnection()) {
             conn.setAutoCommit(false);
             try {
@@ -1169,6 +1211,13 @@ public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
                     } else {
                         applyResolution(conn, dataSource, name, null, "unresolved");
                         unresolved++;
+                    }
+                    processed++;
+                    long now = System.currentTimeMillis();
+                    if (processed % 200 == 0 || now - lastLog > 5000) {
+                        log.info("reresolve writing: {}/{} names ({} resolved, {} ambiguous, {} unresolved, {} ms)",
+                                processed, totalNames, resolved, ambiguous, unresolved, now - lastLog);
+                        lastLog = now;
                     }
                 }
                 bumpSnapshotVersion(conn, dataSource);
