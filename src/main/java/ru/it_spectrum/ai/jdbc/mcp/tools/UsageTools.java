@@ -156,6 +156,17 @@ public class UsageTools {
         }
     }
 
+    @McpTool(description = "List source-kinds currently used in the catalog with their query counts. Helps the agent discover valid values for listQueries 'sourceKind' filter.")
+    public String listKnownKinds() {
+        log.info("Tool call: listKnownKinds");
+        if (!service.enabled()) return disabledWithRows("listKnownKinds", "kinds");
+        try {
+            return json.write(service.listKnownSourceKinds());
+        } catch (RuntimeException e) {
+            return errors.unexpected(e);
+        }
+    }
+
     // ---------------------------------------------------------------------------------------
     //  Disabled-catalog responses
     // ---------------------------------------------------------------------------------------

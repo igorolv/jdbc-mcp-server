@@ -12,7 +12,8 @@ public record UsageCatalogDisabledResponse(
         List<?> matches,
         List<?> relationships,
         List<?> tags,
-        List<?> domains
+        List<?> domains,
+        List<?> kinds
 ) {
     private static final String DISABLED_ERROR =
             "usage catalog is disabled (set JDBC_USAGE_CATALOG_ENABLED=true to enable)";
@@ -20,18 +21,19 @@ public record UsageCatalogDisabledResponse(
     public static UsageCatalogDisabledResponse disabled(String tool) {
         return new UsageCatalogDisabledResponse(
                 DISABLED_ERROR, "disabled", tool, null, null,
-                null, null, null, null, null
+                null, null, null, null, null, null
         );
     }
 
     public static UsageCatalogDisabledResponse withRows(String tool, String collectionField) {
         List<?> empty = List.of();
         return switch (collectionField) {
-            case "queries" -> rows(tool, empty, null, null, null, null);
-            case "matches" -> rows(tool, null, empty, null, null, null);
-            case "relationships" -> rows(tool, null, null, empty, null, null);
-            case "tags" -> rows(tool, null, null, null, empty, null);
-            case "domains" -> rows(tool, null, null, null, null, empty);
+            case "queries" -> rows(tool, empty, null, null, null, null, null);
+            case "matches" -> rows(tool, null, empty, null, null, null, null);
+            case "relationships" -> rows(tool, null, null, empty, null, null, null);
+            case "tags" -> rows(tool, null, null, null, empty, null, null);
+            case "domains" -> rows(tool, null, null, null, null, empty, null);
+            case "kinds" -> rows(tool, null, null, null, null, null, empty);
             default -> throw new IllegalArgumentException("Unknown usage catalog collection: " + collectionField);
         };
     }
@@ -42,11 +44,12 @@ public record UsageCatalogDisabledResponse(
             List<?> matches,
             List<?> relationships,
             List<?> tags,
-            List<?> domains
+            List<?> domains,
+            List<?> kinds
     ) {
         return new UsageCatalogDisabledResponse(
                 null, null, tool, false, 0,
-                queries, matches, relationships, tags, domains
+                queries, matches, relationships, tags, domains, kinds
         );
     }
 }

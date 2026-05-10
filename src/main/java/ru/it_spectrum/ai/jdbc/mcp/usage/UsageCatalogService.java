@@ -26,6 +26,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.CatalogQueryDetail;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownSourceKindsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ListQueriesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
@@ -1280,6 +1281,20 @@ public class UsageCatalogService {
                 rs.getString("business_domain"),
                 rs.getInt("count")));
         return new KnownDomainsResult(entries);
+    }
+
+    public KnownSourceKindsResult listKnownSourceKinds() {
+        ensureIndexed();
+        String sql = """
+                SELECT source_kind, COUNT(*) AS count
+                FROM query
+                GROUP BY source_kind ORDER BY count DESC, source_kind
+                """;
+        List<KnownSourceKindsResult.KindEntry> entries = queryList(sql, ps -> {
+        }, rs -> new KnownSourceKindsResult.KindEntry(
+                rs.getString("source_kind"),
+                rs.getInt("count")));
+        return new KnownSourceKindsResult(entries);
     }
 
     public TableEvidenceProfile tableEvidenceProfile(String schema, String table) {
