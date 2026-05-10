@@ -5,12 +5,12 @@ import java.util.Map;
 
 public record TimedQueryResult(
         String engine,
-        double elapsed_ms,
-        int row_count,
+        double elapsedMs,
+        int rowCount,
         boolean truncated,
         List<String> columns,
-        List<String> column_types,
+        List<String> columnTypes,
         List<Map<String, Object>> rows,
-        PgStatStatements pg_stat_statements
+        PgStatStatements pgStatStatements
 ) {
 }

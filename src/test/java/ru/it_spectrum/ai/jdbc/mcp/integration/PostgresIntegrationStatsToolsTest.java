@@ -14,12 +14,13 @@ class PostgresIntegrationStatsToolsTest extends AbstractPostgresToolsIntegration
     void tableStatsAndIndexStatsExposeSeededObjects() {
         ObjectNode table = object(statsTools().tableStats("public", "customers"));
         assertThat(field(table, "found").asBoolean()).isTrue();
-        assertThat(field(table, "table_name").asText()).isEqualTo("customers");
-        assertThat(field(table, "live_tuples").asLong()).isGreaterThanOrEqualTo(2L);
+        assertThat(field(table, "table").asText()).isEqualTo("customers");
+        assertThat(field(table, "liveTuples").asLong()).isGreaterThanOrEqualTo(2L);
 
-        ArrayNode indexes = rows(statsTools().indexStats("public", "customers"));
-        assertThat(findByField(indexes, "index_name", "customers_pkey")).isNotNull();
-        assertThat(findByField(indexes, "index_name", "idx_customers_name")).isNotNull();
+        ObjectNode indexStats = object(statsTools().indexStats("public", "customers"));
+        ArrayNode indexes = (ArrayNode) field(indexStats, "indexes");
+        assertThat(findByField(indexes, "indexName", "customers_pkey")).isNotNull();
+        assertThat(findByField(indexes, "indexName", "idx_customers_name")).isNotNull();
     }
 
     @Test

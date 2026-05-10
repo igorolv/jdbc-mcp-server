@@ -14,9 +14,9 @@ class PostgresIntegrationDistributionToolsTest extends AbstractPostgresToolsInte
     @Test
     void columnStatsReturnsBasicExtremes() {
         ObjectNode result = object(distributionTools().columnStats("public", "orders", "total"));
-        assertThat(field(row(result, 0), "total_rows").asInt()).isEqualTo(3);
-        assertThat(field(row(result, 0), "non_null_rows").asInt()).isEqualTo(3);
-        assertThat(field(row(result, 0), "distinct_values").asInt()).isEqualTo(3);
+        assertThat(field(result, "totalRows").asInt()).isEqualTo(3);
+        assertThat(field(result, "nonNullRows").asInt()).isEqualTo(3);
+        assertThat(field(result, "distinctValues").asInt()).isEqualTo(3);
     }
 
     @Test

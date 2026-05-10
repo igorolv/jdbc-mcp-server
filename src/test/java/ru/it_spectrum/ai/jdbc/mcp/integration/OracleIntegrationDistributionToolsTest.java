@@ -13,9 +13,9 @@ class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrat
     @Test
     void columnStatsReturnsBasicExtremes() {
         ObjectNode result = object(distributionTools().columnStats(schema(), "ORDERS", "TOTAL"));
-        assertThat(field(row(result, 0), "TOTAL_ROWS").asInt()).isEqualTo(3);
-        assertThat(field(row(result, 0), "NON_NULL_ROWS").asInt()).isEqualTo(3);
-        assertThat(field(row(result, 0), "DISTINCT_VALUES").asInt()).isEqualTo(3);
+        assertThat(field(result, "totalRows").asInt()).isEqualTo(3);
+        assertThat(field(result, "nonNullRows").asInt()).isEqualTo(3);
+        assertThat(field(result, "distinctValues").asInt()).isEqualTo(3);
     }
 
     @Test

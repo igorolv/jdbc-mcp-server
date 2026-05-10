@@ -6,7 +6,7 @@ import java.util.List;
 
 public record RelationshipEdge(
         String relationshipType,
-        String fkName,
+        String name,
         String fromSchema,
         String fromTable,
         List<String> fromColumns,
@@ -18,7 +18,7 @@ public record RelationshipEdge(
 ) {
     public RelationshipEdge withEvidence(RelationshipEvidence evidence) {
         return new RelationshipEdge(
-                relationshipType, fkName, fromSchema, fromTable, fromColumns,
+                relationshipType, name, fromSchema, fromTable, fromColumns,
                 toSchema, toTable, toColumns, undirected, evidence);
     }
 }

@@ -153,7 +153,7 @@ abstract class SchemaContextSupport {
         for (RelationshipEdge edge : edges) {
             out.add(new GraphEdgeSummary(
                     edge.relationshipType(),
-                    edge.fkName(),
+                    edge.name(),
                     key(edge.fromSchema(), edge.fromTable()),
                     key(edge.toSchema(), edge.toTable()),
                     edge.fromTable(),
@@ -473,7 +473,7 @@ abstract class SchemaContextSupport {
             RelationshipEvidence.Builder b = builderFor(edge, builders);
             if ("foreignKey".equals(edge.relationshipType())) {
                 b.declaredSchema = new DeclaredSchemaEdgeEvidence(
-                        edge.fkName(),
+                        edge.name(),
                         edge.fromColumns() == null ? List.of() : edge.fromColumns(),
                         edge.toColumns() == null ? List.of() : edge.toColumns());
             }
@@ -801,7 +801,7 @@ abstract class SchemaContextSupport {
         static GraphEdge forward(RelationshipEdge edge) {
             return new GraphEdge("forward",
                     edge.relationshipType(),
-                    edge.fkName(),
+                    edge.name(),
                     edge.fromSchema(),
                     edge.fromTable(),
                     edge.fromColumns(),
@@ -814,7 +814,7 @@ abstract class SchemaContextSupport {
         static GraphEdge reverse(RelationshipEdge edge) {
             return new GraphEdge("reverse",
                     edge.relationshipType(),
-                    edge.fkName(),
+                    edge.name(),
                     edge.toSchema(),
                     edge.toTable(),
                     edge.toColumns(),

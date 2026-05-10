@@ -3,8 +3,8 @@ package ru.it_spectrum.ai.jdbc.mcp.usage;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
-import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 
 import java.util.List;
@@ -51,16 +51,8 @@ class DatabaseNativeUsageSourceProviderTest {
         UsageProperties properties = properties(true, false, true, false);
         MetadataService metadata = mock(MetadataService.class);
         when(metadata.defaultSchema()).thenReturn("public");
-        when(metadata.listRoutines("public", "%")).thenReturn(new QueryResult(
-                List.of("schema", "name", "kind", "language"),
-                List.of("TEXT", "TEXT", "TEXT", "TEXT"),
-                List.of(Map.of(
-                        "schema", "public",
-                        "name", "customer_report",
-                        "kind", "FUNCTION",
-                        "language", "SQL")),
-                false,
-                1));
+        when(metadata.listRoutines("public", "%")).thenReturn(List.of(
+                new RoutineEntry("public", "customer_report", "FUNCTION")));
         when(metadata.routineSource("public", "customer_report")).thenReturn("""
                 CREATE FUNCTION customer_report()
                 RETURNS TABLE(id bigint)
@@ -91,16 +83,8 @@ class DatabaseNativeUsageSourceProviderTest {
         UsageProperties properties = properties(true, false, true, false);
         MetadataService metadata = mock(MetadataService.class);
         when(metadata.defaultSchema()).thenReturn("APP");
-        when(metadata.listRoutines("APP", "%")).thenReturn(new QueryResult(
-                List.of("schema", "name", "kind", "language"),
-                List.of("TEXT", "TEXT", "TEXT", "TEXT"),
-                List.of(Map.of(
-                        "schema", "APP",
-                        "name", "CUSTOMER_PKG",
-                        "kind", "PACKAGE",
-                        "language", "PL/SQL")),
-                false,
-                1));
+        when(metadata.listRoutines("APP", "%")).thenReturn(List.of(
+                new RoutineEntry("APP", "CUSTOMER_PKG", "PACKAGE")));
         when(metadata.routineSource("APP", "CUSTOMER_PKG")).thenReturn("""
                 CREATE OR REPLACE PACKAGE BODY customer_pkg AS
                   FUNCTION active_customer_ids RETURN SYS_REFCURSOR IS

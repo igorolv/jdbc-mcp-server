@@ -22,7 +22,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryParameter;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
-import ru.it_spectrum.ai.jdbc.mcp.model.usage.CatalogQueryDetail;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.QueryDetail;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
@@ -31,8 +31,8 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ListQueriesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
-import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
-import ru.it_spectrum.ai.jdbc.mcp.model.usage.RebuildResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.InvalidateUsageCatalogCacheResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.UsageCatalogStatus;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService.QueryModel;
@@ -87,7 +87,7 @@ public class UsageCatalogService {
     private final MetadataService metadata;
     private final AtomicBoolean indexing = new AtomicBoolean(false);
     private volatile boolean indexReady = false;
-    private volatile IndexerStatusResponse status;
+    private volatile UsageCatalogStatus status;
 
     @Autowired
     public UsageCatalogService(UsageProperties properties,
@@ -106,7 +106,7 @@ public class UsageCatalogService {
         this.mapper = mapper;
         this.catalogSources = catalogSources == null ? List.of() : List.copyOf(catalogSources);
         this.metadata = metadata;
-        this.status = IndexerStatusResponse.initial(properties.catalogEnabled(), configuredSources());
+        this.status = UsageCatalogStatus.initial(properties.catalogEnabled(), configuredSources());
     }
 
     public UsageCatalogService(UsageProperties properties,
@@ -122,7 +122,7 @@ public class UsageCatalogService {
         this.mapper = null;
         this.catalogSources = nativeProvider == null ? List.of() : List.of(nativeProvider);
         this.metadata = null;
-        this.status = IndexerStatusResponse.initial(properties.catalogEnabled(), configuredSources());
+        this.status = UsageCatalogStatus.initial(properties.catalogEnabled(), configuredSources());
     }
 
     public boolean enabled() {
@@ -133,9 +133,9 @@ public class UsageCatalogService {
     //  Rebuild
     // ---------------------------------------------------------------------------------------
 
-    public RebuildResult rebuild(List<QueryUsage> records) {
+    public InvalidateUsageCatalogCacheResult rebuild(List<QueryUsage> records) {
         if (!enabled()) {
-            return new RebuildResult(0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return new InvalidateUsageCatalogCacheResult(0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         List<QueryUsage> safeRecords = records == null ? List.of() : records;
         Counters counters = new Counters();
@@ -160,7 +160,7 @@ public class UsageCatalogService {
             throw new IllegalStateException("Failed to rebuild usage catalog index: " + e.getMessage(), e);
         }
 
-        return new RebuildResult(
+        return new InvalidateUsageCatalogCacheResult(
                 safeRecords.size(),
                 counters.parseFailed,
                 counters.paramsStored,
@@ -177,11 +177,11 @@ public class UsageCatalogService {
     //  Source loading / lazy indexing
     // ---------------------------------------------------------------------------------------
 
-    public IndexerStatusResponse status() {
+    public UsageCatalogStatus status() {
         return status;
     }
 
-    public IndexerStatusResponse invalidateIndex() {
+    public UsageCatalogStatus invalidateIndex() {
         if (!enabled()) return status;
         synchronized (this) {
             try (Connection conn = catalogDs.getConnection()) {
@@ -192,13 +192,13 @@ public class UsageCatalogService {
                 throw new IllegalStateException("Failed to invalidate usage catalog index: " + e.getMessage(), e);
             }
             indexReady = false;
-            status = IndexerStatusResponse.initial(properties.catalogEnabled(), configuredSources())
+            status = UsageCatalogStatus.initial(properties.catalogEnabled(), configuredSources())
                     .withState("invalidated");
             return status;
         }
     }
 
-    public IndexerStatusResponse ensureIndexed() {
+    public UsageCatalogStatus ensureIndexed() {
         if (!enabled() || indexReady) return status;
         synchronized (this) {
             if (!enabled() || indexReady) return status;
@@ -207,7 +207,7 @@ public class UsageCatalogService {
             }
             long started = System.currentTimeMillis();
             String startedAt = Instant.ofEpochMilli(started).toString();
-            status = IndexerStatusResponse.indexing(
+            status = UsageCatalogStatus.indexing(
                     properties.catalogEnabled(), configuredSources());
             try {
                 log.info("ensureIndexed: starting index build...");
@@ -216,7 +216,7 @@ public class UsageCatalogService {
                 log.info("ensureIndexed: loadRecords completed: {} records, {} files, {} ms",
                         loaded.records().size(), loaded.filesScanned(), System.currentTimeMillis() - t);
                 t = System.currentTimeMillis();
-                RebuildResult rebuildResult = rebuild(loaded.records());
+                InvalidateUsageCatalogCacheResult rebuildResult = rebuild(loaded.records());
                 log.info("ensureIndexed: rebuild completed: {} records ({} parseFailed, {} joins), {} ms",
                         rebuildResult.recordsLoaded(), rebuildResult.parseFailed(),
                         rebuildResult.joinPairsExtracted(), System.currentTimeMillis() - t);
@@ -227,7 +227,7 @@ public class UsageCatalogService {
                         reresolve != null ? reresolve.tablesAmbiguous() : 0,
                         reresolve != null ? reresolve.tablesUnresolved() : 0,
                         System.currentTimeMillis() - t);
-                status = IndexerStatusResponse.ready(
+                status = UsageCatalogStatus.ready(
                         properties.catalogEnabled(), "ready", configuredSources(),
                         startedAt, loaded.filesScanned(), loaded.records().size(),
                         loaded.errors().size(), loaded.duplicateKeys().size(),
@@ -246,7 +246,7 @@ public class UsageCatalogService {
                 return status;
             } catch (RuntimeException e) {
                 indexReady = false;
-                status = IndexerStatusResponse.ready(
+                status = UsageCatalogStatus.ready(
                         properties.catalogEnabled(), "failed", configuredSources(),
                         startedAt, 0, 0, 1, 0,
                         List.of("index rebuild failed: " + e.getMessage()), List.of(),
@@ -262,7 +262,7 @@ public class UsageCatalogService {
         }
     }
 
-    public IndexerStatusResponse rebuildFromSources() {
+    public UsageCatalogStatus rebuildFromSources() {
         indexReady = false;
         return ensureIndexed();
     }
@@ -843,12 +843,12 @@ public class UsageCatalogService {
     //  Read side
     // ---------------------------------------------------------------------------------------
 
-    public CatalogQueryDetail getQuery(String sourceKind, String sourcePath, String sourceUnit) {
+    public QueryDetail getQuery(String sourceKind, String sourcePath, String sourceUnit) {
         if (sourceKind == null || sourceKind.isBlank()) throw new IllegalArgumentException("sourceKind is required");
         if (sourcePath == null || sourcePath.isBlank()) throw new IllegalArgumentException("sourcePath is required");
         ensureIndexed();
         String unit = sourceUnit == null ? "" : sourceUnit;
-        CatalogQueryDetail head = querySingle(
+        QueryDetail head = querySingle(
                 "SELECT * FROM query WHERE source_kind = ? AND source_path = ? AND source_unit = ?",
                 ps -> {
                     ps.setString(1, sourceKind);
@@ -872,31 +872,31 @@ public class UsageCatalogService {
                 "SELECT tag FROM query_tag WHERE query_id = ? ORDER BY tag",
                 ps -> ps.setLong(1, queryId),
                 rs -> rs.getString("tag"));
-        List<CatalogQueryDetail.Param> params = queryList(
+        List<QueryDetail.Param> params = queryList(
                 "SELECT * FROM query_param WHERE query_id = ? ORDER BY ordinal",
                 ps -> ps.setLong(1, queryId),
                 this::paramRow);
-        List<CatalogQueryDetail.Table> tables = queryList(
+        List<QueryDetail.Table> tables = queryList(
                 "SELECT * FROM query_table WHERE query_id = ? ORDER BY id",
                 ps -> ps.setLong(1, queryId),
                 this::tableRow);
-        List<CatalogQueryDetail.Column> columns = queryList(
+        List<QueryDetail.Column> columns = queryList(
                 "SELECT * FROM query_column WHERE query_id = ? ORDER BY id",
                 ps -> ps.setLong(1, queryId),
                 this::columnRow);
-        List<CatalogQueryDetail.JoinPair> joinPairs = queryList(
+        List<QueryDetail.JoinPair> joinPairs = queryList(
                 "SELECT * FROM query_join WHERE query_id = ? ORDER BY id",
                 ps -> ps.setLong(1, queryId),
                 this::joinRow);
-        List<CatalogQueryDetail.Output> outputs = queryList(
+        List<QueryDetail.Output> outputs = queryList(
                 "SELECT * FROM query_output WHERE query_id = ? ORDER BY id",
                 ps -> ps.setLong(1, queryId),
                 rs -> outputRow(rs));
-        List<CatalogQueryDetail.FieldUsage> fieldUsages = queryList(
+        List<QueryDetail.FieldUsage> fieldUsages = queryList(
                 "SELECT * FROM query_field_usage WHERE query_id = ? ORDER BY id",
                 ps -> ps.setLong(1, queryId),
                 this::fieldUsageRow);
-        return new CatalogQueryDetail(
+        return new QueryDetail(
                 head.sourceKind(), head.sourcePath(), head.sourceUnit(),
                 head.businessLabel(), head.businessDomain(), head.rawSql(), head.normalizedSql(),
                 head.parseStatus(), head.parseError(), head.sourceMetaJson(), head.ingestedAt(),
@@ -1658,8 +1658,8 @@ public class UsageCatalogService {
     //  Row mappers
     // ---------------------------------------------------------------------------------------
 
-    private CatalogQueryDetail catalogQueryRow(ResultSet rs) throws SQLException {
-        return new CatalogQueryDetail(
+    private QueryDetail catalogQueryRow(ResultSet rs) throws SQLException {
+        return new QueryDetail(
                 rs.getString("source_kind"),
                 rs.getString("source_path"),
                 emptyToNull(rs.getString("source_unit")),
@@ -1675,8 +1675,8 @@ public class UsageCatalogService {
         );
     }
 
-    private CatalogQueryDetail.Param paramRow(ResultSet rs) throws SQLException {
-        return new CatalogQueryDetail.Param(
+    private QueryDetail.Param paramRow(ResultSet rs) throws SQLException {
+        return new QueryDetail.Param(
                 rs.getInt("ordinal"),
                 rs.getString("name"),
                 rs.getString("data_type"),
@@ -1686,8 +1686,8 @@ public class UsageCatalogService {
                 rs.getString("business_description"));
     }
 
-    private CatalogQueryDetail.Table tableRow(ResultSet rs) throws SQLException {
-        return new CatalogQueryDetail.Table(
+    private QueryDetail.Table tableRow(ResultSet rs) throws SQLException {
+        return new QueryDetail.Table(
                 rs.getString("raw_name"),
                 rs.getString("schema_resolved"),
                 rs.getString("table_resolved"),
@@ -1696,22 +1696,22 @@ public class UsageCatalogService {
                 rs.getString("resolution_status"));
     }
 
-    private CatalogQueryDetail.Column columnRow(ResultSet rs) throws SQLException {
-        return new CatalogQueryDetail.Column(
+    private QueryDetail.Column columnRow(ResultSet rs) throws SQLException {
+        return new QueryDetail.Column(
                 rs.getString("schema_resolved"),
                 rs.getString("table_resolved"),
                 rs.getString("column_name"),
                 rs.getString("context"));
     }
 
-    private CatalogQueryDetail.JoinPair joinRow(ResultSet rs) throws SQLException {
-        return new CatalogQueryDetail.JoinPair(
+    private QueryDetail.JoinPair joinRow(ResultSet rs) throws SQLException {
+        return new QueryDetail.JoinPair(
                 rs.getString("join_type"),
-                new CatalogQueryDetail.JoinPair.SchemaRef(
+                new QueryDetail.JoinPair.SchemaRef(
                         rs.getString("left_schema"),
                         rs.getString("left_table"),
                         rs.getString("left_column")),
-                new CatalogQueryDetail.JoinPair.SchemaRef(
+                new QueryDetail.JoinPair.SchemaRef(
                         rs.getString("right_schema"),
                         rs.getString("right_table"),
                         rs.getString("right_column")),
@@ -1719,16 +1719,16 @@ public class UsageCatalogService {
                 rs.getInt("equality") != 0);
     }
 
-    private CatalogQueryDetail.Output outputRow(ResultSet rs) throws SQLException {
+    private QueryDetail.Output outputRow(ResultSet rs) throws SQLException {
         long id = rs.getLong("id");
-        List<CatalogQueryDetail.Output.DerivedColumn> derived = queryList(
+        List<QueryDetail.Output.DerivedColumn> derived = queryList(
                 "SELECT * FROM query_output_column WHERE query_output_id = ?",
                 ps -> ps.setLong(1, id),
-                cs -> new CatalogQueryDetail.Output.DerivedColumn(
+                cs -> new QueryDetail.Output.DerivedColumn(
                         cs.getString("schema_resolved"),
                         cs.getString("table_resolved"),
                         cs.getString("column_name")));
-        return new CatalogQueryDetail.Output(
+        return new QueryDetail.Output(
                 rs.getString("alias"),
                 rs.getString("source_expression"),
                 rs.getString("business_label"),
@@ -1736,14 +1736,14 @@ public class UsageCatalogService {
                 derived);
     }
 
-    private CatalogQueryDetail.FieldUsage fieldUsageRow(ResultSet rs) throws SQLException {
-        return new CatalogQueryDetail.FieldUsage(
+    private QueryDetail.FieldUsage fieldUsageRow(ResultSet rs) throws SQLException {
+        return new QueryDetail.FieldUsage(
                 rs.getObject("query_output_id", Long.class),
                 rs.getString("business_object"),
-                new CatalogQueryDetail.FieldUsage.Transformation(
+                new QueryDetail.FieldUsage.Transformation(
                         rs.getString("transformation_kind"),
                         rs.getString("transformation_description")),
-                new CatalogQueryDetail.FieldUsage.Location(
+                new QueryDetail.FieldUsage.Location(
                         rs.getString("location_kind"),
                         rs.getString("location_details_json")),
                 rs.getString("headers_json"),

@@ -4,7 +4,7 @@ import java.util.List;
 
 public record PgStatStatements(
         boolean available,
-        Integer changed_entries,
+        Integer changedEntries,
         List<PgStatStatementEntry> entries,
         String note
 ) {

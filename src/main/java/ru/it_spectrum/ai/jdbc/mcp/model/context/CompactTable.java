@@ -35,7 +35,7 @@ public record CompactTable(
             String name,
             String type,
             boolean nullable,
-            Boolean primaryKey,
+            Boolean isPrimaryKey,
             Boolean foreignKey,
             Boolean indexed
     ) {

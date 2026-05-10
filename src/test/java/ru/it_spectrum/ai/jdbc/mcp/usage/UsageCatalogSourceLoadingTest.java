@@ -6,7 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
-import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.UsageCatalogStatus;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
@@ -52,7 +52,7 @@ class UsageCatalogSourceLoadingTest {
 
         UsageCatalogService service = service(List.of(dir.toString(), zip.toString()));
 
-        IndexerStatusResponse status = service.rebuildFromSources();
+        UsageCatalogStatus status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.filesScanned()).isEqualTo(2);
@@ -82,7 +82,7 @@ class UsageCatalogSourceLoadingTest {
 
         UsageCatalogService service = service(List.of(dir.toString()));
 
-        IndexerStatusResponse status = service.rebuildFromSources();
+        UsageCatalogStatus status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.filesScanned()).isEqualTo(1);
@@ -108,7 +108,7 @@ class UsageCatalogSourceLoadingTest {
 
         UsageCatalogService service = service(List.of(dir.toString()));
 
-        IndexerStatusResponse status = service.rebuildFromSources();
+        UsageCatalogStatus status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.duplicateUids()).isEqualTo(1);
@@ -141,7 +141,7 @@ class UsageCatalogSourceLoadingTest {
         };
         UsageCatalogService service = service(List.of(), List.of(source));
 
-        IndexerStatusResponse status = service.rebuildFromSources();
+        UsageCatalogStatus status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.sources()).contains("database-native");

@@ -36,7 +36,7 @@ class SqlServerIntegrationQueryToolsTest extends AbstractSqlServerToolsIntegrati
         ObjectNode summary = object(queryTools().analyzePlan(
                 "SELECT * FROM dbo.customers WHERE name LIKE 'A%'", null, null, false));
         assertThat(field(summary, "engine").asText()).isEqualTo("mssql");
-        assertThat(field(summary, "node_count").asInt()).isGreaterThan(0);
+        assertThat(field(summary, "nodeCount").asInt()).isGreaterThan(0);
 
         ObjectNode valid = object(queryTools().validateQuery("SELECT * FROM dbo.customers", null, null));
         assertThat(field(valid, "valid").asBoolean()).isTrue();

@@ -16,8 +16,8 @@ class OracleIntegrationBenchmarkToolsTest extends AbstractOracleToolsIntegration
         ObjectNode result = object(benchmarkTools().benchmarkQuery(
                 "SELECT * FROM events ORDER BY id", null, null, 50, 5, 1, 3));
         assertThat(field(result, "runs").asInt()).isEqualTo(4);
-        assertThat(field(field(result, "result_size"), "row_count").asInt()).isEqualTo(50);
-        assertThat(field(field(result, "result_size"), "truncated").asBoolean()).isTrue();
+        assertThat(field(field(result, "resultSize"), "rowCount").asInt()).isEqualTo(50);
+        assertThat(field(field(result, "resultSize"), "truncated").asBoolean()).isTrue();
     }
 
     @Test
@@ -26,7 +26,7 @@ class OracleIntegrationBenchmarkToolsTest extends AbstractOracleToolsIntegration
                 "SELECT * FROM events WHERE status = :status ORDER BY id",
                 null, Map.of("status", "OK"), 50, 5, 1, 2));
         assertThat(field(result, "runs").asInt()).isEqualTo(3);
-        assertThat(field(field(result, "result_size"), "row_count").asInt()).isEqualTo(50);
+        assertThat(field(field(result, "resultSize"), "rowCount").asInt()).isEqualTo(50);
     }
 
     @Test
@@ -34,8 +34,8 @@ class OracleIntegrationBenchmarkToolsTest extends AbstractOracleToolsIntegration
         ObjectNode result = object(benchmarkTools().timedQuery(
                 "SELECT * FROM events WHERE status = ?",
                 java.util.List.of("OK"), null, 200, 5));
-        assertThat(field(result, "row_count").asInt()).isEqualTo(90);
-        assertThat(field(field(result, "pg_stat_statements"), "available").asBoolean()).isFalse();
+        assertThat(field(result, "rowCount").asInt()).isEqualTo(90);
+        assertThat(field(field(result, "pgStatStatements"), "available").asBoolean()).isFalse();
 
         assertRejected(
                 benchmarkTools().benchmarkQuery("DELETE FROM events", null, null, 10, 5, 1, 1),

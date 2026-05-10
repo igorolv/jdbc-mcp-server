@@ -5,9 +5,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.IndexStats;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
-import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 
 import java.sql.SQLException;
 
@@ -63,7 +63,7 @@ public class StatsTools {
     ) {
         log.info("Tool call: indexStats (schema={}, table={})", schema, table);
         try {
-            QueryResult r = stats.indexStats(schema, table);
+            IndexStats r = stats.indexStats(schema, table);
             return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);

@@ -14,11 +14,12 @@ class OracleIntegrationStatsToolsTest extends AbstractOracleToolsIntegrationTest
     void tableStatsAndIndexStatsExposeSeededObjects() {
         ObjectNode table = object(statsTools().tableStats(schema(), "CUSTOMERS"));
         assertThat(field(table, "found").asBoolean()).isTrue();
-        assertThat(field(table, "table_name").asText()).isEqualTo("CUSTOMERS");
-        assertThat(field(table, "estimated_rows").asLong()).isGreaterThanOrEqualTo(2L);
+        assertThat(field(table, "table").asText()).isEqualTo("CUSTOMERS");
+        assertThat(field(table, "estimatedRows").asLong()).isGreaterThanOrEqualTo(2L);
 
-        ArrayNode indexes = rows(statsTools().indexStats(schema(), "CUSTOMERS"));
-        assertThat(findByField(indexes, "index_name", "IDX_CUSTOMERS_NAME")).isNotNull();
+        ObjectNode indexStats = object(statsTools().indexStats(schema(), "CUSTOMERS"));
+        ArrayNode indexes = (ArrayNode) field(indexStats, "indexes");
+        assertThat(findByField(indexes, "indexName", "IDX_CUSTOMERS_NAME")).isNotNull();
     }
 
     @Test

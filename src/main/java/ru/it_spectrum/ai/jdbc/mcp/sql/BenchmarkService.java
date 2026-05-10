@@ -274,8 +274,8 @@ public class BenchmarkService {
                     a.sharedBlksRead - (b == null ? 0 : b.sharedBlksRead)));
         }
         out.sort((x, y) -> Double.compare(
-                y.delta_total_exec_time_ms(),
-                x.delta_total_exec_time_ms()));
+                y.deltaTotalExecTimeMs(),
+                x.deltaTotalExecTimeMs()));
         return out;
     }
 

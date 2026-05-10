@@ -27,8 +27,8 @@ class PlanAnalyzerTest {
         ParsedPlan p = new ParsedPlan("postgresql", scan, false, null, null, null);
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
 
-        assertThat(summary.node_count()).isEqualTo(1);
-        List<PlanNodeSummary> scans = summary.full_scans();
+        assertThat(summary.nodeCount()).isEqualTo(1);
+        List<PlanNodeSummary> scans = summary.fullScans();
         assertThat(scans).hasSize(1);
         assertThat(scans.get(0).relation()).isEqualTo("big_table");
     }
@@ -39,7 +39,7 @@ class PlanAnalyzerTest {
         ParsedPlan p = new ParsedPlan("postgresql", scan, false, null, null, null);
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
 
-        assertThat(summary.full_scans()).isEmpty();
+        assertThat(summary.fullScans()).isEmpty();
     }
 
     @Test
@@ -49,7 +49,7 @@ class PlanAnalyzerTest {
         ParsedPlan p = new ParsedPlan("postgresql", leaf, true, null, null, null);
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
 
-        List<PlanNodeSummary> errs = summary.estimation_errors();
+        List<PlanNodeSummary> errs = summary.estimationErrors();
         assertThat(errs).hasSize(1);
         assertThat(errs.get(0).ratio()).isGreaterThan(100.0);
         assertThat(errs.get(0).reason()).contains("underestimated");
@@ -60,7 +60,7 @@ class PlanAnalyzerTest {
         PlanNode leaf = node("Index Scan", "t", 10.0, 10L, 10_000L, 5.0, null);
         ParsedPlan p = new ParsedPlan("postgresql", leaf, false, null, null, null);
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
-        assertThat(summary.estimation_errors()).isEmpty();
+        assertThat(summary.estimationErrors()).isEmpty();
     }
 
     @Test
@@ -71,9 +71,9 @@ class PlanAnalyzerTest {
         ParsedPlan p = new ParsedPlan("postgresql", nl, true, null, null, null);
 
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
-        List<PlanNodeSummary> nls = summary.risky_nested_loops();
+        List<PlanNodeSummary> nls = summary.riskyNestedLoops();
         assertThat(nls).hasSize(1);
-        assertThat(nls.get(0).outer_rows()).isEqualTo(50_000L);
+        assertThat(nls.get(0).outerRows()).isEqualTo(50_000L);
     }
 
     @Test
@@ -85,9 +85,9 @@ class PlanAnalyzerTest {
         ParsedPlan p = new ParsedPlan("postgresql", sort, true, null, null, null);
 
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
-        List<PlanNodeSummary> spills = summary.disk_spills();
+        List<PlanNodeSummary> spills = summary.diskSpills();
         assertThat(spills).hasSize(1);
-        assertThat(spills.get(0).sort_method()).contains("external");
+        assertThat(spills.get(0).sortMethod()).contains("external");
     }
 
     @Test
@@ -98,10 +98,10 @@ class PlanAnalyzerTest {
         ParsedPlan p = new ParsedPlan("postgresql", root, true, null, null, null);
 
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
-        List<PlanNodeSummary> top = summary.top_expensive_nodes();
+        List<PlanNodeSummary> top = summary.topExpensiveNodes();
         assertThat(top).isNotEmpty();
-        assertThat(top.get(0).ranked_by()).isEqualTo("actual_total_time_ms");
+        assertThat(top.get(0).rankedBy()).isEqualTo("actual_total_time_ms");
         // The Append root aggregates children's time and wins.
-        assertThat(top.get(0).node_type()).isEqualTo("Append");
+        assertThat(top.get(0).nodeType()).isEqualTo("Append");
     }
 }

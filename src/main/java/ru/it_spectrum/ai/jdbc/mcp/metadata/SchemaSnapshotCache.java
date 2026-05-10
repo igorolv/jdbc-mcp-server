@@ -7,7 +7,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.CachedSchemaEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.CachedTableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.ListCacheEntry;
-import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.SchemaSnapshotInfo;
+import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.SchemaSnapshot;
 
 import java.sql.SQLException;
 import java.time.Instant;
@@ -147,7 +147,7 @@ public class SchemaSnapshotCache {
         while (li.hasNext()) if (Objects.equals(norm, li.next().schema)) li.remove();
     }
 
-    public SchemaSnapshotInfo snapshotInfo(String schema) {
+    public SchemaSnapshot snapshotInfo(String schema) {
         long now = System.currentTimeMillis();
         String norm = normalize(schema);
 
@@ -181,7 +181,7 @@ public class SchemaSnapshotCache {
         for (Map.Entry<String, List<CachedTableEntry>> e : bySchema.entrySet()) {
             schemas.add(new CachedSchemaEntry(e.getKey(), e.getValue().size(), e.getValue()));
         }
-        return new SchemaSnapshotInfo(
+        return new SchemaSnapshot(
                 enabled(),
                 ttlMs / 1000L,
                 maxEntries,

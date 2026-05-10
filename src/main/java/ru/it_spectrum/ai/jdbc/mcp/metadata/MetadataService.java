@@ -12,6 +12,9 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SearchObjectEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SequenceEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.UniqueConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
@@ -484,24 +487,47 @@ public class MetadataService {
         return sb.toString();
     }
 
-    public QueryResult listSequences(String schema) throws SQLException {
+    public List<SequenceEntry> listSequences(String schema) throws SQLException {
         String effectiveSchema = schema == null || schema.isBlank() ? null : schema;
-        return executor.queryInternal(dialect.listSequencesQuery(),
+        QueryResult r = executor.queryInternal(dialect.listSequencesQuery(),
                 Arrays.asList(effectiveSchema, effectiveSchema), 500);
+        List<SequenceEntry> out = new ArrayList<>(r.rows().size());
+        for (Map<String, Object> row : r.rows()) {
+            out.add(new SequenceEntry(
+                    asString(getCI(row, "schema")),
+                    asString(getCI(row, "name"))));
+        }
+        return out;
     }
 
-    public QueryResult listRoutines(String schema, String namePattern) throws SQLException {
+    public List<RoutineEntry> listRoutines(String schema, String namePattern) throws SQLException {
         String s = schema == null || schema.isBlank() ? null : schema;
         String p = namePattern == null || namePattern.isBlank() ? null : namePattern;
-        return executor.queryInternal(dialect.listRoutinesQuery(),
+        QueryResult r = executor.queryInternal(dialect.listRoutinesQuery(),
                 Arrays.asList(s, s, p, p), 500);
+        List<RoutineEntry> out = new ArrayList<>(r.rows().size());
+        for (Map<String, Object> row : r.rows()) {
+            out.add(new RoutineEntry(
+                    asString(getCI(row, "schema")),
+                    asString(getCI(row, "name")),
+                    asString(getCI(row, "type"))));
+        }
+        return out;
     }
 
-    public QueryResult searchObjects(String namePattern) throws SQLException {
+    public List<SearchObjectEntry> searchObjects(String namePattern) throws SQLException {
         String pattern = (namePattern == null || namePattern.isBlank())
                 ? "%" : namePattern.contains("%") ? namePattern : "%" + namePattern + "%";
-        return executor.queryInternal(dialect.searchObjectsQuery(),
+        QueryResult r = executor.queryInternal(dialect.searchObjectsQuery(),
                 Arrays.asList(pattern, pattern), 200);
+        List<SearchObjectEntry> out = new ArrayList<>(r.rows().size());
+        for (Map<String, Object> row : r.rows()) {
+            out.add(new SearchObjectEntry(
+                    asString(getCI(row, "schema")),
+                    asString(getCI(row, "name")),
+                    asString(getCI(row, "type"))));
+        }
+        return out;
     }
 
     public String triggerDefinition(String schema, String table, String trigger) throws SQLException {

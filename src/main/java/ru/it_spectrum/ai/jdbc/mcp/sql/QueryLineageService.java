@@ -11,6 +11,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.lineage.LineagePhysicalTable;
 import ru.it_spectrum.ai.jdbc.mcp.model.lineage.LineageUnresolvedObject;
 import ru.it_spectrum.ai.jdbc.mcp.model.lineage.LineageWarning;
 import ru.it_spectrum.ai.jdbc.mcp.model.lineage.QueryLineageResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryInspection;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
@@ -302,10 +303,10 @@ public class QueryLineageService {
         }
         if (candidates.size() > 1) {
             return ResolvedObject.unresolved(schema, parts.name(), "ROUTINE", "ambiguous",
-                    candidates.stream().map(r -> new LineageObjectRef(r.schema(), r.name(), r.kind())).toList());
+                    candidates.stream().map(r -> new LineageObjectRef(r.schema(), r.name(), r.type())).toList());
         }
         RoutineEntry routine = candidates.get(0);
-        return ResolvedObject.resolved(routine.schema(), routine.name(), routine.kind(), "resolved");
+        return ResolvedObject.resolved(routine.schema(), routine.name(), routine.type(), "resolved");
     }
 
     private List<TableEntry> listTables(String schema, String name) throws SQLException {
@@ -313,15 +314,7 @@ public class QueryLineageService {
     }
 
     private List<RoutineEntry> listRoutines(String schema, String namePattern) throws SQLException {
-        QueryResult rows = metadata.listRoutines(schema, namePattern);
-        List<RoutineEntry> out = new ArrayList<>();
-        for (Map<String, Object> row : rows.rows()) {
-            String s = stringValue(getCI(row, "schema"));
-            String n = stringValue(getCI(row, "name"));
-            String k = stringValue(getCI(row, "kind"));
-            if (n != null) out.add(new RoutineEntry(s, n, normalizeType(k == null ? "ROUTINE" : k)));
-        }
-        return out;
+        return metadata.listRoutines(schema, namePattern);
     }
 
     private static String normalizeViewSql(String definition) {
@@ -442,10 +435,6 @@ public class QueryLineageService {
 
     private record NameParts(String schema, String name) {
     }
-
-    private record RoutineEntry(String schema, String name, String kind) {
-    }
-
     private record ResolvedObject(String schema, String name, String type, String status,
                                   List<LineageObjectRef> candidates) {
         static ResolvedObject resolved(String schema, String name, String type, String status) {

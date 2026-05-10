@@ -6,7 +6,7 @@ public record UsageCatalogDisabledResponse(
         String error,
         String kind,
         String tool,
-        Boolean catalog_enabled,
+        Boolean catalogEnabled,
         Integer count,
         List<?> queries,
         List<?> matches,

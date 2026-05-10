@@ -8,6 +8,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.IndexStats;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.RedundantIndexes;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.UnusedIndexes;
@@ -97,7 +98,6 @@ public class StatsService {
                                          String segmentBytesError) {
         return new TableStats(
                 strOrNull(getCI(row, "schema")),
-                null,
                 strOrNull(getCI(row, "table_name")),
                 true,
                 getCI(row, "relkind"),
@@ -143,12 +143,35 @@ public class StatsService {
 
     // ---------------- indexStats ----------------
 
-    /** Raw per-index rows. {@code table} is optional — {@code null} means all indexes in the schema. */
-    public QueryResult indexStats(String schema, String table) throws SQLException {
+    /** Raw per-index rows. {@code table} is optional --- {@code null} means all indexes in the schema. */
+    public IndexStats indexStats(String schema, String table) throws SQLException {
         String effectiveSchema = resolveSchema(schema);
         String t = (table == null || table.isBlank()) ? null : table;
-        return executor.queryInternal(dialect.indexStatsQuery(),
+        QueryResult r = executor.queryInternal(dialect.indexStatsQuery(),
                 Arrays.asList(effectiveSchema == null ? "" : effectiveSchema, t, t), 5_000);
+        List<IndexStats.IndexStatsRow> rows = new ArrayList<>();
+        for (Map<String, Object> row : r.rows()) {
+            List<String> columns = splitColumns(getCI(row, "columns"));
+            rows.add(new IndexStats.IndexStatsRow(
+                    strOrNull(getCI(row, "schema")),
+                    strOrNull(getCI(row, "table_name")),
+                    strOrNull(getCI(row, "index_name")),
+                    strOrNull(getCI(row, "index_type")),
+                    toBool(getCI(row, "is_unique")),
+                    toBool(getCI(row, "is_primary")),
+                    columns,
+                    toLong(getCI(row, "size_bytes")),
+                    toLongNull(getCI(row, "idx_scans")),
+                    toLongNull(getCI(row, "idx_tup_read")),
+                    toLongNull(getCI(row, "idx_tup_fetch")),
+                    toLongNull(getCI(row, "distinct_keys")),
+                    toLongNull(getCI(row, "clustering_factor")),
+                    toIntNull(getCI(row, "blevel")),
+                    toLongNull(getCI(row, "leaf_blocks")),
+                    strOrNull(getCI(row, "last_analyzed"))
+            ));
+        }
+        return new IndexStats(rows);
     }
 
     // ---------------- unusedIndexes ----------------
@@ -157,7 +180,7 @@ public class StatsService {
      * Indexes with {@code idx_scans = 0} (or equivalent). PK / UNIQUE-backing indexes are skipped
      * since dropping them would break the constraint.
      *
-     * <p>On PostgreSQL {@code idx_scan} comes from {@code pg_stat_user_indexes} — note that the
+     * <p>On PostgreSQL {@code idx_scan} comes from {@code pg_stat_user_indexes} --- note that the
      * counter is cumulative since the last stats reset and across all backends; an index "never
      * scanned" is only a strong hint if the database has been running the real workload long
      * enough. On Oracle the information is not exposed by {@code ALL_INDEXES}, so this tool
@@ -176,23 +199,23 @@ public class StatsService {
                     "unused indexes for SQL Server from low-privilege metadata.",
                     null, 0, List.of());
         }
-        QueryResult idx = indexStats(schema, null);
+        IndexStats idx = indexStats(schema, null);
         List<UnusedIndexes.UnusedIndexEntry> unused = new ArrayList<>();
-        for (Map<String, Object> row : idx.rows()) {
-            long scans = toLong(getCI(row, "idx_scans"));
-            boolean primary = toBool(getCI(row, "is_primary"));
-            boolean unique  = toBool(getCI(row, "is_unique"));
+        for (IndexStats.IndexStatsRow row : idx.indexes()) {
+            long scans = row.idxScans() == null ? 0 : row.idxScans();
+            boolean primary = row.isPrimary();
+            boolean unique  = row.isUnique();
             if (scans != 0) continue;
             if (primary || unique) continue;
-            long size = toLong(getCI(row, "size_bytes"));
+            long size = row.sizeBytes();
             if (minSizeBytes != null && size < minSizeBytes) continue;
             unused.add(new UnusedIndexes.UnusedIndexEntry(
-                    String.valueOf(getCI(row, "schema")),
-                    String.valueOf(getCI(row, "table_name")),
-                    String.valueOf(getCI(row, "index_name")),
-                    String.valueOf(getCI(row, "columns")),
+                    row.schema(),
+                    row.table(),
+                    row.indexName(),
+                    String.join(", ", row.columns()),
                     size,
-                    String.valueOf(getCI(row, "index_type"))));
+                    row.indexType()));
         }
         unused.sort((a, b) -> Long.compare(b.sizeBytes(), a.sizeBytes()));
         return new UnusedIndexes(true, null, resolveSchema(schema), unused.size(), unused);
@@ -202,7 +225,7 @@ public class StatsService {
 
     /**
      * Finds indexes whose leading-column list is a strict prefix of another index on the same table.
-     * The shorter index is a candidate for removal — the longer one already covers lookups on the
+     * The shorter index is a candidate for removal --- the longer one already covers lookups on the
      * shared leading columns.
      *
      * <p>Rules:
@@ -210,40 +233,39 @@ public class StatsService {
      *     <li>both indexes must be on the same {@code (schema, table)};</li>
      *     <li>shadowed index must be non-unique (dropping a UNIQUE index loses the constraint);</li>
      *     <li>index types must match (e.g. we don't claim a {@code gin} shadows a {@code btree});</li>
-     *     <li>prefix match is strict — equal column lists are not reported (caller can pick either).</li>
+     *     <li>prefix match is strict --- equal column lists are not reported (caller can pick either).</li>
      * </ul>
      */
     public RedundantIndexes redundantIndexes(String schema, String table) throws SQLException {
-        QueryResult idx = indexStats(schema, table);
+        IndexStats idx = indexStats(schema, table);
         // Group by (schema, table)
-        Map<String, List<Map<String, Object>>> byTable = new TreeMap<>();
-        for (Map<String, Object> r : idx.rows()) {
-            String key = String.valueOf(getCI(r, "schema")) + "."
-                    + String.valueOf(getCI(r, "table_name"));
+        Map<String, List<IndexStats.IndexStatsRow>> byTable = new TreeMap<>();
+        for (IndexStats.IndexStatsRow r : idx.indexes()) {
+            String key = r.schema() + "." + r.table();
             byTable.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
         List<RedundantIndexes.Finding> findings = new ArrayList<>();
-        for (List<Map<String, Object>> group : byTable.values()) {
-            for (Map<String, Object> a : group) {
-                List<String> aCols = splitColumns(getCI(a, "columns"));
+        for (List<IndexStats.IndexStatsRow> group : byTable.values()) {
+            for (IndexStats.IndexStatsRow a : group) {
+                List<String> aCols = a.columns();
                 if (aCols.isEmpty()) continue;
-                if (toBool(getCI(a, "is_unique")) || toBool(getCI(a, "is_primary"))) continue;
-                String aType = strLower(getCI(a, "index_type"));
-                for (Map<String, Object> b : group) {
+                if (a.isUnique() || a.isPrimary()) continue;
+                String aType = strLower(a.indexType());
+                for (IndexStats.IndexStatsRow b : group) {
                     if (a == b) continue;
-                    List<String> bCols = splitColumns(getCI(b, "columns"));
+                    List<String> bCols = b.columns();
                     if (bCols.size() <= aCols.size()) continue;
-                    if (!aType.equals(strLower(getCI(b, "index_type")))) continue;
+                    if (!aType.equals(strLower(b.indexType()))) continue;
                     if (!bCols.subList(0, aCols.size()).equals(aCols)) continue;
                     findings.add(new RedundantIndexes.Finding(
-                            String.valueOf(getCI(a, "schema")),
-                            String.valueOf(getCI(a, "table_name")),
-                            String.valueOf(getCI(a, "index_name")),
-                            String.valueOf(getCI(a, "columns")),
-                            toLong(getCI(a, "size_bytes")),
-                            String.valueOf(getCI(b, "index_name")),
-                            String.valueOf(getCI(b, "columns")),
-                            String.valueOf(getCI(a, "index_type"))));
+                            a.schema(),
+                            a.table(),
+                            a.indexName(),
+                            String.join(", ", aCols),
+                            a.sizeBytes(),
+                            b.indexName(),
+                            String.join(", ", bCols),
+                            a.indexType()));
                     break;
                 }
             }
@@ -418,6 +440,20 @@ public class StatsService {
             if (!t.isEmpty()) out.add(t);
         }
         return out;
+    }
+
+    private static Long toLongNull(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.longValue();
+        try { return Long.parseLong(v.toString().trim()); }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    private static Integer toIntNull(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.intValue();
+        try { return Integer.parseInt(v.toString().trim()); }
+        catch (NumberFormatException e) { return null; }
     }
 
     private record OrderedCol(short pos, String name) {}

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
@@ -132,16 +133,16 @@ private static final Logger log = LoggerFactory.getLogger(DatabaseNativeUsageSou
     }
 
     private void addRoutines(String schema, List<QueryUsage> out) throws Exception {
-        QueryResult routines = metadata.listRoutines(schema, "%");
-        int totalRoutines = routines.rows().size();
+        List<RoutineEntry> routines = metadata.listRoutines(schema, "%");
+        int totalRoutines = routines.size();
         log.info("DatabaseNative: processing {} routines/sequences in {}...", totalRoutines, schema);
         int skippedNoSource = 0;
         int extracted = 0;
-        for (Map<String, Object> row : routines.rows()) {
+        for (RoutineEntry row : routines) {
             if (limitReached(out)) return;
-            String objectSchema = stringValue(getCI(row, "schema"));
-            String name = stringValue(getCI(row, "name"));
-            String kind = stringValue(getCI(row, "kind"));
+            String objectSchema = row.schema();
+            String name = row.name();
+            String kind = row.type();
             if (name == null) continue;
             long t = System.currentTimeMillis();
             String source = metadata.routineSource(objectSchema, name);

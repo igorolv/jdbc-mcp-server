@@ -14,11 +14,12 @@ class SqlServerIntegrationStatsToolsTest extends AbstractSqlServerToolsIntegrati
     void tableStatsAndIndexStatsExposeSeededObjects() {
         ObjectNode table = object(statsTools().tableStats("dbo", "customers"));
         assertThat(field(table, "found").asBoolean()).isTrue();
-        assertThat(field(table, "table_name").asText()).isEqualTo("customers");
-        assertThat(field(table, "estimated_rows").asLong()).isGreaterThanOrEqualTo(2L);
+        assertThat(field(table, "table").asText()).isEqualTo("customers");
+        assertThat(field(table, "estimatedRows").asLong()).isGreaterThanOrEqualTo(2L);
 
-        ArrayNode indexes = rows(statsTools().indexStats("dbo", "customers"));
-        assertThat(findByField(indexes, "index_name", "idx_customers_name")).isNotNull();
+        ObjectNode indexStats = object(statsTools().indexStats("dbo", "customers"));
+        ArrayNode indexes = (ArrayNode) field(indexStats, "indexes");
+        assertThat(findByField(indexes, "indexName", "idx_customers_name")).isNotNull();
     }
 
     @Test

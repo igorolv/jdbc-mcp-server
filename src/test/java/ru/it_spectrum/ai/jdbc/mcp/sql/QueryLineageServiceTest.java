@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.sql;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.model.lineage.QueryLineageResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.usage.ProceduralSqlExtractor;
 
@@ -126,12 +127,14 @@ class QueryLineageServiceTest {
     }
 
     @SafeVarargs
-    private static QueryResult routines(Map<String, Object>... rows) {
-        return new QueryResult(
-                List.of("schema", "name", "kind"),
-                List.of("TEXT", "TEXT", "TEXT"),
-                List.of(rows),
-                false,
-                rows.length);
+    private static List<RoutineEntry> routines(Map<String, Object>... rows) {
+        List<RoutineEntry> out = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            out.add(new RoutineEntry(
+                    String.valueOf(row.get("schema")),
+                    String.valueOf(row.get("name")),
+                    String.valueOf(row.get("kind"))));
+        }
+        return out;
     }
 }

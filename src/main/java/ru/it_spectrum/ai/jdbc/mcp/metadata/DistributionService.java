@@ -9,6 +9,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnDistribution;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnHistogram;
+import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnStats;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.JoinCardinality;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.NullRatio;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.SelectivityEstimate;
@@ -39,7 +40,7 @@ import java.util.regex.Pattern;
  * {@link StatsService} deliberately stays out of.
  *
  * <p>Answers "is this predicate going to filter anything?" / "how skewed is this column?" /
- * "will this join return 1 K rows or 1 B?" — information an LLM needs to choose an index
+ * "will this join return 1 K rows or 1 - information an LLM needs to choose an index
  * order, rewrite a join, or decide whether a partial index makes sense.
  *
  * <ul>
@@ -55,7 +56,7 @@ public class DistributionService {
 
     private static final Logger log = LoggerFactory.getLogger(DistributionService.class);
 
-    /** Simple identifier pattern — same shape as {@code SampleTools.quoteIdent}. */
+    /** Simple identifier pattern - same shape as {@code SampleTools.quoteIdent}. */
     private static final Pattern SIMPLE_IDENT = Pattern.compile("[A-Za-z_][A-Za-z0-9_$#]*");
 
     private final SqlExecutor executor;
@@ -84,11 +85,11 @@ public class DistributionService {
     // ---------------- columnStats ----------------
 
     /**
-     * Returns basic single-column extremes — total rows, non-null rows, distinct value count,
-     * min and max — in one aggregate scan. Cheaper than {@link #columnHistogram} when only the
+     * Returns basic single-column extremes - total rows, non-null rows, distinct value count,
+     * min and max - in one aggregate scan. Cheaper than {@link #columnHistogram} when only the
      * extremes (and not the spread) are needed.
      */
-    public QueryResult columnStats(String schema, String table, String column) throws SQLException {
+    public ColumnStats columnStats(String schema, String table, String column) throws SQLException {
         requireIdent("table", table);
         requireIdent("column", column);
         String qTable = qualify(schema, table);
@@ -101,15 +102,26 @@ public class DistributionService {
                        MAX(%s)             AS max_value
                 FROM %s
                 """.formatted(qCol, qCol, qCol, qCol, qTable);
-        return executor.queryInternal(sql, Collections.emptyList(), 1);
+        QueryResult r = executor.queryInternal(sql, Collections.emptyList(), 1);
+        String effectiveSchema = resolveSchema(schema);
+        if (r.rows().isEmpty()) {
+            return new ColumnStats(effectiveSchema, table, column, 0L, 0L, 0L, null, null);
+        }
+        Map<String, Object> row = r.rows().get(0);
+        return new ColumnStats(effectiveSchema, table, column,
+                toLong(getCI(row, "total_rows")),
+                toLong(getCI(row, "non_null_rows")),
+                toLong(getCI(row, "distinct_values")),
+                getCI(row, "min_value"),
+                getCI(row, "max_value"));
     }
 
     // ---------------- columnDistribution ----------------
 
     /**
      * Returns the top-{@code topN} most frequent values of {@code column} together with their
-     * share of the total row count. Lets the caller detect heavy data skew — e.g. "70 % of
-     * rows have status='OK'" — which makes a non-partial index on {@code status} nearly useless.
+     * share of the total row count. Lets the caller detect heavy data skew - e.g. "70 % of
+     * rows have status='OK'" - which makes a non-partial index on {@code status} nearly useless.
      */
     public ColumnDistribution columnDistribution(String schema, String table,
                                                   String column, Integer topN) throws SQLException {
@@ -287,7 +299,7 @@ public class DistributionService {
      * planner's row estimate, without actually executing the query. A second {@code EXPLAIN}
      * without the predicate gives the baseline so the caller can see the selectivity ratio.
      *
-     * <p>Useful when comparing two candidate predicates — the one with the lower estimated
+     * <p>Useful when comparing two candidate predicates - the one with the lower estimated
      * cardinality is more selective and should usually be tried first.
      */
     public SelectivityEstimate estimateSelectivity(String schema, String table, String predicate)
@@ -330,8 +342,8 @@ public class DistributionService {
      * (default), {@code LEFT}, {@code RIGHT}, {@code FULL}.
      */
     public JoinCardinality joinCardinality(String fromSchema, String fromTable, String leftColumn,
-                                               String toSchema, String toTable, String rightColumn,
-                                               String joinType) throws SQLException {
+                                                String toSchema, String toTable, String rightColumn,
+                                                String joinType) throws SQLException {
         requireIdent("fromTable", fromTable);
         requireIdent("leftColumn", leftColumn);
         requireIdent("toTable", toTable);
@@ -535,7 +547,7 @@ public class DistributionService {
     private String quoteIdent(String id) {
         requireIdent("identifier", id);
         if (dialect.kind() == DatabaseKind.ORACLE) {
-            // Oracle stores unquoted identifiers in upper case — pass as-is so existing
+            // Oracle stores unquoted identifiers in upper case - pass as-is so existing
             // tables resolve without quoting.
             return id;
         }

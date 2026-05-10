@@ -6,15 +6,15 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SearchObjectEntry;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SequenceEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
-import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 /**
  * MCP tools exposing database metadata: schemas, tables, columns, indexes, foreign keys,
@@ -62,16 +62,7 @@ public class MetadataTools {
         try {
             String[] typeArr = parseTypes(types);
             List<TableEntry> entries = metadata.listTables(schema, namePattern, typeArr);
-            List<Map<String, Object>> rows = new ArrayList<>(entries.size());
-            for (TableEntry e : entries) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("schema", e.schema());
-                row.put("name", e.name());
-                row.put("type", e.type());
-                row.put("remarks", e.remarks());
-                rows.add(row);
-            }
-            return json.write(toResult(List.of("schema", "name", "type", "remarks"), rows));
+            return json.write(entries);
         } catch (SQLException e) {
             return errors.sql(e);
         }
@@ -134,7 +125,7 @@ public class MetadataTools {
     ) {
         log.info("Tool call: listRoutines (schema={}, pattern={})", schema, namePattern);
         try {
-            QueryResult r = metadata.listRoutines(schema, namePattern);
+            List<RoutineEntry> r = metadata.listRoutines(schema, namePattern);
             return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
@@ -162,7 +153,7 @@ public class MetadataTools {
     ) {
         log.info("Tool call: listSequences (schema={})", schema);
         try {
-            QueryResult r = metadata.listSequences(schema);
+            List<SequenceEntry> r = metadata.listSequences(schema);
             return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
@@ -178,7 +169,7 @@ public class MetadataTools {
     ) {
         log.info("Tool call: searchObjects (pattern={})", namePattern);
         try {
-            QueryResult r = metadata.searchObjects(namePattern);
+            List<SearchObjectEntry> r = metadata.searchObjects(namePattern);
             return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
@@ -196,11 +187,5 @@ public class MetadataTools {
             if (!t.isEmpty()) cleaned.add(t);
         }
         return cleaned.isEmpty() ? null : cleaned.toArray(new String[0]);
-    }
-
-    private QueryResult toResult(List<String> columns, List<Map<String, Object>> rows) {
-        List<String> types = new ArrayList<>();
-        for (int i = 0; i < columns.size(); i++) types.add("text");
-        return new QueryResult(columns, types, rows, false, rows.size());
     }
 }

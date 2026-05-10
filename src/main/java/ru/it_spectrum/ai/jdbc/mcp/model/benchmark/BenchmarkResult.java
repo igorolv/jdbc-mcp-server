@@ -5,14 +5,14 @@ import java.util.List;
 public record BenchmarkResult(
         String engine,
         int runs,
-        int cold_runs,
-        int warm_runs,
+        int coldRuns,
+        int warmRuns,
         int limit,
-        int timeout_seconds,
-        TimingStats cold_ms,
-        TimingStats warm_ms,
-        List<Double> all_ms,
-        ResultSize result_size,
+        int timeoutSeconds,
+        TimingStats coldMs,
+        TimingStats warmMs,
+        List<Double> allMs,
+        ResultSize resultSize,
         String note
 ) {
 }

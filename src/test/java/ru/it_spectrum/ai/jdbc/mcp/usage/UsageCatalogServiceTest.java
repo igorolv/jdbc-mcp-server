@@ -10,7 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
-import ru.it_spectrum.ai.jdbc.mcp.model.usage.CatalogQueryDetail;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.QueryDetail;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
@@ -18,7 +18,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ListQueriesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
-import ru.it_spectrum.ai.jdbc.mcp.model.usage.RebuildResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.InvalidateUsageCatalogCacheResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
@@ -64,7 +64,7 @@ class UsageCatalogServiceTest {
                 """;
         QueryUsage req = baseRequest("app/dao/CustomerOrders.java", "findOrders", sql);
 
-        RebuildResult result = service.rebuild(List.of(req));
+        InvalidateUsageCatalogCacheResult result = service.rebuild(List.of(req));
 
         assertThat(result.recordsLoaded()).isEqualTo(1);
         assertThat(result.parseFailed()).isEqualTo(0);
@@ -72,9 +72,9 @@ class UsageCatalogServiceTest {
         assertThat(result.columnsExtracted()).isGreaterThanOrEqualTo(4);
         assertThat(result.joinPairsExtracted()).isEqualTo(1);
 
-        CatalogQueryDetail stored = service.getQuery("dao", "app/dao/CustomerOrders.java", "findOrders");
+        QueryDetail stored = service.getQuery("dao", "app/dao/CustomerOrders.java", "findOrders");
         assertThat(stored.tables())
-                .extracting(CatalogQueryDetail.Table::tableResolved)
+                .extracting(QueryDetail.Table::tableResolved)
                 .contains("CUSTOMERS", "ORDERS");
         assertThat(stored.joinPairs())
                 .singleElement()
@@ -129,7 +129,7 @@ class UsageCatalogServiceTest {
 
         service.rebuild(List.of(req));
 
-        CatalogQueryDetail stored = service.getQuery("dao", "CustomerDao.java", "findOne");
+        QueryDetail stored = service.getQuery("dao", "CustomerDao.java", "findOne");
 
         assertThat(stored.parameters()).singleElement()
                 .satisfies(p -> {
@@ -246,11 +246,11 @@ class UsageCatalogServiceTest {
         service.rebuild(List.of(buildRequest(src, sqlV1)));
         service.rebuild(List.of(buildRequest(src, sqlV2)));
 
-        CatalogQueryDetail stored = service.getQuery("dao", "CustomerDao.java", "findOne");
+        QueryDetail stored = service.getQuery("dao", "CustomerDao.java", "findOne");
         assertThat(stored.rawSql()).isEqualTo(sqlV2);
         assertThat(stored.columns()).hasSizeGreaterThanOrEqualTo(3);
         assertThat(stored.columns())
-                .extracting(CatalogQueryDetail.Column::columnName)
+                .extracting(QueryDetail.Column::columnName)
                 .contains("ID", "NAME", "STATUS");
     }
 
@@ -266,10 +266,10 @@ class UsageCatalogServiceTest {
                         new QueryUsageTransformation(QueryUsageTransformationKind.IDENTITY, null),
                         null, null, null)));
 
-        RebuildResult result = service.rebuild(List.of(req));
+        InvalidateUsageCatalogCacheResult result = service.rebuild(List.of(req));
 
         assertThat(result.parseFailed()).isEqualTo(1);
-        CatalogQueryDetail stored = service.getQuery("manual", "broken.sql", null);
+        QueryDetail stored = service.getQuery("manual", "broken.sql", null);
         assertThat(stored.parseStatus()).isEqualTo("failed");
         assertThat(stored.parseError()).isNotNull();
         assertThat(stored.parameters()).hasSize(1);
@@ -404,7 +404,7 @@ class UsageCatalogServiceTest {
         assertThat(result.tablesAmbiguous()).isEqualTo(0);
         assertThat(result.tablesUnresolved()).isEqualTo(0);
 
-        CatalogQueryDetail stored = service.getQuery("dao", "q2.sql", null);
+        QueryDetail stored = service.getQuery("dao", "q2.sql", null);
         assertThat(stored.tables())
                 .allSatisfy(t -> assertThat(t.schemaResolved()).isEqualTo("APP"));
         assertThat(stored.joinPairs()).singleElement()
@@ -428,7 +428,7 @@ class UsageCatalogServiceTest {
         });
 
         assertThat(result.tablesAmbiguous()).isEqualTo(1);
-        CatalogQueryDetail stored = service.getQuery("dao", "q.sql", null);
+        QueryDetail stored = service.getQuery("dao", "q.sql", null);
         assertThat(stored.tables()).singleElement()
                 .satisfies(t -> {
                     assertThat(t.resolutionStatus()).isEqualTo("ambiguous");
@@ -443,7 +443,7 @@ class UsageCatalogServiceTest {
         ReresolveResult result = service.reresolve(name -> new java.util.ArrayList<>());
 
         assertThat(result.tablesUnresolved()).isEqualTo(1);
-        CatalogQueryDetail stored = service.getQuery("dao", "q.sql", null);
+        QueryDetail stored = service.getQuery("dao", "q.sql", null);
         assertThat(stored.tables()).singleElement()
                 .satisfies(t -> assertThat(t.resolutionStatus()).isEqualTo("unresolved"));
     }

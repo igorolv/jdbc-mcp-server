@@ -14,7 +14,7 @@ class OracleIntegrationMetadataToolsTest extends AbstractOracleToolsIntegrationT
     void listsSchemasAndTables() {
         assertThat(textValues(array(metadataTools().listSchemas(false)))).contains(schema());
 
-        ArrayNode tables = rows(metadataTools().listTables(schema(), "%", null));
+        ArrayNode tables = array(metadataTools().listTables(schema(), "%", null));
         assertThat(findByField(tables, "name", "CUSTOMERS")).isNotNull();
         assertThat(findByField(tables, "name", "V_CUSTOMER_TOTALS")).isNotNull();
     }
@@ -67,16 +67,16 @@ class OracleIntegrationMetadataToolsTest extends AbstractOracleToolsIntegrationT
 
     @Test
     void listsRoutinesSequencesAndSearchResults() {
-        ArrayNode routines = rows(metadataTools().listRoutines(schema(), "CUSTOMER_COUNT%"));
+        ArrayNode routines = array(metadataTools().listRoutines(schema(), "CUSTOMER_COUNT%"));
         assertThat(findByField(routines, "name", "CUSTOMER_COUNT_FN")).isNotNull();
 
         String source = metadataTools().getRoutineDefinition(schema(), "CUSTOMER_COUNT_FN");
         assertThat(source).contains("COUNT(*)").contains("RETURN v_count");
 
-        ArrayNode sequences = rows(metadataTools().listSequences(schema()));
+        ArrayNode sequences = array(metadataTools().listSequences(schema()));
         assertThat(findByField(sequences, "name", "AUDIT_SEQ")).isNotNull();
 
-        ArrayNode search = rows(metadataTools().searchObjects("CUSTOMER"));
+        ArrayNode search = array(metadataTools().searchObjects("CUSTOMER"));
         assertThat(findByField(search, "name", "CUSTOMERS")).isNotNull();
         assertThat(findByField(search, "name", "V_CUSTOMER_TOTALS")).isNotNull();
     }

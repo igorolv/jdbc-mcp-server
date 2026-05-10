@@ -6,7 +6,7 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
-import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnStats;
 
 import java.sql.SQLException;
 
@@ -41,7 +41,7 @@ public class DistributionTools {
     ) {
         log.info("Tool call: columnStats (schema={}, table={}, column={})", schema, table, column);
         try {
-            QueryResult r = distribution.columnStats(schema, table, column);
+            ColumnStats r = distribution.columnStats(schema, table, column);
             return json.write(r);
         } catch (SQLException e) {
             return errors.sql(e);
