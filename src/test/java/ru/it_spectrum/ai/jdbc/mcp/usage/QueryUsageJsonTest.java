@@ -27,14 +27,12 @@ class QueryUsageJsonTest {
     void minimalPayloadDeserializes() throws Exception {
         String json = """
                 {
-                  "dataSource": "SHOP",
                   "source": {"kind": "dao", "path": "Customer.java"},
                   "sql": "SELECT 1 FROM dual"
                 }
                 """;
         QueryUsage req = mapper.readValue(json, QueryUsage.class);
         assertThat(req.schemaVersion()).isEqualTo(1);
-        assertThat(req.dataSource()).isEqualTo("SHOP");
         assertThat(req.source().unit()).isNull();
         assertThat(req.parameters()).isNull();
         assertThat(req.outputs()).isNull();
@@ -45,7 +43,6 @@ class QueryUsageJsonTest {
     void enumsAcceptCanonicalLowercaseAndAreCaseInsensitive() throws Exception {
         String json = """
                 {
-                  "dataSource": "SHOP",
                   "source": {"kind": "dao", "path": "x.java"},
                   "sql": "SELECT 1",
                   "fieldUsages": [
@@ -72,7 +69,6 @@ class QueryUsageJsonTest {
     void unknownEnumValueIsRejected() {
         String json = """
                 {
-                  "dataSource": "SHOP",
                   "source": {"kind": "dao", "path": "x.java"},
                   "sql": "SELECT 1",
                   "fieldUsages": [
@@ -90,7 +86,6 @@ class QueryUsageJsonTest {
         QueryUsage req = readExample("query-usage-record.minimal.json");
 
         assertThat(req.schemaVersion()).isEqualTo(1);
-        assertThat(req.dataSource()).isEqualTo("SHOP");
         assertThat(req.source().kind()).isEqualTo("manual");
         assertThat(req.source().path()).isEqualTo("examples/manual/customer-count");
         assertThat(req.sql()).contains("customer_count");

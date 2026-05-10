@@ -64,7 +64,7 @@ class EdgeDecorationTest {
     void declaredFkEdgeGetsObservedQueryLayerWhenMatchingPairsExist() {
         List<QueryUsage> usages = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
-            usages.add(simple("SHOP", "obs" + i + ".sql",
+            usages.add(simple("obs" + i + ".sql",
                     "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
         }
         usageCatalog.rebuild(usages);
@@ -83,11 +83,11 @@ class EdgeDecorationTest {
     @Test
     void declaredFkEdgeGetsSemanticUsageLayerFromSharedBusinessTerms() {
         usageCatalog.rebuild(List.of(
-                richQuery("SHOP", "InvoiceReport.json", "header",
+                richQuery("InvoiceReport.json", "header",
                         "Invoice payer header", "Customers",
                         "SELECT c.name AS payer_name FROM customers c JOIN orders o ON o.customer_id = c.id",
                         "payer_name", "Payer name", "Invoice payer"),
-                richQuery("SHOP", "ShipmentReport.json", "main",
+                richQuery("ShipmentReport.json", "main",
                         "Customer shipments", "Customers",
                         "SELECT o.id AS order_id FROM orders o JOIN customers c ON o.customer_id = c.id",
                         "order_id", "Order id", "Invoice payer")));
@@ -109,7 +109,7 @@ class EdgeDecorationTest {
 
     @Test
     void appendsObservedOnlyEdgeWithObservedQueryLayer() {
-        usageCatalog.rebuild(List.of(simple("SHOP", "q.sql",
+        usageCatalog.rebuild(List.of(simple("q.sql",
                 "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id")));
 
         List<RelationshipEdge> edges = new ArrayList<>();
@@ -129,7 +129,7 @@ class EdgeDecorationTest {
 
     @Test
     void doesNotAppendObservedEdgeWhenOtherSideIsOutOfScope() {
-        usageCatalog.rebuild(List.of(simple("SHOP", "q.sql",
+        usageCatalog.rebuild(List.of(simple("q.sql",
                 "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id")));
 
         List<RelationshipEdge> edges = new ArrayList<>();
@@ -142,7 +142,7 @@ class EdgeDecorationTest {
     void includeObservedFalseSkipsCatalogEntirelyButStillStampsDeclaredSchema() {
         List<QueryUsage> usages = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
-            usages.add(simple("SHOP", "obs" + i + ".sql",
+            usages.add(simple("obs" + i + ".sql",
                     "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"));
         }
         usageCatalog.rebuild(usages);
@@ -194,19 +194,17 @@ class EdgeDecorationTest {
                 .toList();
     }
 
-    private static QueryUsage simple(String dataSource, String path, String sql) {
+    private static QueryUsage simple(String path, String sql) {
         return new QueryUsage(
-                dataSource,
                 new QueryUsageSource("dao", path, null),
                 null, null, null, sql,
                 null, null, null, null);
     }
 
-    private static QueryUsage richQuery(String dataSource, String path, String unit,
+    private static QueryUsage richQuery(String path, String unit,
                                         String label, String domain, String sql,
                                         String alias, String outputLabel, String businessObject) {
         return new QueryUsage(
-                dataSource,
                 new QueryUsageSource("report", path, unit),
                 label, domain, List.of(),
                 sql,

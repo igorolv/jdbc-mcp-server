@@ -4,7 +4,6 @@ import java.util.List;
 
 public record CatalogQueryDetail(
         String uid,
-        String dataSource,
         String sourceKind,
         String sourcePath,
         String sourceUnit,

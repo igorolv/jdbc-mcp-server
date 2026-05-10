@@ -45,9 +45,9 @@ public class UsageTools {
         }
     }
 
-    @McpTool(description = "Return the full usage-catalog record for one query: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns) and field usages. Compose uid as '{dataSource}/{path}#{unit}' (without '#unit' when there is no unit).")
+    @McpTool(description = "Return the full usage-catalog record for one query: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns) and field usages. Compose uid as '{sourceKind}/{path}#{unit}' (without '#unit' when there is no unit).")
     public String getQuery(
-            @McpToolParam(description = "Query uid. Format: '{dataSource}/{source.path}#{source.unit}' (without '#unit' when there is no unit).") String uid
+            @McpToolParam(description = "Query uid. Format: '{sourceKind}/{source.path}#{source.unit}' (without '#unit' when there is no unit).") String uid
     ) {
         log.info("Tool call: getQuery (uid={})", uid);
         if (!service.enabled()) return disabled("getQuery");
@@ -62,7 +62,6 @@ public class UsageTools {
 
     @McpTool(description = "List queries in the usage catalog. All filters are optional; default ordering is by most-recent ingest. sourcePath supports SQL LIKE wildcards ('%' / '_').")
     public String listQueries(
-            @McpToolParam(description = "Filter by logical database identifier.", required = false) String dataSource,
             @McpToolParam(description = "Filter by source path (LIKE — '%' / '_' allowed).", required = false) String sourcePath,
             @McpToolParam(description = "Filter by source kind ('bi-publisher-report', 'dao', etc.).", required = false) String sourceKind,
             @McpToolParam(description = "Filter by business domain (exact).", required = false) String businessDomain,
@@ -75,7 +74,7 @@ public class UsageTools {
         if (!service.enabled()) return disabledWithRows("listQueries", "queries");
         try {
             return json.write(service.listQueries(
-                    dataSource, sourcePath, sourceKind, businessDomain, tag, parseStatus, limit, offset));
+                    sourcePath, sourceKind, businessDomain, tag, parseStatus, limit, offset));
         } catch (IllegalArgumentException e) {
             return errors.argument(e);
         } catch (RuntimeException e) {
@@ -134,26 +133,22 @@ public class UsageTools {
     }
 
     @McpTool(description = "List business tags currently used in the catalog with their query counts. Helps the agent reuse an existing vocabulary instead of inventing new tags on each ingest.")
-    public String listKnownTags(
-            @McpToolParam(description = "Optional dataSource filter.", required = false) String dataSource
-    ) {
-        log.info("Tool call: listKnownTags (dataSource={})", dataSource);
+    public String listKnownTags() {
+        log.info("Tool call: listKnownTags");
         if (!service.enabled()) return disabledWithRows("listKnownTags", "tags");
         try {
-            return json.write(service.listKnownTags(dataSource));
+            return json.write(service.listKnownTags());
         } catch (RuntimeException e) {
             return errors.unexpected(e);
         }
     }
 
     @McpTool(description = "List business domains currently used in the catalog with their query counts.")
-    public String listKnownDomains(
-            @McpToolParam(description = "Optional dataSource filter.", required = false) String dataSource
-    ) {
-        log.info("Tool call: listKnownDomains (dataSource={})", dataSource);
+    public String listKnownDomains() {
+        log.info("Tool call: listKnownDomains");
         if (!service.enabled()) return disabledWithRows("listKnownDomains", "domains");
         try {
-            return json.write(service.listKnownDomains(dataSource));
+            return json.write(service.listKnownDomains());
         } catch (RuntimeException e) {
             return errors.unexpected(e);
         }

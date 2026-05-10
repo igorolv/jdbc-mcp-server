@@ -10,7 +10,6 @@ public record FindQueriesByTableResult(
 ) {
     public record Match(
             String uid,
-            String dataSource,
             String sourceKind,
             String sourcePath,
             String sourceUnit,

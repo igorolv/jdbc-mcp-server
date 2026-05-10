@@ -10,7 +10,6 @@ public record ListQueriesResult(
 ) {
     public record QueryEntry(
             String uid,
-            String dataSource,
             String sourceKind,
             String sourcePath,
             String sourceUnit,

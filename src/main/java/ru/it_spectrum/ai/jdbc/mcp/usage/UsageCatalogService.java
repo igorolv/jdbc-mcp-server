@@ -383,7 +383,8 @@ public class UsageCatalogService {
                            Set<String> duplicateUids, List<String> errors) {
         QueryUsageSource source = usage.source();
         String unit = source == null ? null : source.unit();
-        String uid = UsageUid.build(usage.dataSource(), source == null ? null : source.path(), unit);
+        String uid = UsageUid.build(source == null ? null : source.kind(),
+                source == null ? null : source.path(), unit);
         if (records.containsKey(uid)) {
             duplicateUids.add(uid);
             errors.add(origin + ": duplicate uid " + uid);
@@ -413,9 +414,9 @@ public class UsageCatalogService {
         return List.copyOf(paths);
     }
 
-    private ReresolveResult autoReresolve() {
+private ReresolveResult autoReresolve() {
         if (metadata == null) return null;
-        return reresolveInternal(null, name -> {
+        return reresolveInternal(name -> {
             List<TableEntry> matches = metadata.findTablesByName(name);
             List<String[]> out = new ArrayList<>(matches.size());
             for (TableEntry row : matches) {
@@ -450,7 +451,7 @@ public class UsageCatalogService {
             validateRequest(req);
             QueryUsageSource src = req.source();
             String unit = src.unit() == null ? "" : src.unit();
-            String uid = UsageUid.build(req.dataSource(), src.path(), unit);
+            String uid = UsageUid.build(src.kind(), src.path(), unit);
             if (!seen.add(uid)) {
                 if (throwOnDuplicate) {
                     throw new IllegalArgumentException("duplicate query uid: " + uid);
@@ -495,9 +496,6 @@ public class UsageCatalogService {
         if (req.schemaVersion() == null || req.schemaVersion() != 1) {
             throw new IllegalArgumentException("schemaVersion must be 1");
         }
-        if (req.dataSource() == null || req.dataSource().isBlank()) {
-            throw new IllegalArgumentException("dataSource is required");
-        }
         if (req.source() == null) throw new IllegalArgumentException("source is required");
         if (req.source().path() == null || req.source().path().isBlank()) {
             throw new IllegalArgumentException("source.path is required");
@@ -508,7 +506,7 @@ public class UsageCatalogService {
         if (req.sql() == null || req.sql().isBlank()) {
             throw new IllegalArgumentException("sql is required");
         }
-        UsageUid.validate(req.dataSource(), req.source().path(), req.source().unit());
+        UsageUid.validate(req.source().kind(), req.source().path(), req.source().unit());
 
         if (req.fieldUsages() != null) {
             for (QueryUsageFieldUsage fu : req.fieldUsages()) {
@@ -548,25 +546,24 @@ public class UsageCatalogService {
                              String parseStatus, String parseError) throws SQLException {
         String sql = """
                 INSERT INTO query (
-                    uid, data_source, source_kind, source_path, source_unit,
+                    uid, source_kind, source_path, source_unit,
                     business_label, business_domain, raw_sql, normalized_sql,
                     parse_status, parse_error, source_meta_json, ingested_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uid);
-            ps.setString(2, req.dataSource());
-            ps.setString(3, src.kind());
-            ps.setString(4, src.path());
-            ps.setString(5, unit);
-            ps.setString(6, req.businessLabel());
-            ps.setString(7, req.businessDomain());
-            ps.setString(8, req.sql());
-            ps.setString(9, model.normalizedSql);
-            ps.setString(10, parseStatus);
-            ps.setString(11, parseError);
-            ps.setString(12, req.sourceMeta() == null ? null : json.write(req.sourceMeta()));
-            ps.setString(13, Instant.now().toString());
+            ps.setString(2, src.kind());
+            ps.setString(3, src.path());
+            ps.setString(4, unit);
+            ps.setString(5, req.businessLabel());
+            ps.setString(6, req.businessDomain());
+            ps.setString(7, req.sql());
+            ps.setString(8, model.normalizedSql);
+            ps.setString(9, parseStatus);
+            ps.setString(10, parseError);
+            ps.setString(11, req.sourceMeta() == null ? null : json.write(req.sourceMeta()));
+            ps.setString(12, Instant.now().toString());
             ps.executeUpdate();
         }
     }
@@ -896,18 +893,18 @@ public CatalogQueryDetail getQuery(String uid) {
                 ps -> ps.setString(1, uid),
                 this::fieldUsageRow);
         return new CatalogQueryDetail(
-                head.uid(), head.dataSource(), head.sourceKind(), head.sourcePath(), head.sourceUnit(),
+                head.uid(), head.sourceKind(), head.sourcePath(), head.sourceUnit(),
                 head.businessLabel(), head.businessDomain(), head.rawSql(), head.normalizedSql(),
                 head.parseStatus(), head.parseError(), head.sourceMetaJson(), head.ingestedAt(),
                 tags, params, tables, columns, joinPairs, outputs, fieldUsages);
     }
 
-public ListQueriesResult listQueries(String dataSource, String sourcePath, String sourceKind,
+public ListQueriesResult listQueries(String sourcePath, String sourceKind,
                                           String businessDomain, String tag, String parseStatus,
                                           Integer limit, Integer offset) {
         ensureIndexed();
         StringBuilder sql = new StringBuilder("""
-                SELECT DISTINCT q.uid, q.data_source, q.source_kind, q.source_path, q.source_unit,
+                SELECT DISTINCT q.uid, q.source_kind, q.source_path, q.source_unit,
                        q.business_label, q.business_domain, q.parse_status, q.ingested_at
                 FROM query q
                 """);
@@ -917,10 +914,6 @@ public ListQueriesResult listQueries(String dataSource, String sourcePath, Strin
             args.add(tag);
         }
         sql.append(" WHERE 1=1");
-        if (dataSource != null && !dataSource.isBlank()) {
-            sql.append(" AND q.data_source = ?");
-            args.add(dataSource);
-        }
         if (sourceKind != null && !sourceKind.isBlank()) {
             sql.append(" AND q.source_kind = ?");
             args.add(sourceKind);
@@ -947,9 +940,8 @@ public ListQueriesResult listQueries(String dataSource, String sourcePath, Strin
 
         List<ListQueriesResult.QueryEntry> entries = queryList(sql.toString(), ps -> {
             for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
-        }, rs -> new ListQueriesResult.QueryEntry(
+}, rs -> new ListQueriesResult.QueryEntry(
                 rs.getString("uid"),
-                rs.getString("data_source"),
                 rs.getString("source_kind"),
                 rs.getString("source_path"),
                 emptyToNull(rs.getString("source_unit")),
@@ -966,8 +958,8 @@ public FindQueriesByTableResult findQueriesByTable(String schema, String table) 
         ensureIndexed();
         String tableUpper = table.toUpperCase(Locale.ROOT);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
-        String sql = """
-                SELECT q.uid, q.data_source, q.source_kind, q.source_path, q.source_unit,
+String sql = """
+                SELECT q.uid, q.source_kind, q.source_path, q.source_unit,
                        q.business_label, q.business_domain,
                        qt.role, qt.alias, qt.raw_name, qt.schema_resolved, qt.table_resolved
                 FROM query_table qt
@@ -980,9 +972,8 @@ public FindQueriesByTableResult findQueriesByTable(String schema, String table) 
             ps.setString(1, tableUpper);
             ps.setString(2, schemaUpper);
             ps.setString(3, schemaUpper);
-        }, rs -> new FindQueriesByTableResult.Match(
+}, rs -> new FindQueriesByTableResult.Match(
                 rs.getString("uid"),
-                rs.getString("data_source"),
                 rs.getString("source_kind"),
                 rs.getString("source_path"),
                 emptyToNull(rs.getString("source_unit")),
@@ -1074,26 +1065,19 @@ public FindQueriesByColumnResult findQueriesByColumn(String schema, String table
 return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, rels.size());
     }
 
-    public KnownTagsResult listKnownTags(String dataSource) {
+    public KnownTagsResult listKnownTags() {
         ensureIndexed();
-        StringBuilder sql = new StringBuilder("""
+        String sql = """
                 SELECT t.tag, COUNT(*) AS count
                 FROM query_tag t
                 JOIN query q ON q.uid = t.query_uid
-                WHERE 1=1
-                """);
-        List<Object> args = new ArrayList<>();
-        if (dataSource != null && !dataSource.isBlank()) {
-            sql.append(" AND q.data_source = ?");
-            args.add(dataSource);
-        }
-        sql.append(" GROUP BY t.tag ORDER BY count DESC, t.tag");
-        List<KnownTagsResult.TagEntry> entries = queryList(sql.toString(), ps -> {
-            for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
+                GROUP BY t.tag ORDER BY count DESC, t.tag
+                """;
+        List<KnownTagsResult.TagEntry> entries = queryList(sql, ps -> {
         }, rs -> new KnownTagsResult.TagEntry(
                 rs.getString("tag"),
                 rs.getInt("count")));
-        return new KnownTagsResult(dataSource, entries);
+        return new KnownTagsResult(entries);
     }
 
     /**
@@ -1162,18 +1146,18 @@ public List<ObservedEdge> observedEdges(Set<String> tableFilter, int minSupport)
      * </ul>
      * The same propagation is applied to {@code query_column} and to both sides of {@code query_join}.
      */
-public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
+public ReresolveResult reresolve(NameLookup lookup) {
         ensureIndexed();
-        return reresolveInternal(dataSource, lookup);
+        return reresolveInternal(lookup);
     }
 
-    private ReresolveResult reresolveInternal(String dataSource, NameLookup lookup) {
+    private ReresolveResult reresolveInternal(NameLookup lookup) {
         if (!enabled()) {
-            return new ReresolveResult(dataSource, 0, 0, 0, 0);
+            return new ReresolveResult(0, 0, 0, 0);
         }
         long t = System.currentTimeMillis();
         Map<String, List<String[]>> nameLookups = new LinkedHashMap<>();
-        Set<String> distinctNames = collectUnresolvedTableNames(dataSource);
+        Set<String> distinctNames = collectUnresolvedTableNames();
         log.info("reresolve: {} distinct unresolved names to resolve", distinctNames.size());
         for (String name : distinctNames) {
             try {
@@ -1203,13 +1187,13 @@ public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
                         String resolvedSchema = matches.get(0)[0];
                         String resolvedSchemaUpper = resolvedSchema == null
                                 ? null : resolvedSchema.toUpperCase(Locale.ROOT);
-                        applyResolution(conn, dataSource, name, resolvedSchemaUpper, "resolved");
+                        applyResolution(conn, name, resolvedSchemaUpper, "resolved");
                         resolved++;
                     } else if (matches.size() > 1) {
-                        applyResolution(conn, dataSource, name, null, "ambiguous");
+                        applyResolution(conn, name, null, "ambiguous");
                         ambiguous++;
                     } else {
-                        applyResolution(conn, dataSource, name, null, "unresolved");
+                        applyResolution(conn, name, null, "unresolved");
                         unresolved++;
                     }
                     processed++;
@@ -1220,7 +1204,7 @@ public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
                         lastLog = now;
                     }
                 }
-                bumpSnapshotVersion(conn, dataSource);
+                bumpSnapshotVersion(conn);
                 conn.commit();
             } catch (SQLException | RuntimeException ex) {
                 conn.rollback();
@@ -1230,101 +1214,80 @@ public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
             throw new IllegalStateException("Catalog write failed: " + e.getMessage(), e);
         }
 
-        return new ReresolveResult(dataSource, distinctNames.size(), resolved, ambiguous, unresolved);
+        return new ReresolveResult(distinctNames.size(), resolved, ambiguous, unresolved);
     }
 
-    private Set<String> collectUnresolvedTableNames(String dataSource) {
-        StringBuilder sql = new StringBuilder("""
+    private Set<String> collectUnresolvedTableNames() {
+        String sql = """
                 SELECT DISTINCT qt.table_resolved
                 FROM query_table qt
                 JOIN query q ON q.uid = qt.query_uid
                 WHERE qt.table_resolved IS NOT NULL
                   AND qt.schema_resolved IS NULL
                   AND qt.resolution_status <> 'cte'
-                """);
-        if (dataSource != null && !dataSource.isBlank()) sql.append(" AND q.data_source = ?");
-        return new LinkedHashSet<>(queryList(sql.toString(), ps -> {
-            if (dataSource != null && !dataSource.isBlank()) ps.setString(1, dataSource);
+                """;
+        return new LinkedHashSet<>(queryList(sql, ps -> {
         }, rs -> rs.getString(1)));
     }
 
-    private void applyResolution(Connection conn, String dataSource, String tableUpper,
+    private void applyResolution(Connection conn, String tableUpper,
                                  String schemaUpper, String status) throws SQLException {
-        String dsClause = dataSource != null && !dataSource.isBlank()
-                ? " AND query_uid IN (SELECT uid FROM query WHERE data_source = ?)" : "";
-
         try (PreparedStatement ps = conn.prepareStatement(
                 "UPDATE query_table SET schema_resolved = ?, resolution_status = ?"
                         + " WHERE table_resolved = ? AND schema_resolved IS NULL"
-                        + " AND resolution_status <> 'cte'" + dsClause)) {
-            int i = 1;
-            ps.setString(i++, schemaUpper);
-            ps.setString(i++, status);
-            ps.setString(i++, tableUpper);
-            if (!dsClause.isEmpty()) ps.setString(i, dataSource);
+                        + " AND resolution_status <> 'cte'")) {
+            ps.setString(1, schemaUpper);
+            ps.setString(2, status);
+            ps.setString(3, tableUpper);
             ps.executeUpdate();
         }
         if (!"resolved".equals(status)) return;
 
         try (PreparedStatement ps = conn.prepareStatement(
                 "UPDATE query_column SET schema_resolved = ?"
-                        + " WHERE table_resolved = ? AND schema_resolved IS NULL" + dsClause)) {
-            int i = 1;
-            ps.setString(i++, schemaUpper);
-            ps.setString(i++, tableUpper);
-            if (!dsClause.isEmpty()) ps.setString(i, dataSource);
+                        + " WHERE table_resolved = ? AND schema_resolved IS NULL")) {
+            ps.setString(1, schemaUpper);
+            ps.setString(2, tableUpper);
             ps.executeUpdate();
         }
         try (PreparedStatement ps = conn.prepareStatement(
                 "UPDATE query_join SET left_schema = ?"
-                        + " WHERE left_table = ? AND left_schema IS NULL" + dsClause)) {
-            int i = 1;
-            ps.setString(i++, schemaUpper);
-            ps.setString(i++, tableUpper);
-            if (!dsClause.isEmpty()) ps.setString(i, dataSource);
+                        + " WHERE left_table = ? AND left_schema IS NULL")) {
+            ps.setString(1, schemaUpper);
+            ps.setString(2, tableUpper);
             ps.executeUpdate();
         }
         try (PreparedStatement ps = conn.prepareStatement(
                 "UPDATE query_join SET right_schema = ?"
-                        + " WHERE right_table = ? AND right_schema IS NULL" + dsClause)) {
-            int i = 1;
-            ps.setString(i++, schemaUpper);
-            ps.setString(i++, tableUpper);
-            if (!dsClause.isEmpty()) ps.setString(i, dataSource);
+                        + " WHERE right_table = ? AND right_schema IS NULL")) {
+            ps.setString(1, schemaUpper);
+            ps.setString(2, tableUpper);
             ps.executeUpdate();
         }
     }
 
-    private void bumpSnapshotVersion(Connection conn, String dataSource) throws SQLException {
+    private void bumpSnapshotVersion(Connection conn) throws SQLException {
         long now = System.currentTimeMillis();
-        String dsClause = dataSource != null && !dataSource.isBlank() ? " WHERE data_source = ?" : "";
         try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE query SET resolved_snapshot_version = ?" + dsClause)) {
+                "UPDATE query SET resolved_snapshot_version = ?")) {
             ps.setLong(1, now);
-            if (!dsClause.isEmpty()) ps.setString(2, dataSource);
             ps.executeUpdate();
         }
     }
 
-    public KnownDomainsResult listKnownDomains(String dataSource) {
+    public KnownDomainsResult listKnownDomains() {
         ensureIndexed();
-        StringBuilder sql = new StringBuilder("""
+        String sql = """
                 SELECT business_domain, COUNT(*) AS count
                 FROM query
                 WHERE business_domain IS NOT NULL
-                """);
-        List<Object> args = new ArrayList<>();
-        if (dataSource != null && !dataSource.isBlank()) {
-            sql.append(" AND data_source = ?");
-            args.add(dataSource);
-        }
-        sql.append(" GROUP BY business_domain ORDER BY count DESC, business_domain");
-        List<KnownDomainsResult.DomainEntry> entries = queryList(sql.toString(), ps -> {
-            for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
+                GROUP BY business_domain ORDER BY count DESC, business_domain
+                """;
+        List<KnownDomainsResult.DomainEntry> entries = queryList(sql, ps -> {
         }, rs -> new KnownDomainsResult.DomainEntry(
                 rs.getString("business_domain"),
                 rs.getInt("count")));
-        return new KnownDomainsResult(dataSource, entries);
+        return new KnownDomainsResult(entries);
     }
 
     /**
@@ -1706,10 +1669,9 @@ public List<SemanticTableCandidate> semanticTableCandidates(String schema, Strin
     //  Row mappers
     // ---------------------------------------------------------------------------------------
 
-    private CatalogQueryDetail catalogQueryRow(ResultSet rs) throws SQLException {
+private CatalogQueryDetail catalogQueryRow(ResultSet rs) throws SQLException {
         return new CatalogQueryDetail(
                 rs.getString("uid"),
-                rs.getString("data_source"),
                 rs.getString("source_kind"),
                 rs.getString("source_path"),
                 emptyToNull(rs.getString("source_unit")),

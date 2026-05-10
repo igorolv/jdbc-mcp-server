@@ -31,9 +31,7 @@ import java.util.regex.Pattern;
 @Service
 public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
 
-    private static final Logger log = LoggerFactory.getLogger(DatabaseNativeUsageSourceProvider.class);
-
-    private static final String NATIVE_DATA_SOURCE = "database";
+private static final Logger log = LoggerFactory.getLogger(DatabaseNativeUsageSourceProvider.class);
 
     private static final Pattern CREATE_VIEW_AS =
             Pattern.compile("(?is)\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\b.*?\\bAS\\b");
@@ -117,7 +115,6 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             String type = "VIEW";
             String sourceKind = "database-view";
             out.add(new QueryUsage(
-                    NATIVE_DATA_SOURCE,
                     new QueryUsageSource(sourceKind, path("view", objectSchema, name), null),
                     "Database " + type.toLowerCase(Locale.ROOT) + " " + qualified(objectSchema, name),
                     null,
@@ -163,7 +160,6 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             List<ExtractedSqlStatement> statements = proceduralSqlExtractor.extract(source);
             if (statements.isEmpty()) {
                 out.add(new QueryUsage(
-                        NATIVE_DATA_SOURCE,
                         new QueryUsageSource(sourceKind, path("routine", objectSchema, name), null),
                         "Database " + normalizeKind(kind, "routine") + " " + qualified(objectSchema, name),
                         null,
@@ -179,8 +175,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             extracted++;
             for (ExtractedSqlStatement statement : statements) {
                 if (limitReached(out)) return;
-                out.add(new QueryUsage(
-                        NATIVE_DATA_SOURCE,
+out.add(new QueryUsage(
                         new QueryUsageSource(sourceKind, path("routine", objectSchema, name),
                                 "stmt" + statement.ordinal()),
                         "Database " + normalizeKind(kind, "routine") + " " + qualified(objectSchema, name),
@@ -211,7 +206,6 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                 proceduralSqlExtractor.extractOraclePackageBody(source);
         if (statements.isEmpty()) {
             out.add(new QueryUsage(
-                    NATIVE_DATA_SOURCE,
                     new QueryUsageSource(sourceKind, path("package", objectSchema, packageName), null),
                     "Database package " + qualified(objectSchema, packageName),
                     null,
@@ -228,7 +222,6 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             if (limitReached(out)) return;
             String unit = safe(statement.routineName()) + ".stmt" + statement.ordinal();
             out.add(new QueryUsage(
-                    NATIVE_DATA_SOURCE,
                     new QueryUsageSource(sourceKind, path("package", objectSchema, packageName), unit),
                     "Database package " + qualified(objectSchema, packageName)
                             + "." + statement.routineName(),
@@ -289,7 +282,6 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             extra.put("statementKind", statementKind);
         }
         return new QueryUsage(
-                NATIVE_DATA_SOURCE,
                 new QueryUsageSource("database-trigger",
                         path("trigger", table.schema(), table.name() + "." + trigger.name()), unit),
                 "Database trigger " + qualified(table.schema(), trigger.name()),

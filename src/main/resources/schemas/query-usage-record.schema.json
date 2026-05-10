@@ -5,21 +5,13 @@
   "description": "Canonical record accepted by jdbc-mcp-server usage catalog ingestion. Source adapters should emit this shape regardless of their native input format.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["dataSource", "source", "sql"],
+  "required": ["source", "sql"],
   "properties": {
     "schemaVersion": {
       "description": "Canonical query-usage record schema version. Omit or set to 1 for the current format.",
       "type": "integer",
       "const": 1,
       "default": 1
-    },
-    "dataSource": {
-      "description": "Logical database identifier scoping this query. Must be stable across imports and must not contain '/' or '#'.",
-      "type": "string",
-      "minLength": 1,
-      "not": {
-        "pattern": "[/#]"
-      }
     },
     "source": {
       "$ref": "#/$defs/source"

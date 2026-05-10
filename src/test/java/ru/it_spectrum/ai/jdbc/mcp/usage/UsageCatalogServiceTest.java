@@ -61,7 +61,7 @@ class UsageCatalogServiceTest {
                 LEFT JOIN orders o ON o.customer_id = c.id
                 WHERE c.status = :status
                 """;
-        QueryUsage req = baseRequest("SHOP", "app/dao/CustomerOrders.java", "findOrders", sql);
+        QueryUsage req = baseRequest("app/dao/CustomerOrders.java", "findOrders", sql);
 
         RebuildResult result = service.rebuild(List.of(req));
 
@@ -71,7 +71,7 @@ class UsageCatalogServiceTest {
         assertThat(result.columnsExtracted()).isGreaterThanOrEqualTo(4);
         assertThat(result.joinPairsExtracted()).isEqualTo(1);
 
-        CatalogQueryDetail stored = service.getQuery("SHOP/app/dao/CustomerOrders.java#findOrders");
+        CatalogQueryDetail stored = service.getQuery("dao/app/dao/CustomerOrders.java#findOrders");
         assertThat(stored.tables())
                 .extracting(CatalogQueryDetail.Table::tableResolved)
                 .contains("CUSTOMERS", "ORDERS");
@@ -89,7 +89,6 @@ class UsageCatalogServiceTest {
     void rebuildRejectsUnsupportedSchemaVersion() {
         QueryUsage req = new QueryUsage(
                 2,
-                "SHOP",
                 new QueryUsageSource("manual", "q.sql", null),
                 null,
                 null,
@@ -109,7 +108,6 @@ class UsageCatalogServiceTest {
     void rebuildStoresParametersOutputsAndFieldUsages() {
         String sql = "SELECT c.name AS cust_name FROM customers c WHERE c.id = :customerId";
         QueryUsage req = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("dao", "CustomerDao.java", "findOne"),
                 "Карточка клиента",
                 "Customers",
@@ -130,7 +128,7 @@ class UsageCatalogServiceTest {
 
         service.rebuild(List.of(req));
 
-        CatalogQueryDetail stored = service.getQuery("SHOP/CustomerDao.java#findOne");
+        CatalogQueryDetail stored = service.getQuery("dao/CustomerDao.java#findOne");
 
         assertThat(stored.parameters()).singleElement()
                 .satisfies(p -> {
@@ -158,7 +156,6 @@ class UsageCatalogServiceTest {
     @Test
     void tableEvidenceProfileAggregatesObservedAndSemanticUsage() {
         QueryUsage customerCard = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("dao", "CustomerDao.java", "findOne"),
                 "Customer card query",
                 "Customers",
@@ -177,7 +174,6 @@ class UsageCatalogServiceTest {
                         QueryUsageConfidence.HIGH)),
                 null);
         QueryUsage invoice = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("report", "InvoiceReport.json", "header"),
                 "Invoice header",
                 "Billing",
@@ -220,7 +216,6 @@ class UsageCatalogServiceTest {
     @Test
     void semanticTableCandidatesFindTablesByBusinessTerms() {
         QueryUsage payerReport = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("report", "InvoiceReport.json", "header"),
                 "Invoice payer header",
                 "Billing",
@@ -238,7 +233,6 @@ class UsageCatalogServiceTest {
                         QueryUsageConfidence.HIGH)),
                 null);
         QueryUsage inventoryReport = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("report", "InventoryReport.json", "main"),
                 "Warehouse stock",
                 "Inventory",
@@ -261,7 +255,7 @@ class UsageCatalogServiceTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(customers.support()).isGreaterThanOrEqualTo(3);
-        assertThat(customers.queryUids()).contains("SHOP/InvoiceReport.json#header");
+        assertThat(customers.queryUids()).contains("report/InvoiceReport.json#header");
         assertThat(customers.matchedTerms())
                 .extracting(term -> term.value())
                 .contains("business_tag:payer", "query_label:Invoice payer header",
@@ -274,10 +268,10 @@ class UsageCatalogServiceTest {
         String sqlV2 = "SELECT id, name, status FROM customers WHERE id = :id";
         QueryUsageSource source = new QueryUsageSource("dao", "CustomerDao.java", "findOne");
 
-        service.rebuild(List.of(buildRequest("SHOP", source, sqlV1)));
-        service.rebuild(List.of(buildRequest("SHOP", source, sqlV2)));
+        service.rebuild(List.of(buildRequest( source, sqlV1)));
+        service.rebuild(List.of(buildRequest( source, sqlV2)));
 
-        CatalogQueryDetail stored = service.getQuery("SHOP/CustomerDao.java#findOne");
+        CatalogQueryDetail stored = service.getQuery("dao/CustomerDao.java#findOne");
         assertThat(stored.rawSql()).isEqualTo(sqlV2);
         assertThat(stored.columns()).hasSizeGreaterThanOrEqualTo(3);
         assertThat(stored.columns())
@@ -289,7 +283,6 @@ class UsageCatalogServiceTest {
     void parseFailureKeepsBusinessMetadata() {
         String unparsable = "SELECT FROM";
         QueryUsage req = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("manual", "broken.sql", null),
                 "Сломанный запрос",
                 null, null,
@@ -305,7 +298,7 @@ class UsageCatalogServiceTest {
         RebuildResult result = service.rebuild(List.of(req));
 
         assertThat(result.parseFailed()).isEqualTo(1);
-        CatalogQueryDetail stored = service.getQuery("SHOP/broken.sql");
+        CatalogQueryDetail stored = service.getQuery("manual/broken.sql");
         assertThat(stored.parseStatus()).isEqualTo("failed");
         assertThat(stored.parseError()).isNotNull();
         assertThat(stored.parameters()).hasSize(1);
@@ -316,8 +309,8 @@ class UsageCatalogServiceTest {
     @Test
     void findQueriesByTableIsCaseInsensitive() {
         service.rebuild(List.of(
-                buildSimple("SHOP", "a.sql", "SELECT * FROM Customers WHERE id = 1"),
-                buildSimple("SHOP", "b.sql", "SELECT * FROM ORDERS WHERE id = 1")));
+                buildSimple( "a.sql", "SELECT * FROM Customers WHERE id = 1"),
+                buildSimple( "b.sql", "SELECT * FROM ORDERS WHERE id = 1")));
 
         FindQueriesByTableResult byLower = service.findQueriesByTable(null, "customers");
         assertThat(byLower.count()).isEqualTo(1);
@@ -330,7 +323,7 @@ class UsageCatalogServiceTest {
 
     @Test
     void findQueriesByColumnReportsContext() {
-        service.rebuild(List.of(buildSimple("SHOP", "a.sql",
+        service.rebuild(List.of(buildSimple( "a.sql",
                 "SELECT name FROM customers WHERE status = 'A' ORDER BY name")));
 
         FindQueriesByColumnResult nameMatches = service.findQueriesByColumn(null, "customers", "name");
@@ -347,11 +340,11 @@ class UsageCatalogServiceTest {
     @Test
     void observedRelationshipsAggregatesAcrossQueries() {
         service.rebuild(List.of(
-                buildSimple("SHOP", "q1.sql",
+                buildSimple( "q1.sql",
                         "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"),
-                buildSimple("SHOP", "q2.sql",
+                buildSimple( "q2.sql",
                         "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.id = 1"),
-                buildSimple("SHOP", "q3.sql",
+                buildSimple( "q3.sql",
                         "SELECT * FROM payments p JOIN customers c ON p.customer_id = c.id")));
 
         ObservedRelationshipsResult all = service.observedRelationships(null, null, 1);
@@ -365,22 +358,20 @@ class UsageCatalogServiceTest {
 
     @Test
     void listKnownTagsAndDomainsAggregateCounts() {
-        QueryUsage req1 = new QueryUsage(
-                "SHOP", new QueryUsageSource("dao", "a.sql", null),
+        QueryUsage req1 = new QueryUsage( new QueryUsageSource("dao", "a.sql", null),
                 null, "Customers", List.of("customer"),
                 "SELECT 1 FROM dual", null, null, null, null);
-        QueryUsage req2 = new QueryUsage(
-                "SHOP", new QueryUsageSource("dao", "b.sql", null),
+        QueryUsage req2 = new QueryUsage( new QueryUsageSource("dao", "b.sql", null),
                 null, "Customers", List.of("customer", "vip"),
                 "SELECT 1 FROM dual", null, null, null, null);
         service.rebuild(List.of(req1, req2));
 
-        KnownTagsResult tags = service.listKnownTags("SHOP");
+        KnownTagsResult tags = service.listKnownTags();
         assertThat(tags.tags())
                 .extracting(KnownTagsResult.TagEntry::tag)
                 .containsExactlyInAnyOrder("customer", "vip");
 
-        KnownDomainsResult domains = service.listKnownDomains("SHOP");
+        KnownDomainsResult domains = service.listKnownDomains();
         assertThat(domains.domains())
                 .singleElement()
                 .satisfies(d -> {
@@ -391,8 +382,7 @@ class UsageCatalogServiceTest {
 
     @Test
     void rejectsMissingTransformationOnFieldUsage() {
-        QueryUsage req = new QueryUsage(
-                "SHOP", new QueryUsageSource("manual", "x.sql", null),
+        QueryUsage req = new QueryUsage( new QueryUsageSource("manual", "x.sql", null),
                 null, null, null,
                 "SELECT 1 FROM dual",
                 null, null,
@@ -408,11 +398,11 @@ class UsageCatalogServiceTest {
     @Test
     void observedEdgesReturnsTypedAggregates() {
         service.rebuild(List.of(
-                buildSimple("SHOP", "q1.sql",
+                buildSimple( "q1.sql",
                         "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"),
-                buildSimple("SHOP", "q2.sql",
+                buildSimple( "q2.sql",
                         "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id"),
-                buildSimple("SHOP", "q3.sql",
+                buildSimple( "q3.sql",
                         "SELECT * FROM payments p JOIN customers c ON p.customer_id = c.id")));
 
         java.util.List<UsageCatalogService.ObservedEdge> all = service.observedEdges(null, 1);
@@ -431,12 +421,12 @@ class UsageCatalogServiceTest {
     @Test
     void reresolveFillsSchemaWhenLookupReturnsExactlyOneMatch() {
         service.rebuild(List.of(
-                buildSimple("SHOP", "q1.sql",
+                buildSimple( "q1.sql",
                         "SELECT name FROM customers WHERE id = :id"),
-                buildSimple("SHOP", "q2.sql",
+                buildSimple( "q2.sql",
                         "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id")));
 
-        ReresolveResult result = service.reresolve("SHOP", name -> {
+        ReresolveResult result = service.reresolve( name -> {
             List<String[]> matches = new java.util.ArrayList<>();
             if ("CUSTOMERS".equals(name) || "ORDERS".equals(name)) {
                 matches.add(new String[]{"app", name});
@@ -448,7 +438,7 @@ class UsageCatalogServiceTest {
         assertThat(result.tablesAmbiguous()).isEqualTo(0);
         assertThat(result.tablesUnresolved()).isEqualTo(0);
 
-        CatalogQueryDetail stored = service.getQuery("SHOP/q2.sql");
+        CatalogQueryDetail stored = service.getQuery("dao/q2.sql");
         assertThat(stored.tables())
                 .allSatisfy(t -> assertThat(t.schemaResolved()).isEqualTo("APP"));
         assertThat(stored.joinPairs()).singleElement()
@@ -462,9 +452,9 @@ class UsageCatalogServiceTest {
 
     @Test
     void reresolveMarksAmbiguousWhenMultipleMatchesFound() {
-        service.rebuild(List.of(buildSimple("SHOP", "q.sql", "SELECT id FROM orders")));
+        service.rebuild(List.of(buildSimple( "q.sql", "SELECT id FROM orders")));
 
-        ReresolveResult result = service.reresolve("SHOP", name -> {
+        ReresolveResult result = service.reresolve( name -> {
             List<String[]> matches = new java.util.ArrayList<>();
             matches.add(new String[]{"app", name});
             matches.add(new String[]{"audit", name});
@@ -472,7 +462,7 @@ class UsageCatalogServiceTest {
         });
 
         assertThat(result.tablesAmbiguous()).isEqualTo(1);
-        CatalogQueryDetail stored = service.getQuery("SHOP/q.sql");
+        CatalogQueryDetail stored = service.getQuery("dao/q.sql");
         assertThat(stored.tables()).singleElement()
                 .satisfies(t -> {
                     assertThat(t.resolutionStatus()).isEqualTo("ambiguous");
@@ -482,12 +472,12 @@ class UsageCatalogServiceTest {
 
     @Test
     void reresolveLeavesUnresolvedWhenLookupReturnsNothing() {
-        service.rebuild(List.of(buildSimple("SHOP", "q.sql", "SELECT id FROM orders")));
+        service.rebuild(List.of(buildSimple( "q.sql", "SELECT id FROM orders")));
 
-        ReresolveResult result = service.reresolve("SHOP", name -> new java.util.ArrayList<>());
+        ReresolveResult result = service.reresolve( name -> new java.util.ArrayList<>());
 
         assertThat(result.tablesUnresolved()).isEqualTo(1);
-        CatalogQueryDetail stored = service.getQuery("SHOP/q.sql");
+        CatalogQueryDetail stored = service.getQuery("dao/q.sql");
         assertThat(stored.tables()).singleElement()
                 .satisfies(t -> assertThat(t.resolutionStatus()).isEqualTo("unresolved"));
     }
@@ -495,7 +485,6 @@ class UsageCatalogServiceTest {
     @Test
     void semanticEdgeEvidenceReturnsSharedTermsAcrossCoOccurringQueries() {
         QueryUsage payerReport = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("report", "InvoiceReport.json", "header"),
                 "Invoice payer header",
                 "Customers",
@@ -513,7 +502,6 @@ class UsageCatalogServiceTest {
                         QueryUsageConfidence.HIGH)),
                 null);
         QueryUsage shipmentReport = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("report", "ShipmentReport.json", "main"),
                 "Customer shipments",
                 "Customers",
@@ -531,7 +519,6 @@ class UsageCatalogServiceTest {
                         QueryUsageConfidence.HIGH)),
                 null);
         QueryUsage standalone = new QueryUsage(
-                "SHOP",
                 new QueryUsageSource("report", "InventoryReport.json", "main"),
                 "Stock",
                 "Inventory",
@@ -545,7 +532,7 @@ class UsageCatalogServiceTest {
 
         assertThat(evidence.coOccurringQueryCount()).isEqualTo(2);
         assertThat(evidence.coOccurringQueryUids())
-                .contains("SHOP/InvoiceReport.json#header", "SHOP/ShipmentReport.json#main");
+                .contains("report/InvoiceReport.json#header", "report/ShipmentReport.json#main");
         assertThat(evidence.sharedBusinessDomains())
                 .extracting(SemanticTermEvidence::value)
                 .containsOnly("Customers");
@@ -560,8 +547,8 @@ class UsageCatalogServiceTest {
     @Test
     void semanticEdgeEvidenceReturnsEmptyWhenNoQueriesTouchBothTables() {
         service.rebuild(List.of(
-                buildSimple("SHOP", "a.sql", "SELECT id FROM customers"),
-                buildSimple("SHOP", "b.sql", "SELECT id FROM products")));
+                buildSimple( "a.sql", "SELECT id FROM customers"),
+                buildSimple( "b.sql", "SELECT id FROM products")));
 
         SemanticEdgeEvidence evidence = service.semanticEdgeEvidence(null, "customers", null, "products");
 
@@ -574,14 +561,14 @@ class UsageCatalogServiceTest {
         UsageProperties properties = lazyProperties();
         LazyNativeProvider provider = new LazyNativeProvider(
                 properties,
-                List.of(baseRequest("SHOP", "native/package/APP.CUSTOMER_PKG",
+                List.of(baseRequest( "native/package/APP.CUSTOMER_PKG",
                         "good.stmt1", "SELECT id FROM customers")));
         UsageCatalogService service = newService(properties, provider);
 
-        assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
+        assertThat(service.listQueries(null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::uid)
-                .containsExactly("SHOP/native/package/APP.CUSTOMER_PKG#good.stmt1");
+                .containsExactly("dao/native/package/APP.CUSTOMER_PKG#good.stmt1");
         assertThat(provider.calls()).isEqualTo(1);
     }
 
@@ -590,31 +577,31 @@ class UsageCatalogServiceTest {
         UsageProperties properties = lazyProperties();
         LazyNativeProvider provider = new LazyNativeProvider(
                 properties,
-                List.of(baseRequest("SHOP", "native/view/APP.CUSTOMERS_V",
+                List.of(baseRequest( "native/view/APP.CUSTOMERS_V",
                         null, "SELECT id FROM customers")),
-                List.of(baseRequest("SHOP", "native/view/APP.ORDERS_V",
+                List.of(baseRequest( "native/view/APP.ORDERS_V",
                         null, "SELECT id FROM orders")));
         UsageCatalogService service = newService(properties, provider);
 
-        assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
+        assertThat(service.listQueries(null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::uid)
-                .contains("SHOP/native/view/APP.CUSTOMERS_V");
+                .contains("dao/native/view/APP.CUSTOMERS_V");
 
         service.invalidateIndex();
 
-        assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
+        assertThat(service.listQueries(null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::uid)
-                .contains("SHOP/native/view/APP.ORDERS_V")
-                .doesNotContain("SHOP/native/view/APP.CUSTOMERS_V");
+                .contains("dao/native/view/APP.ORDERS_V")
+                .doesNotContain("dao/native/view/APP.CUSTOMERS_V");
         assertThat(provider.calls()).isEqualTo(2);
     }
 
     @Test
     void getQueryThrowsForUnknownUid() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> service.getQuery("SHOP/missing.sql"))
+                .isThrownBy(() -> service.getQuery("dao/missing.sql"))
                 .withMessageContaining("not found");
     }
 
@@ -622,23 +609,22 @@ class UsageCatalogServiceTest {
     //  helpers
     // ---------------------------------------------------------------------------------------
 
-    private static QueryUsage baseRequest(String dataSource, String path, String unit, String sql) {
+    private static QueryUsage baseRequest(String path, String unit, String sql) {
         return new QueryUsage(
-                dataSource,
                 new QueryUsageSource("dao", path, unit),
                 null, null, null,
                 sql,
                 null, null, null, null);
     }
 
-    private static QueryUsage buildRequest(String dataSource, QueryUsageSource source, String sql) {
+    private static QueryUsage buildRequest(QueryUsageSource source, String sql) {
         return new QueryUsage(
-                dataSource, source, null, null, null, sql,
+                source, null, null, null, sql,
                 null, null, null, null);
     }
 
-    private static QueryUsage buildSimple(String dataSource, String path, String sql) {
-        return baseRequest(dataSource, path, null, sql);
+    private static QueryUsage buildSimple(String path, String sql) {
+        return baseRequest(path, null, sql);
     }
 
     private static UsageCatalogService newService(UsageProperties properties,

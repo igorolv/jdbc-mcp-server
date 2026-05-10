@@ -4,7 +4,6 @@
 
 CREATE TABLE IF NOT EXISTS query (
     uid                       TEXT PRIMARY KEY,
-    data_source               TEXT NOT NULL,
     source_kind               TEXT NOT NULL,
     source_path               TEXT NOT NULL,
     source_unit               TEXT NOT NULL DEFAULT '',
@@ -19,7 +18,6 @@ CREATE TABLE IF NOT EXISTS query (
     resolved_snapshot_version BIGINT
 );
 
-CREATE INDEX IF NOT EXISTS idx_query_data_source ON query(data_source);
 CREATE INDEX IF NOT EXISTS idx_query_business_domain ON query(business_domain);
 
 CREATE TABLE IF NOT EXISTS query_tag (

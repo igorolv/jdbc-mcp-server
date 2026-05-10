@@ -32,19 +32,18 @@ examples/usage/query-usage-record.full.json
 Each record is stored under a stable UID derived from:
 
 ```text
-{dataSource}/{source.path}#{source.unit}
+{source.kind}/{source.path}#{source.unit}
 ```
 
 When `source.unit` is absent or empty, the `#unit` suffix is omitted.
 
 `source.path` is a stable source identifier, not necessarily a filesystem path. It can be a
 repository path, URL, dashboard id, report id, or any adapter-defined identifier. It must be unique
-enough within `dataSource` to support repeatable upserts.
+enough within `source.kind` to support repeatable upserts.
 
 Validation rules:
 
-- `dataSource` is required and must not contain `/` or `#`.
-- `source.kind` is required and is a free string, not an enum.
+- `source.kind` is required, is a free string (not an enum), and must not contain `/` or `#`.
 - `source.path` is required and must not contain `#`.
 - `source.unit` is optional and must not contain `/` or `#` when present.
 - `sql` is required.
@@ -57,7 +56,6 @@ Re-ingesting the same UID replaces the previous child rows in one transaction.
 ```json
 {
   "schemaVersion": 1,
-  "dataSource": "SHOP",
   "source": {
     "kind": "manual",
     "path": "examples/manual/customer-count"

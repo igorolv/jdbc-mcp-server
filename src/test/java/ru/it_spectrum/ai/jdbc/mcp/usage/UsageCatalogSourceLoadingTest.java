@@ -33,7 +33,6 @@ class UsageCatalogSourceLoadingTest {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("customers.json"), """
                 {
-                  "dataSource": "SHOP",
                   "source": {"kind": "dao", "path": "CustomerDao.java", "unit": "findOne"},
                   "sql": "SELECT c.id, c.name FROM customers c WHERE c.id = :id"
                 }
@@ -44,7 +43,6 @@ class UsageCatalogSourceLoadingTest {
             out.putNextEntry(new ZipEntry("orders/order-summary.json"));
             out.write("""
                     {
-                      "dataSource": "SHOP",
                       "source": {"kind": "report", "path": "orders/summary.xdo"},
                       "sql": "SELECT o.id FROM orders o JOIN customers c ON o.customer_id = c.id"
                     }
@@ -72,12 +70,10 @@ class UsageCatalogSourceLoadingTest {
         Files.writeString(dir.resolve("batch.json"), """
                 [
                   {
-                    "dataSource": "SHOP",
                     "source": {"kind": "dao", "path": "CustomerDao.java", "unit": "findOne"},
                     "sql": "SELECT c.id, c.name FROM customers c WHERE c.id = :id"
                   },
                   {
-                    "dataSource": "SHOP",
                     "source": {"kind": "dao", "path": "OrderDao.java", "unit": "findByCustomer"},
                     "sql": "SELECT o.id FROM orders o WHERE o.customer_id = :customerId"
                   }
@@ -102,7 +98,6 @@ class UsageCatalogSourceLoadingTest {
         Files.createDirectories(dir);
         String one = """
                 {
-                  "dataSource": "SHOP",
                   "source": {"kind": "manual", "path": "same.sql"},
                   "sql": "SELECT id FROM customers"
                 }
@@ -133,7 +128,6 @@ class UsageCatalogSourceLoadingTest {
             @Override
             public List<QueryUsage> load() {
                 return List.of(new QueryUsage(
-                        "SHOP",
                         new QueryUsageSource("database-view", "native/view/public.customer_orders_v", null),
                         null,
                         null,

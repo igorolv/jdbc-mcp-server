@@ -5,19 +5,18 @@ import java.util.Objects;
 /**
  * Composes and decomposes the textual primary key of a usage-catalog query record.
  *
- * <p>Format: {@code {dataSource}/{sourcePath}#{sourceUnit}}, with the {@code #unit} suffix
- * omitted when {@code sourceUnit} is empty. Examples (using a demo {@code SHOP} database with
- * {@code customer}, {@code customer_notes}, and {@code order} tables):
+ * <p>Format: {@code {sourceKind}/{sourcePath}#{sourceUnit}}, with the {@code #unit} suffix
+ * omitted when {@code sourceUnit} is empty. Examples:
  *
  * <ul>
- *     <li>{@code SHOP/reports/customers/CustomerCard.xdo#CUST}</li>
- *     <li>{@code SHOP/manual/ad-hoc-2026-05-01} (no unit)</li>
- *     <li>{@code SHOP/com/example/shop/dao/OrderDao.java#findByCustomer}</li>
+ *     <li>{@code database-view/native/view/SHOP.CUSTOMER_DETAILS}</li>
+ *     <li>{@code dao/com/example/shop/dao/OrderDao.java#findByCustomer}</li>
+ *     <li>{@code manual/examples/manual/customer-count} (no unit)</li>
  * </ul>
  *
  * <p>Validation rules (enforced at ingest):
  * <ul>
- *     <li>{@code dataSource} — non-blank, no {@code /} or {@code #}</li>
+ *     <li>{@code sourceKind} — non-blank, no {@code /} or {@code #}</li>
  *     <li>{@code sourcePath} — non-blank, no {@code #}</li>
  *     <li>{@code sourceUnit} — may be blank or null; when present, no {@code /} or {@code #}</li>
  * </ul>
@@ -30,12 +29,12 @@ public final class UsageUid {
     private UsageUid() {
     }
 
-    public static String build(String dataSource, String sourcePath, String sourceUnit) {
-        validate(dataSource, sourcePath, sourceUnit);
+    public static String build(String sourceKind, String sourcePath, String sourceUnit) {
+        validate(sourceKind, sourcePath, sourceUnit);
         String unit = sourceUnit == null ? "" : sourceUnit;
         return unit.isEmpty()
-                ? dataSource + "/" + sourcePath
-                : dataSource + "/" + sourcePath + "#" + unit;
+                ? sourceKind + "/" + sourcePath
+                : sourceKind + "/" + sourcePath + "#" + unit;
     }
 
     public static Parts parse(String uid) {
@@ -43,13 +42,13 @@ public final class UsageUid {
         if (uid.isBlank()) {
             throw new IllegalArgumentException("uid is blank");
         }
-        String dataSource;
+        String sourceKind;
         String rest;
         int slash = uid.indexOf('/');
         if (slash <= 0) {
-            throw new IllegalArgumentException("uid must start with '{dataSource}/...': " + uid);
+            throw new IllegalArgumentException("uid must start with '{sourceKind}/...': " + uid);
         }
-        dataSource = uid.substring(0, slash);
+        sourceKind = uid.substring(0, slash);
         rest = uid.substring(slash + 1);
 
         String sourcePath;
@@ -65,14 +64,14 @@ public final class UsageUid {
         if (sourcePath.isEmpty()) {
             throw new IllegalArgumentException("uid has empty sourcePath: " + uid);
         }
-        return new Parts(dataSource, sourcePath, sourceUnit);
+        return new Parts(sourceKind, sourcePath, sourceUnit);
     }
 
-    public static void validate(String dataSource, String sourcePath, String sourceUnit) {
-        require(dataSource, "dataSource");
+    public static void validate(String sourceKind, String sourcePath, String sourceUnit) {
+        require(sourceKind, "sourceKind");
         require(sourcePath, "sourcePath");
-        if (containsAny(dataSource, "/", "#")) {
-            throw new IllegalArgumentException("dataSource must not contain '/' or '#': " + dataSource);
+        if (containsAny(sourceKind, "/", "#")) {
+            throw new IllegalArgumentException("sourceKind must not contain '/' or '#': " + sourceKind);
         }
         if (containsAny(sourcePath, "#")) {
             throw new IllegalArgumentException("sourcePath must not contain '#': " + sourcePath);
@@ -95,7 +94,7 @@ public final class UsageUid {
         return false;
     }
 
-    public record Parts(String dataSource, String sourcePath, String sourceUnit) {
+    public record Parts(String sourceKind, String sourcePath, String sourceUnit) {
         public String sourceUnitNormalized() {
             return sourceUnit == null ? "" : sourceUnit;
         }

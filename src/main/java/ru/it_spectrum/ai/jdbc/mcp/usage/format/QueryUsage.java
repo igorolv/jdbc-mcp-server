@@ -12,15 +12,13 @@ import java.util.Map;
  * <p>This is the source-agnostic public format of the JDBC MCP server. Usage catalog source
  * directories and zip archives contain JSON documents in this shape.
  *
- * <p>Identity is derived from {@code (dataSource, source.path, source.unit)} into a single textual
- * uid. Re-ingesting the same UID replaces child rows in one transaction.
+ * <p>Identity is derived from {@code (source.kind, source.path, source.unit)} into a single
+ * textual uid. Re-ingesting the same UID replaces child rows in one transaction.
  */
 public record QueryUsage(
         @JsonProperty(required = false)
         @JsonPropertyDescription("Canonical query-usage record schema version. Omit or set to 1 for the current format.")
         Integer schemaVersion,
-        @JsonPropertyDescription("Logical database identifier scoping this query (e.g. 'SHOP'). Must not contain '/' or '#'.")
-        String dataSource,
         @JsonPropertyDescription("Where this query comes from (kind/path/unit).")
         QueryUsageSource source,
         @JsonProperty(required = false)
@@ -53,8 +51,7 @@ public record QueryUsage(
         }
     }
 
-    public QueryUsage(String dataSource,
-                      QueryUsageSource source,
+    public QueryUsage(QueryUsageSource source,
                       String businessLabel,
                       String businessDomain,
                       List<String> businessTags,
@@ -63,7 +60,7 @@ public record QueryUsage(
                       List<QueryUsageOutput> outputs,
                       List<QueryUsageFieldUsage> fieldUsages,
                       Map<String, Object> sourceMeta) {
-        this(1, dataSource, source, businessLabel, businessDomain, businessTags, sql,
+        this(1, source, businessLabel, businessDomain, businessTags, sql,
                 parameters, outputs, fieldUsages, sourceMeta);
     }
 }

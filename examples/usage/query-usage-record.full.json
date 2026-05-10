@@ -1,6 +1,5 @@
 {
   "schemaVersion": 1,
-  "dataSource": "SHOP",
   "source": {
     "kind": "java-dao",
     "path": "src/main/java/com/acme/shop/CustomerDao.java",
