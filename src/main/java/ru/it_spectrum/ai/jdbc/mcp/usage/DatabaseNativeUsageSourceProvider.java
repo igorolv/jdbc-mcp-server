@@ -192,7 +192,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
         }
         for (ExtractedRoutineSqlStatement statement : statements) {
             if (limitReached(out)) return;
-            String unit = safe(statement.routineName()) + "#stmt" + statement.ordinal();
+            String unit = safe(statement.routineName()) + ".stmt" + statement.ordinal();
             out.add(new QueryUsage(
                     properties.effectiveDataSourceId(),
                     new QueryUsageSource(sourceKind, path("package", objectSchema, packageName), unit),

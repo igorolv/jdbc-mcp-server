@@ -78,7 +78,8 @@ public class UsageCatalogService {
     private final QueryAnalysisService analysis;
     private final JsonResponses json;
     private final DatabaseNativeUsageSourceProvider nativeProvider;
-    private final AtomicBoolean lazyTriggered = new AtomicBoolean(false);
+    private final AtomicBoolean lazyIndexing = new AtomicBoolean(false);
+    private volatile boolean lazyNativeIndexed = false;
 
     public UsageCatalogService(UsageProperties properties,
                                DataSource usageDataSource,
@@ -113,6 +114,7 @@ public class UsageCatalogService {
                 clearAll(conn);
                 insertAll(conn, safeRecords, counters, true);
                 conn.commit();
+                resetLazyNativeIndexing();
             } catch (SQLException | RuntimeException e) {
                 conn.rollback();
                 throw e;
@@ -162,25 +164,35 @@ public class UsageCatalogService {
     }
 
     /**
-     * Trigger lazy native indexing on first access. Safe to call from every read-side method —
-     * the {@link AtomicBoolean} ensures it runs exactly once.
+     * Trigger lazy native indexing on first access. Safe to call from every read-side method.
+     * Failed attempts are retried on later reads, and a full rebuild resets the completed marker
+     * because the rebuild clears rows that were appended lazily.
      */
     private void ensureNativeIndexed() {
-        if (!enabled() || lazyTriggered.get()) return;
+        if (!enabled() || lazyNativeIndexed) return;
         if (nativeProvider == null) return;
         if (properties.nativeCatalogEnabled()) return; // already indexed at startup
         if (!properties.nativeCatalogLazy()) return;
-        if (lazyTriggered.compareAndSet(false, true)) {
+        if (lazyIndexing.compareAndSet(false, true)) {
             try {
                 List<QueryUsage> nativeRecords = nativeProvider.forceLoad();
                 if (!nativeRecords.isEmpty()) {
                     int count = appendNativeRecords(nativeRecords);
                     log.info("Lazy native catalog index complete: {} records (views/routines/triggers)", count);
                 }
+                lazyNativeIndexed = true;
             } catch (Exception e) {
                 log.warn("Lazy native catalog indexing failed: {}", e.getMessage(), e);
+            } finally {
+                lazyIndexing.set(false);
             }
         }
+    }
+
+    private void resetLazyNativeIndexing() {
+        if (properties.nativeCatalogEnabled()) return;
+        if (!properties.nativeCatalogLazy()) return;
+        lazyNativeIndexed = false;
     }
 
     /**

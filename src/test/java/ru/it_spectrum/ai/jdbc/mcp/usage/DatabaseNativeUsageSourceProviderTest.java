@@ -132,7 +132,7 @@ class DatabaseNativeUsageSourceProviderTest {
                 .containsExactly("native/package/APP.CUSTOMER_PKG", "native/package/APP.CUSTOMER_PKG");
         assertThat(records)
                 .extracting(record -> record.source().unit())
-                .containsExactly("active_customer_ids#stmt1", "touch_customer#stmt1");
+                .containsExactly("active_customer_ids.stmt1", "touch_customer.stmt1");
         assertThat(records)
                 .extracting(QueryUsage::sql)
                 .containsExactly(

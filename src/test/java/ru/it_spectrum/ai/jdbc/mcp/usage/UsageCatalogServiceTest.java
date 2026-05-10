@@ -15,6 +15,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.ListQueriesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.RebuildResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
@@ -32,6 +33,7 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageTransformation;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageTransformationKind;
 
 import javax.sql.DataSource;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -568,6 +570,55 @@ class UsageCatalogServiceTest {
     }
 
     @Test
+    void lazyNativeIndexingRetriesAfterFailedAppend() throws Exception {
+        UsageProperties properties = lazyProperties();
+        LazyNativeProvider provider = new LazyNativeProvider(
+                properties,
+                List.of(baseRequest("SHOP", "native/package/APP.CUSTOMER_PKG",
+                        "bad#unit", "SELECT id FROM customers")),
+                List.of(baseRequest("SHOP", "native/package/APP.CUSTOMER_PKG",
+                        "good.stmt1", "SELECT id FROM customers")));
+        UsageCatalogService service = newService(properties, provider);
+        service.rebuild(List.of(buildSimple("SHOP", "file.sql", "SELECT id FROM orders")));
+
+        assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
+                .queries())
+                .extracting(ListQueriesResult.QueryEntry::uid)
+                .containsExactly("SHOP/file.sql");
+
+        assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
+                .queries())
+                .extracting(ListQueriesResult.QueryEntry::uid)
+                .contains("SHOP/native/package/APP.CUSTOMER_PKG#good.stmt1");
+        assertThat(provider.calls()).isEqualTo(2);
+    }
+
+    @Test
+    void rebuildResetsLazyNativeIndexingSoNativeRowsAreReappended() throws Exception {
+        UsageProperties properties = lazyProperties();
+        LazyNativeProvider provider = new LazyNativeProvider(
+                properties,
+                List.of(baseRequest("SHOP", "native/view/APP.CUSTOMERS_V",
+                        null, "SELECT id FROM customers")));
+        UsageCatalogService service = newService(properties, provider);
+
+        service.rebuild(List.of(buildSimple("SHOP", "file-v1.sql", "SELECT id FROM orders")));
+        assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
+                .queries())
+                .extracting(ListQueriesResult.QueryEntry::uid)
+                .contains("SHOP/native/view/APP.CUSTOMERS_V");
+
+        service.rebuild(List.of(buildSimple("SHOP", "file-v2.sql", "SELECT id FROM orders")));
+
+        assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
+                .queries())
+                .extracting(ListQueriesResult.QueryEntry::uid)
+                .contains("SHOP/native/view/APP.CUSTOMERS_V")
+                .doesNotContain("SHOP/file-v1.sql");
+        assertThat(provider.calls()).isEqualTo(2);
+    }
+
+    @Test
     void getQueryThrowsForUnknownUid() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> service.getQuery("SHOP/missing.sql"))
@@ -595,6 +646,55 @@ class UsageCatalogServiceTest {
 
     private static QueryUsage buildSimple(String dataSource, String path, String sql) {
         return baseRequest(dataSource, path, null, sql);
+    }
+
+    private static UsageCatalogService newService(UsageProperties properties,
+                                                  DatabaseNativeUsageSourceProvider nativeProvider)
+            throws Exception {
+        JdbcMcpProperties jdbcMcpProperties = new JdbcMcpProperties("");
+        DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
+        return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
+                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), nativeProvider);
+    }
+
+    private static UsageProperties lazyProperties() {
+        return new UsageProperties(
+                true,
+                List.of(),
+                false,
+                false,
+                false,
+                "SHOP",
+                false,
+                List.of(),
+                true,
+                true,
+                true,
+                100,
+                true
+        );
+    }
+
+    private static final class LazyNativeProvider extends DatabaseNativeUsageSourceProvider {
+        private final List<List<QueryUsage>> batches;
+        private int calls;
+
+        @SafeVarargs
+        private LazyNativeProvider(UsageProperties properties, List<QueryUsage>... batches) {
+            super(properties, null, new ProceduralSqlExtractor());
+            this.batches = Arrays.stream(batches).toList();
+        }
+
+        @Override
+        public List<QueryUsage> forceLoad() {
+            calls++;
+            if (batches.isEmpty()) return List.of();
+            return batches.get(Math.min(calls - 1, batches.size() - 1));
+        }
+
+        private int calls() {
+            return calls;
+        }
     }
 
     private static List<String> asEvidenceValues(SemanticTableUsage root, String key) {
