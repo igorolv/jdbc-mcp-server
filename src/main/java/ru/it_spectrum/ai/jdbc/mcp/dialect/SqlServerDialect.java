@@ -69,6 +69,19 @@ public class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String schemaViewsQuery() {
+        return """
+                SELECT s.name AS [schema],
+                       v.name AS name,
+                       m.definition AS definition
+                FROM sys.views v
+                JOIN sys.schemas s ON s.schema_id = v.schema_id
+                JOIN sys.sql_modules m ON m.object_id = v.object_id
+                WHERE s.name = ?
+                """;
+    }
+
+    @Override
     public String routineSourceQuery() {
         return """
                 SELECT m.definition AS definition
@@ -358,6 +371,28 @@ public class SqlServerDialect implements SqlDialect {
                 WHERE s.name = ?
                   AND t.name = ?
                 ORDER BY tr.name
+                """;
+    }
+
+    @Override
+    public String schemaTriggersQuery() {
+        return """
+                SELECT s.name AS [schema],
+                       t.name AS table_name,
+                       tr.name AS name,
+                       CASE WHEN tr.is_instead_of_trigger = 1 THEN 'INSTEAD OF' ELSE 'AFTER' END AS timing,
+                       STUFF(CONCAT(
+                           CASE WHEN OBJECTPROPERTY(tr.object_id, 'ExecIsInsertTrigger') = 1 THEN ',INSERT' ELSE '' END,
+                           CASE WHEN OBJECTPROPERTY(tr.object_id, 'ExecIsUpdateTrigger') = 1 THEN ',UPDATE' ELSE '' END,
+                           CASE WHEN OBJECTPROPERTY(tr.object_id, 'ExecIsDeleteTrigger') = 1 THEN ',DELETE' ELSE '' END
+                       ), 1, 1, '') AS events,
+                       CASE WHEN tr.is_disabled = 0 THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS enabled,
+                       OBJECT_DEFINITION(tr.object_id) AS definition
+                FROM sys.triggers tr
+                JOIN sys.tables t ON t.object_id = tr.parent_id
+                JOIN sys.schemas s ON s.schema_id = t.schema_id
+                WHERE s.name = ?
+                ORDER BY t.name, tr.name
                 """;
     }
 

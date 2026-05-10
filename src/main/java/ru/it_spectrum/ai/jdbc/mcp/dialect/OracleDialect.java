@@ -102,6 +102,17 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
+    public String schemaViewsQuery() {
+        return """
+                SELECT owner AS schema,
+                       view_name AS name,
+                       text AS definition
+                FROM all_views
+                WHERE owner = UPPER(?)
+                """;
+    }
+
+    @Override
     public String routineSourceQuery() {
         // Concatenates source lines in order. For packages, prefer PACKAGE BODY over the
         // declaration spec; both use LINE starting at 1, so returning both would interleave source.
@@ -382,6 +393,27 @@ public class OracleDialect implements SqlDialect {
                 WHERE owner = UPPER(?)
                   AND table_name = UPPER(?)
                 ORDER BY trigger_name
+                """;
+    }
+
+    @Override
+    public String schemaTriggersQuery() {
+        return """
+                SELECT owner AS schema,
+                       table_name AS table_name,
+                       trigger_name AS name,
+                       CASE
+                           WHEN trigger_type LIKE 'BEFORE%' THEN 'BEFORE'
+                           WHEN trigger_type LIKE 'AFTER%' THEN 'AFTER'
+                           WHEN trigger_type LIKE 'INSTEAD OF%' THEN 'INSTEAD OF'
+                           ELSE trigger_type
+                       END AS timing,
+                       triggering_event AS events,
+                       CASE WHEN status = 'ENABLED' THEN 'true' ELSE 'false' END AS enabled,
+                       description AS definition
+                FROM all_triggers
+                WHERE owner = UPPER(?)
+                ORDER BY table_name, trigger_name
                 """;
     }
 

@@ -106,6 +106,16 @@ public interface SqlDialect {
     /** SQL that returns the definition of a view ({@code schema}, {@code name}). */
     String viewDefinitionQuery();
 
+    /**
+     * SQL that returns ALL view definitions for a schema (bulk variant).
+     * Expected columns: {@code schema}, {@code name}, {@code definition}.
+     * Params: {@code (schema)} only.
+     * When this returns non-null, the usage catalog uses it instead of iterating per-view.
+     */
+    default String schemaViewsQuery() {
+        return null;
+    }
+
     /** SQL that returns the source of a routine ({@code schema}, {@code name}). */
     String routineSourceQuery();
 
@@ -211,6 +221,16 @@ public interface SqlDialect {
      * Params: {@code (schema, table)}.
      */
     default String tableTriggersQuery() {
+        return null;
+    }
+
+    /**
+     * SQL that returns ALL triggers for a schema (bulk variant).
+     * Expected columns: same as {@code tableTriggersQuery()}.
+     * Params: {@code (schema)} only.
+     * When this returns non-null, the usage catalog uses it instead of iterating per-table.
+     */
+    default String schemaTriggersQuery() {
         return null;
     }
 

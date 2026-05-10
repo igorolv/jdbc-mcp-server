@@ -439,6 +439,37 @@ public class MetadataService {
         return sb.toString();
     }
 
+    /**
+     * Bulk-load all view definitions for a schema in one query.
+     * Returns a list of rows, each with {@code schema}, {@code name}, {@code definition} columns.
+     * Falls back to per-view loading when the dialect does not provide a bulk query.
+     */
+    public List<Map<String, Object>> schemaViewDefinitions(String schema) throws SQLException {
+        String bulkSql = dialect.schemaViewsQuery();
+        if (bulkSql != null) {
+            String effectiveSchema = resolveSchema(schema);
+            QueryResult r = executor.queryInternal(bulkSql,
+                    List.of(effectiveSchema == null ? "" : effectiveSchema), 10_000);
+            return r.rows();
+        }
+        // fallback: per-view loading
+        String effectiveSchema = resolveSchema(schema);
+        List<TableEntry> viewEntries = listTables(effectiveSchema, "%",
+                new String[]{"VIEW", "MATERIALIZED VIEW"});
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (TableEntry ve : viewEntries) {
+            String def = viewDefinition(ve.schema(), ve.name());
+            if (def != null && !def.isBlank()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("schema", ve.schema());
+                row.put("name", ve.name());
+                row.put("definition", def);
+                results.add(row);
+            }
+        }
+        return results;
+    }
+
     public String routineSource(String schema, String name) throws SQLException {
         String effectiveSchema = resolveSchema(schema);
         QueryResult r = executor.queryInternal(dialect.routineSourceQuery(),
@@ -499,6 +530,43 @@ public class MetadataService {
             throw new IllegalArgumentException("table must be provided");
         }
         return fetchTriggers(resolveSchema(schema), table, includeDefinition);
+    }
+
+    /**
+     * Bulk-load all triggers for a schema in one query.
+     * Falls back to per-table loading when the dialect does not provide a bulk query.
+     */
+    public List<Trigger> schemaTriggers(String schema, boolean includeDefinition) throws SQLException {
+        String bulkSql = dialect.schemaTriggersQuery();
+        if (bulkSql != null) {
+            String effectiveSchema = resolveSchema(schema);
+            QueryResult r = executor.queryInternal(bulkSql,
+                    List.of(effectiveSchema == null ? "" : effectiveSchema), 10_000);
+            List<Trigger> out = new ArrayList<>();
+            for (Map<String, Object> row : r.rows()) {
+                Object definitionRaw = getCI(row, "definition");
+                String definition = (includeDefinition && definitionRaw != null
+                        && !String.valueOf(definitionRaw).isBlank())
+                        ? String.valueOf(definitionRaw) : null;
+                out.add(new Trigger(
+                        asString(getCI(row, "schema")),
+                        asString(getCI(row, "table_name")),
+                        asString(getCI(row, "name")),
+                        asString(getCI(row, "timing")),
+                        splitEvents(getCI(row, "events")),
+                        toBool(getCI(row, "enabled")),
+                        definition));
+            }
+            return out;
+        }
+        // fallback: per-table loading
+        String effectiveSchema = resolveSchema(schema);
+        List<TableEntry> tables = listTables(effectiveSchema, "%", new String[]{"TABLE"});
+        List<Trigger> out = new ArrayList<>();
+        for (TableEntry table : tables) {
+            out.addAll(fetchTriggers(table.schema(), table.name(), includeDefinition));
+        }
+        return out;
     }
 
     // ---------- helpers ----------

@@ -82,6 +82,19 @@ public class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String schemaViewsQuery() {
+        return """
+                SELECT n.nspname AS schema,
+                       c.relname AS name,
+                       pg_get_viewdef(c.oid, true) AS definition
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ?
+                  AND c.relkind IN ('v', 'm')
+                """;
+    }
+
+    @Override
     public String routineSourceQuery() {
         // One-row result: (definition)
         return """
@@ -344,6 +357,34 @@ public class PostgresDialect implements SqlDialect {
                   AND c.relname = ?
                   AND NOT t.tgisinternal
                 ORDER BY t.tgname
+                """;
+    }
+
+    @Override
+    public String schemaTriggersQuery() {
+        return """
+                SELECT n.nspname AS schema,
+                       c.relname AS table_name,
+                       t.tgname AS name,
+                       CASE
+                           WHEN (t.tgtype & 2) <> 0 THEN 'BEFORE'
+                           WHEN (t.tgtype & 64) <> 0 THEN 'INSTEAD OF'
+                           ELSE 'AFTER'
+                       END AS timing,
+                       concat_ws(',',
+                           CASE WHEN (t.tgtype & 4) <> 0 THEN 'INSERT' END,
+                           CASE WHEN (t.tgtype & 8) <> 0 THEN 'DELETE' END,
+                           CASE WHEN (t.tgtype & 16) <> 0 THEN 'UPDATE' END,
+                           CASE WHEN (t.tgtype & 32) <> 0 THEN 'TRUNCATE' END
+                       ) AS events,
+                       NOT t.tgenabled = 'D' AS enabled,
+                       pg_get_triggerdef(t.oid, true) AS definition
+                FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ?
+                  AND NOT t.tgisinternal
+                ORDER BY c.relname, t.tgname
                 """;
     }
 

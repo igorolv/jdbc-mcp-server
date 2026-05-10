@@ -105,32 +105,33 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
 
     private void addViews(String schema, List<QueryUsage> out) throws Exception {
         long t = System.currentTimeMillis();
-        List<TableEntry> viewEntries = metadata.listTables(schema, "%", new String[]{"VIEW", "MATERIALIZED VIEW"});
+        List<Map<String, Object>> viewRows = metadata.schemaViewDefinitions(schema);
         int count = 0;
-        for (TableEntry view : viewEntries) {
+        for (Map<String, Object> row : viewRows) {
             if (limitReached(out)) return;
-            String definition = metadata.viewDefinition(view.schema(), view.name());
+            String objectSchema = stringValue(getCI(row, "schema"));
+            String name = stringValue(getCI(row, "name"));
+            String definition = stringValue(getCI(row, "definition"));
             if (definition == null || definition.isBlank()) continue;
             String sql = normalizeViewSql(definition);
-            String type = view.type() == null ? "VIEW" : view.type();
-            String sourceKind = type.toUpperCase(Locale.ROOT).contains("MATERIALIZED")
-                    ? "database-materialized-view" : "database-view";
+            String type = "VIEW";
+            String sourceKind = "database-view";
             out.add(new QueryUsage(
                     NATIVE_DATA_SOURCE,
-                    new QueryUsageSource(sourceKind, path("view", view.schema(), view.name()), null),
-                    "Database " + type.toLowerCase(Locale.ROOT) + " " + qualified(view.schema(), view.name()),
+                    new QueryUsageSource(sourceKind, path("view", objectSchema, name), null),
+                    "Database " + type.toLowerCase(Locale.ROOT) + " " + qualified(objectSchema, name),
                     null,
                     List.of("database-native", "view"),
                     sql,
                     null,
                     null,
                     null,
-                    meta("VIEW", view.schema(), view.name(), null, null)
+                    meta("VIEW", objectSchema, name, null, null)
             ));
             count++;
         }
         log.info("DatabaseNative:   {} views found in {}, {} added in {} ms",
-                viewEntries.size(), schema, count, System.currentTimeMillis() - t);
+                viewRows.size(), schema, count, System.currentTimeMillis() - t);
     }
 
     private void addRoutines(String schema, List<QueryUsage> out) throws Exception {
@@ -248,42 +249,30 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
     }
 
     private void addTriggers(String schema, List<QueryUsage> out) throws Exception {
-        List<TableEntry> tables = metadata.listTables(schema, "%", new String[]{"TABLE"});
-        log.info("DatabaseNative: processing triggers for {} tables in {}...", tables.size(), schema);
-        int tableCount = 0;
+        long t = System.currentTimeMillis();
+        List<Trigger> allTriggers = metadata.schemaTriggers(schema, true);
+        log.info("DatabaseNative: processing {} triggers for schema {}...", allTriggers.size(), schema);
         int triggerCount = 0;
-        long totalMs = 0;
-        for (TableEntry table : tables) {
+        for (Trigger trigger : allTriggers) {
             if (limitReached(out)) return;
-            long t = System.currentTimeMillis();
-            int before = out.size();
-            for (Trigger trigger : metadata.tableTriggers(table.schema(), table.name(), true)) {
+            String definition = trigger.definition();
+            if (definition == null || definition.isBlank()) continue;
+            TableEntry table = new TableEntry(trigger.schema(), trigger.table(), "TABLE");
+            List<ExtractedSqlStatement> statements = proceduralSqlExtractor.extract(definition);
+            if (statements.isEmpty()) {
+                out.add(triggerUsage(table, trigger, definition, null, null, null));
+                triggerCount++;
+                continue;
+            }
+            for (ExtractedSqlStatement statement : statements) {
                 if (limitReached(out)) return;
-                String definition = trigger.definition();
-                if (definition == null || definition.isBlank()) continue;
-                List<ExtractedSqlStatement> statements = proceduralSqlExtractor.extract(definition);
-                if (statements.isEmpty()) {
-                    out.add(triggerUsage(table, trigger, definition, null, null, null));
-                    continue;
-                }
-                for (ExtractedSqlStatement statement : statements) {
-                    if (limitReached(out)) return;
-                    out.add(triggerUsage(table, trigger, statement.sql(), "stmt" + statement.ordinal(),
-                            statement.ordinal(), statement.kind()));
-                }
+                out.add(triggerUsage(table, trigger, statement.sql(), "stmt" + statement.ordinal(),
+                        statement.ordinal(), statement.kind()));
+                triggerCount++;
             }
-            int added = out.size() - before;
-            long elapsed = System.currentTimeMillis() - t;
-            totalMs += elapsed;
-            if (added > 0 || elapsed > 50) {
-                log.info("DatabaseNative:   {} triggers from {}.{} in {} ms",
-                        added, table.schema(), table.name(), elapsed);
-            }
-            tableCount++;
-            triggerCount += added;
         }
-        log.info("DatabaseNative: triggers done for {}: {} tables, {} triggers, total {} ms",
-                schema, tableCount, triggerCount, totalMs);
+        log.info("DatabaseNative: triggers done for {}: {} triggers in {} ms",
+                schema, triggerCount, System.currentTimeMillis() - t);
     }
 
     private QueryUsage triggerUsage(TableEntry table, Trigger trigger, String sql,

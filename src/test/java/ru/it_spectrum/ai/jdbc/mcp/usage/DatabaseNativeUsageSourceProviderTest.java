@@ -23,15 +23,15 @@ class DatabaseNativeUsageSourceProviderTest {
         UsageProperties properties = properties(true, true, false, false);
         MetadataService metadata = mock(MetadataService.class);
         when(metadata.defaultSchema()).thenReturn("public");
-        when(metadata.listTables(eq("public"), eq("%"), any(String[].class)))
-                .thenReturn(List.of(new TableEntry("public", "customer_orders_v", "VIEW")));
-        when(metadata.viewDefinition("public", "customer_orders_v"))
-                .thenReturn("""
+        when(metadata.schemaViewDefinitions("public")).thenReturn(List.of(Map.of(
+                "schema", "public",
+                "name", "customer_orders_v",
+                "definition", """
                         CREATE VIEW public.customer_orders_v AS
                         SELECT c.id, o.id AS order_id
                         FROM customers c
                         JOIN orders o ON o.customer_id = c.id
-                        """);
+                        """)));
 
         DatabaseNativeUsageSourceProvider provider =
                 new DatabaseNativeUsageSourceProvider(properties, metadata);
