@@ -40,7 +40,6 @@ files, and emits one **QueryUsageRecord** per SQL dataset. The output conforms t
 
 | QueryUsageRecord field | Source |
 |---|---|
-| `dataSource` | `_datamodel.xdm` → `defaultDataSourceRef` attribute |
 | `source.kind` | Always `"bi-publisher-report"` |
 | `source.path` | Relative path to the `.xdo` directory |
 | `source.unit` | Dataset name from `_datamodel.xdm` |
@@ -84,7 +83,6 @@ A JSON array of QueryUsageRecord objects:
 [
   {
     "schemaVersion": 1,
-    "dataSource": "APP",
     "source": {
       "kind": "bi-publisher-report",
       "path": "Reports/Notifications/Notice.xdo",
@@ -92,7 +90,7 @@ A JSON array of QueryUsageRecord objects:
     },
     "businessLabel": "Notice (general) / MAIN",
     "businessDomain": "Reports",
-    "businessTags": ["Reports", "APP", "bi-publisher", "complex"],
+    "businessTags": ["Reports", "bi-publisher", "complex"],
     "sql": "SELECT ... FROM ... WHERE ...",
     "parameters": [
       {"name": "pBankruptId", "dataType": "xsd:string"},

@@ -414,7 +414,6 @@ def report_to_records(
     module = xdo_dir.relative_to(source_root).parts[0] if xdo_dir != source_root else xdo_dir.parent.name
     report_name = get_report_name(xdo_dir)
     description = xdo_info.get("description", report_name)
-    data_source = xdm_info.get("data_source", "")
 
     # Pre-parse template files for field usages
     templates = xdo_info.get("templates", [])
@@ -433,7 +432,6 @@ def report_to_records(
 
         record = {
             "schemaVersion": SCHEMA_VERSION,
-            "dataSource": data_source or module,
             "source": {
                 "kind": "bi-publisher-report",
                 "path": base_source_path,
@@ -444,7 +442,6 @@ def report_to_records(
             "businessTags": sorted({
                 "bi-publisher",
                 module,
-                data_source,
                 ds.get("type", "sql"),
             }),
             "sql": sql,
