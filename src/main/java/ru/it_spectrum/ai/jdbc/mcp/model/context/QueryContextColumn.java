@@ -6,7 +6,7 @@ public record QueryContextColumn(
         String name,
         String type,
         boolean nullable,
-        Boolean isPrimaryKey,
+        Boolean primaryKey,
         Boolean foreignKey,
         List<String> allowedValues
 ) {
