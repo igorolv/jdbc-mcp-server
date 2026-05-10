@@ -433,7 +433,7 @@ user for the strongest guarantee.
 
 ## Stack
 
-- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.0-M3 (`stdio` transport)
+- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.0-M5 (`stdio` transport)
 - HikariCP through Spring Boot `starter-jdbc`
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
