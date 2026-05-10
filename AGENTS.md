@@ -62,8 +62,8 @@ Before building, ask the user for:
 Optionally:
 
 - **Data directory** — `JDBC_MCP_DATA_DIR` (default `~/.jdbc-mcp-server`). All server-local data
-  lives under this root: `usage-catalog/` (catalog source files), `usage-index-cache/` (H2 disk cache),
-  and `logs/` (future). Each subdirectory is hardcoded and not individually configurable.
+  lives under this root: `usage-catalog/` (catalog source files) and `logs/` (future). Each
+  subdirectory is hardcoded and not individually configurable.
 - **Default schema** for metadata tools (`JDBC_DEFAULT_SCHEMA`). If omitted, the server uses the
   connection's current schema. On Oracle, this defaults to the connecting user's schema (UPPER CASE).
   On SQL Server, this is normally the login user's default schema (often `dbo`).
@@ -253,22 +253,20 @@ Configured via environment variables:
 - `JDBC_USAGE_CATALOG_ENABLED` (default `true`) — master switch
 - `JDBC_USAGE_CATALOG_PATHS` — comma-separated paths to JSON/ZIP files with `QueryUsage` records.
   These are additional to the default `{dataDir}/usage-catalog` directory.
-- `JDBC_USAGE_DATA_SOURCE_ID` (default `database`) — logical name for the inspected database
-- `JDBC_USAGE_INDEX_ON_STARTUP` / `JDBC_USAGE_INDEX_BACKGROUND` (both default `true`)
-- `JDBC_USAGE_NATIVE_CATALOG_ENABLED` (default `false`) — index the database's own views/routines
+- The runtime index is built synchronously on first usage-catalog access, never during startup.
+- Database-native usage is included in the same index build for the database's own views/routines.
 
 Called methods return `{"catalog_enabled":false,"rows":[]}` when the catalog is off.
 
 | Tool | Description |
 |---|---|
 | `usageCatalogStatus` | Runtime index status: configured sources, indexing state, record/parse-failure/duplicate counts |
-| `refreshUsageCatalog` | Rebuild the index from configured paths (immediate or background depending on config) |
+| `invalidateUsageCatalogCache` | Drop the runtime usage index. The next lookup rebuilds it synchronously from configured files and database-native objects |
 | `getQuery` | Full stored record for one query uid (`{dataSource}/{path}#{unit}`): SQL, parameters, parsed tables/columns/joins, outputs, field usages |
 | `listQueries` | List stored queries with filters: `dataSource`, `sourcePath` (LIKE), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `limit`, `offset` |
 | `findQueriesByTable` | Find queries referencing a table (case-insensitive, alias-expanded). Params: `schema`, `table` |
 | `findQueriesByColumn` | Find queries referencing a column, with usage context (`select`, `where`, `join`, `order_by`, `having`). Params: `schema`, `table`, `column` |
 | `observedRelationships` | Aggregate equi-join pairs across all queries: `(left_table.left_col = right_table.right_col)` with support count and contributing query uids. Params: `schema`, `table`, `minSupport` |
-| `reresolveQueries` | Re-resolve unqualified table references in stored queries against the live JDBC schema. Params: `dataSource` |
 | `listKnownTags` | Business tags with their query counts — reuse existing vocabulary. Params: `dataSource` |
 | `listKnownDomains` | Business domains with their query counts. Params: `dataSource` |
 

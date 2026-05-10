@@ -15,7 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,13 +29,14 @@ import java.util.regex.Pattern;
 @Service
 public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
 
+    private static final String NATIVE_DATA_SOURCE = "database";
+
     private static final Pattern CREATE_VIEW_AS =
             Pattern.compile("(?is)\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\b.*?\\bAS\\b");
 
     private final UsageProperties properties;
     private final MetadataService metadata;
     private final ProceduralSqlExtractor proceduralSqlExtractor;
-    private final AtomicBoolean forceLazy = new AtomicBoolean(false);
 
     public DatabaseNativeUsageSourceProvider(UsageProperties properties, MetadataService metadata) {
         this(properties, metadata, new ProceduralSqlExtractor());
@@ -57,7 +57,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
 
 @Override
     public List<QueryUsage> load() throws Exception {
-        if (!properties.catalogEnabled() || (!properties.nativeCatalogEnabled() && !forceLazy.get())) {
+        if (!properties.catalogEnabled()) {
             return List.of();
         }
         List<QueryUsage> out = new ArrayList<>();
@@ -73,19 +73,6 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             }
         }
         return List.copyOf(out);
-    }
-
-    /**
-     * Load native records bypassing the {@code nativeCatalogEnabled} guard. Used by the lazy
-     * init path when the property is {@code false} but {@code nativeCatalogLazy} is {@code true}.
-     */
-    public List<QueryUsage> forceLoad() throws Exception {
-        forceLazy.set(true);
-        try {
-            return load();
-        } finally {
-            forceLazy.set(false);
-        }
     }
 
     private List<String> schemas() throws Exception {
@@ -105,7 +92,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             String sourceKind = type.toUpperCase(Locale.ROOT).contains("MATERIALIZED")
                     ? "database-materialized-view" : "database-view";
             out.add(new QueryUsage(
-                    properties.effectiveDataSourceId(),
+                    NATIVE_DATA_SOURCE,
                     new QueryUsageSource(sourceKind, path("view", view.schema(), view.name()), null),
                     "Database " + type.toLowerCase(Locale.ROOT) + " " + qualified(view.schema(), view.name()),
                     null,
@@ -137,7 +124,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             List<ExtractedSqlStatement> statements = proceduralSqlExtractor.extract(source);
             if (statements.isEmpty()) {
                 out.add(new QueryUsage(
-                        properties.effectiveDataSourceId(),
+                        NATIVE_DATA_SOURCE,
                         new QueryUsageSource(sourceKind, path("routine", objectSchema, name), null),
                         "Database " + normalizeKind(kind, "routine") + " " + qualified(objectSchema, name),
                         null,
@@ -153,7 +140,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             for (ExtractedSqlStatement statement : statements) {
                 if (limitReached(out)) return;
                 out.add(new QueryUsage(
-                        properties.effectiveDataSourceId(),
+                        NATIVE_DATA_SOURCE,
                         new QueryUsageSource(sourceKind, path("routine", objectSchema, name),
                                 "stmt" + statement.ordinal()),
                         "Database " + normalizeKind(kind, "routine") + " " + qualified(objectSchema, name),
@@ -177,7 +164,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                 proceduralSqlExtractor.extractOraclePackageBody(source);
         if (statements.isEmpty()) {
             out.add(new QueryUsage(
-                    properties.effectiveDataSourceId(),
+                    NATIVE_DATA_SOURCE,
                     new QueryUsageSource(sourceKind, path("package", objectSchema, packageName), null),
                     "Database package " + qualified(objectSchema, packageName),
                     null,
@@ -194,7 +181,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             if (limitReached(out)) return;
             String unit = safe(statement.routineName()) + ".stmt" + statement.ordinal();
             out.add(new QueryUsage(
-                    properties.effectiveDataSourceId(),
+                    NATIVE_DATA_SOURCE,
                     new QueryUsageSource(sourceKind, path("package", objectSchema, packageName), unit),
                     "Database package " + qualified(objectSchema, packageName)
                             + "." + statement.routineName(),
@@ -249,7 +236,7 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             extra.put("statementKind", statementKind);
         }
         return new QueryUsage(
-                properties.effectiveDataSourceId(),
+                NATIVE_DATA_SOURCE,
                 new QueryUsageSource("database-trigger",
                         path("trigger", table.schema(), table.name() + "." + trigger.name()), unit),
                 "Database trigger " + qualified(table.schema(), trigger.name()),

@@ -27,17 +27,11 @@ import java.util.List;
 public record UsageProperties(
         boolean catalogEnabled,
         List<String> catalogPaths,
-        boolean indexOnStartup,
-        boolean indexBackground,
-        boolean indexDiskCacheEnabled,
-        String dataSourceId,
-        boolean nativeCatalogEnabled,
         List<String> nativeSchemas,
         boolean nativeIncludeViews,
         boolean nativeIncludeRoutines,
         boolean nativeIncludeTriggers,
-        int nativeMaxObjects,
-        boolean nativeCatalogLazy
+        int nativeMaxObjects
 ) {
 
     @ConstructorBinding
@@ -54,20 +48,6 @@ public record UsageProperties(
     }
 
     /**
-     * Convenience constructor used by tests and the deprecated secondary constructor.
-     */
-    public UsageProperties(boolean catalogEnabled,
-                           List<String> catalogPaths,
-                           boolean indexOnStartup,
-                           boolean indexBackground,
-                           boolean indexDiskCacheEnabled,
-                           String unused) {
-        this(catalogEnabled, catalogPaths, indexOnStartup, indexBackground,
-                indexDiskCacheEnabled, "database",
-                false, List.of(), true, true, true, 1_000, true);
-    }
-
-    /**
      * Parse additional catalog paths from the configured comma-separated strings.
      * Does NOT include the default {@code {dataDir}/usage-catalog} — consumers must
      * combine this with {@link JdbcMcpProperties#usageCatalogDir()}.
@@ -81,11 +61,6 @@ public record UsageProperties(
             }
         }
         return List.copyOf(out);
-    }
-
-    public String effectiveDataSourceId() {
-        String raw = dataSourceId == null || dataSourceId.isBlank() ? "database" : dataSourceId.trim();
-        return raw.replace('/', '_').replace('#', '_');
     }
 
     public List<String> resolvedNativeSchemas() {

@@ -46,7 +46,7 @@ class UsageCatalogServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        UsageProperties properties = new UsageProperties(true, List.of(), false, false, false, "");
+        UsageProperties properties = new UsageProperties(true, List.of(), List.of(), true, true, true, 1_000);
         JdbcMcpProperties jdbcMcpProperties = new JdbcMcpProperties("");
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
         service = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
@@ -570,51 +570,44 @@ class UsageCatalogServiceTest {
     }
 
     @Test
-    void lazyNativeIndexingRetriesAfterFailedAppend() throws Exception {
+    void firstUsageAccessBuildsNativeSourceSynchronously() throws Exception {
         UsageProperties properties = lazyProperties();
         LazyNativeProvider provider = new LazyNativeProvider(
                 properties,
                 List.of(baseRequest("SHOP", "native/package/APP.CUSTOMER_PKG",
-                        "bad#unit", "SELECT id FROM customers")),
-                List.of(baseRequest("SHOP", "native/package/APP.CUSTOMER_PKG",
                         "good.stmt1", "SELECT id FROM customers")));
         UsageCatalogService service = newService(properties, provider);
-        service.rebuild(List.of(buildSimple("SHOP", "file.sql", "SELECT id FROM orders")));
 
         assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::uid)
-                .containsExactly("SHOP/file.sql");
-
-        assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
-                .queries())
-                .extracting(ListQueriesResult.QueryEntry::uid)
-                .contains("SHOP/native/package/APP.CUSTOMER_PKG#good.stmt1");
-        assertThat(provider.calls()).isEqualTo(2);
+                .containsExactly("SHOP/native/package/APP.CUSTOMER_PKG#good.stmt1");
+        assertThat(provider.calls()).isEqualTo(1);
     }
 
     @Test
-    void rebuildResetsLazyNativeIndexingSoNativeRowsAreReappended() throws Exception {
+    void invalidateMakesNextUsageAccessRebuildSources() throws Exception {
         UsageProperties properties = lazyProperties();
         LazyNativeProvider provider = new LazyNativeProvider(
                 properties,
                 List.of(baseRequest("SHOP", "native/view/APP.CUSTOMERS_V",
-                        null, "SELECT id FROM customers")));
+                        null, "SELECT id FROM customers")),
+                List.of(baseRequest("SHOP", "native/view/APP.ORDERS_V",
+                        null, "SELECT id FROM orders")));
         UsageCatalogService service = newService(properties, provider);
 
-        service.rebuild(List.of(buildSimple("SHOP", "file-v1.sql", "SELECT id FROM orders")));
         assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::uid)
                 .contains("SHOP/native/view/APP.CUSTOMERS_V");
 
-        service.rebuild(List.of(buildSimple("SHOP", "file-v2.sql", "SELECT id FROM orders")));
+        service.invalidateIndex();
 
         assertThat(service.listQueries(null, null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::uid)
-                .contains("SHOP/native/view/APP.CUSTOMERS_V")
-                .doesNotContain("SHOP/file-v1.sql");
+                .contains("SHOP/native/view/APP.ORDERS_V")
+                .doesNotContain("SHOP/native/view/APP.CUSTOMERS_V");
         assertThat(provider.calls()).isEqualTo(2);
     }
 
@@ -661,17 +654,11 @@ class UsageCatalogServiceTest {
         return new UsageProperties(
                 true,
                 List.of(),
-                false,
-                false,
-                false,
-                "SHOP",
-                false,
                 List.of(),
                 true,
                 true,
                 true,
-                100,
-                true
+                100
         );
     }
 
@@ -686,7 +673,7 @@ class UsageCatalogServiceTest {
         }
 
         @Override
-        public List<QueryUsage> forceLoad() {
+        public List<QueryUsage> load() {
             calls++;
             if (batches.isEmpty()) return List.of();
             return batches.get(Math.min(calls - 1, batches.size() - 1));

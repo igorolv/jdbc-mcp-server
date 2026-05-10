@@ -232,8 +232,8 @@ zip archives are scanned for JSON entries. Set `JDBC_USAGE_CATALOG_ENABLED=false
 catalog: lookup tools return empty results with `catalog_enabled: false` so the agent can degrade
 gracefully.
 
-**Database-native usage.** Optionally, the catalog can also index supported database objects from
-the default schema:
+**Database-native usage.** The catalog also indexes supported database objects from the default
+schema:
 
 - views / materialized views as `source.kind="database-view"` or
   `source.kind="database-materialized-view"`;
@@ -245,14 +245,14 @@ Views usually contribute fully parsed table, column and join evidence. Routine a
 are engine-specific, so the indexer first uses an ANTLR-based procedural pre-extractor to find
 embedded `SELECT` / `WITH` / `INSERT` / `UPDATE` / `DELETE` / `MERGE` statements, then feeds those
 statements into the existing JSqlParser analysis pipeline. If no embedded statement is found, the
-object is still kept as a provenance record. Set `JDBC_USAGE_NATIVE_CATALOG_ENABLED=true` to
-enable this source, or `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to scan explicit schemas.
+object is still kept as a provenance record. Use `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to
+scan explicit schemas.
 
-**Runtime index.** By default the server starts quickly and builds the usage index in the
-background (`JDBC_USAGE_INDEX_ON_STARTUP=true`, `JDBC_USAGE_INDEX_BACKGROUND=true`). The index is
-rebuildable and in-memory; it is not the source of truth. `JDBC_USAGE_INDEX_DISK_CACHE_ENABLED`
-and `JDBC_USAGE_INDEX_CACHE_PATH` are reserved for a derived on-disk cache and are currently
-reported in status but not used to persist data.
+**Runtime index.** The server never builds the usage index on startup. The first usage-catalog
+lookup builds the complete runtime index synchronously from both file-backed records and
+database-native objects. The index is rebuildable and in-memory; it is not the source of truth.
+Use `invalidateUsageCatalogCache` after changing source files or database object definitions; the
+next lookup rebuilds the index.
 
 **Local-only writes.** The usage catalog never writes to the inspected JDBC database
 (PostgreSQL / Oracle / SQL Server). The existing `ReadOnlyGuard` and connection-level protections
@@ -271,22 +271,20 @@ implemented inside the JDBC MCP server.
 | Tool | Description |
 |---|---|
 | `usageCatalogStatus` | Runtime index status: configured sources, indexing state, counts, duplicate uids, invalid files and load errors |
-| `refreshUsageCatalog` | Re-scan configured directories / JSON files / zip archives and rebuild the runtime index. With background indexing enabled, returns immediately with current status |
+| `invalidateUsageCatalogCache` | Drop the runtime index. The next lookup rebuilds it synchronously from configured files and database-native objects |
 | `getQuery` | Full record by uid: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns), and field usages |
 | `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus` |
 | `findQueriesByTable` | All catalog queries that reference a given table. Case-insensitive matching against alias-resolved, uppercased table names. Optional `schema` filter |
 | `findQueriesByColumn` | All catalog queries that reference a given column, with the SQL `context` of the reference (`select` / `where` / `join` / `order_by` / `having`). Optional `schema` and `table` filters |
 | `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `observedQuery` layer of the relationship `evidence` bundle in `schemaOverview` / `tableContext` / `findJoinPaths` |
-| `reresolveQueries` | Re-resolve unqualified table references in the runtime index against the live JDBC schema. For every distinct unresolved raw table name in the catalog (scoped to `dataSource`), looks the name up across all non-system schemas: exactly one match → schema filled in the runtime index, status `resolved`; multiple matches → `ambiguous`; zero → stays `unresolved`. Already-resolved or CTE rows are untouched. Requires a working JDBC connection |
 | `listKnownTags` | Tags currently used in the catalog, with query counts. Lets the agent reuse a stable vocabulary across ingest calls |
 | `listKnownDomains` | Same for `businessDomain` values |
 
 **Resolution.** During indexing, table / column qualifiers are resolved cheaply through the
 parser's alias map and uppercased for case-insensitive matching. An explicit schema in the SQL
-(`SCHEMA.TABLE`) is preserved verbatim; unqualified references stay schema-less and are written
-with `resolution_status="unresolved"`. Run `reresolveQueries` to fill in missing schemas in the
-runtime index against the live JDBC database. A later `refreshUsageCatalog` rebuilds from JSON and
-will recompute this runtime state.
+(`SCHEMA.TABLE`) is preserved verbatim. Unqualified table references are resolved as part of the
+index build against the live JDBC schema: exactly one match fills the schema, multiple matches are
+marked `ambiguous`, and zero matches stay `unresolved`.
 
 ### Snapshot / Metadata Cache
 
@@ -531,12 +529,6 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_POOL_IDLE_TIMEOUT_MS` | no | Hikari idle connection timeout in milliseconds, default `60000`; idle connections above `JDBC_POOL_MIN_IDLE` are closed after this |
 | `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog (see *Usage Catalog* above), default `true`. When `false`, lookup tools return empty results with `catalog_enabled: false` |
 | `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |
-| `JDBC_USAGE_DATA_SOURCE_ID` | no | Logical `dataSource` used for automatically derived database-native usage records, default `database`. `/` and `#` are normalized to `_` |
-| `JDBC_USAGE_INDEX_ON_STARTUP` | no | Build the runtime usage index on startup, default `true` |
-| `JDBC_USAGE_INDEX_BACKGROUND` | no | Build/refresh the runtime usage index in a background thread, default `true` |
-| `JDBC_USAGE_INDEX_DISK_CACHE_ENABLED` | no | Reserved for derived index cache, default `false` |
-| `JDBC_USAGE_INDEX_CACHE_PATH` | no | Reserved cache location, default `${user.home}/.jdbc-mcp/usage-index-cache` |
-| `JDBC_USAGE_NATIVE_CATALOG_ENABLED` | no | Include database-native usage records from views, routines and triggers, default `false`; enabling it may open a database connection during usage-catalog indexing |
 | `JDBC_USAGE_NATIVE_SCHEMAS` | no | Comma-separated schemas to scan for native usage. When omitted, the resolved default schema is scanned |
 | `JDBC_USAGE_NATIVE_INCLUDE_VIEWS` | no | Include views/materialized views in native usage, default `true` |
 | `JDBC_USAGE_NATIVE_INCLUDE_ROUTINES` | no | Include functions/procedures in native usage, default `true` |
@@ -639,7 +631,6 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |   +-- usage/
 |   |   +-- UsageProperties.java        - catalog enable flag and JSON/zip source paths
 |   |   +-- UsageDataSourceConfig.java  - H2 in-memory runtime index + schema init
-|   |   +-- UsageCatalogIndexer.java    - background scanner for directories / JSON files / zip archives
 |   |   +-- UsageUid.java               - build/parse/validate the textual query identifier
 |   |   +-- UsageCatalogService.java    - ingest, lookups, observed-relationships aggregation
 |   |   +-- format/
@@ -652,7 +643,7 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |       +-- StatsTools.java             - tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 |       +-- BenchmarkTools.java         - benchmarkQuery, timedQuery
 |       +-- SchemaContextTools.java     - schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext, schemaGraphDot
-|       +-- UsageTools.java             - usageCatalogStatus, refreshUsageCatalog, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, reresolveQueries, listKnownTags/Domains
+|       +-- UsageTools.java             - usageCatalogStatus, invalidateUsageCatalogCache, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, listKnownTags/Domains
 +-- src/main/resources/
     +-- application.yml                 - MCP stdio + JDBC properties
     +-- usage-catalog-schema.sql        - DDL for the H2 in-memory usage-catalog runtime index

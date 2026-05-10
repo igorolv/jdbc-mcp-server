@@ -22,7 +22,7 @@ import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class UsageCatalogIndexerTest {
+class UsageCatalogSourceLoadingTest {
 
     @TempDir
     Path tempDir;
@@ -53,9 +53,8 @@ class UsageCatalogIndexerTest {
         }
 
         UsageCatalogService service = service(List.of(dir.toString(), zip.toString()));
-        UsageCatalogIndexer indexer = indexer(service, List.of(dir.toString(), zip.toString()));
 
-        IndexerStatusResponse status = indexer.refreshBlocking();
+        IndexerStatusResponse status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.filesScanned()).isEqualTo(2);
@@ -86,9 +85,8 @@ class UsageCatalogIndexerTest {
                 """, StandardCharsets.UTF_8);
 
         UsageCatalogService service = service(List.of(dir.toString()));
-        UsageCatalogIndexer indexer = indexer(service, List.of(dir.toString()));
 
-        IndexerStatusResponse status = indexer.refreshBlocking();
+        IndexerStatusResponse status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.filesScanned()).isEqualTo(1);
@@ -114,9 +112,8 @@ class UsageCatalogIndexerTest {
         Files.writeString(dir.resolve("b.json"), two, StandardCharsets.UTF_8);
 
         UsageCatalogService service = service(List.of(dir.toString()));
-        UsageCatalogIndexer indexer = indexer(service, List.of(dir.toString()));
 
-        IndexerStatusResponse status = indexer.refreshBlocking();
+        IndexerStatusResponse status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.duplicateUids()).isEqualTo(1);
@@ -127,7 +124,6 @@ class UsageCatalogIndexerTest {
 
     @Test
     void mergesRecordsFromAdditionalCatalogSources() throws Exception {
-        UsageCatalogService service = service(List.of());
         UsageCatalogSource source = new UsageCatalogSource() {
             @Override
             public String name() {
@@ -149,10 +145,9 @@ class UsageCatalogIndexerTest {
                         null));
             }
         };
-        UsageCatalogIndexer indexer = new UsageCatalogIndexer(
-                properties(List.of()), jdbcMcpProperties(), service, new ObjectMapper(), List.of(source));
+        UsageCatalogService service = service(List.of(), List.of(source));
 
-        IndexerStatusResponse status = indexer.refreshBlocking();
+        IndexerStatusResponse status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.sources()).contains("database-native");
@@ -161,15 +156,16 @@ class UsageCatalogIndexerTest {
     }
 
     private UsageCatalogService service(List<String> paths) throws Exception {
+        return service(paths, List.of());
+    }
+
+    private UsageCatalogService service(List<String> paths, List<UsageCatalogSource> sources) throws Exception {
         UsageProperties properties = properties(paths);
         JdbcMcpProperties jdbcMcpProperties = jdbcMcpProperties();
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
         return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
-                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), null);
-    }
-
-    private UsageCatalogIndexer indexer(UsageCatalogService service, List<String> paths) {
-        return new UsageCatalogIndexer(properties(paths), jdbcMcpProperties(), service, new ObjectMapper());
+                new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), jdbcMcpProperties,
+                new ObjectMapper(), sources, null);
     }
 
     private JdbcMcpProperties jdbcMcpProperties() {
@@ -177,6 +173,6 @@ class UsageCatalogIndexerTest {
     }
 
     private static UsageProperties properties(List<String> paths) {
-        return new UsageProperties(true, paths, false, false, false, "");
+        return new UsageProperties(true, paths, List.of(), true, true, true, 1_000);
     }
 }

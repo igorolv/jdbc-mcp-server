@@ -8,7 +8,7 @@ import java.nio.file.Paths;
 /**
  * Top-level server configuration for the JDBC MCP server.
  *
- * @param dataDir root directory for server-local data (usage catalog, index cache, logs).
+ * @param dataDir root directory for server-local data (usage catalog, logs).
  *                Defaults to {@code ~/.jdbc-mcp-server} when blank.
  */
 @ConfigurationProperties(prefix = "jdbc-mcp")
@@ -28,10 +28,6 @@ public record JdbcMcpProperties(String dataDir) {
 
     public Path usageCatalogDir() {
         return resolvedDataDir().resolve("usage-catalog");
-    }
-
-    public Path usageIndexCacheDir() {
-        return resolvedDataDir().resolve("usage-index-cache");
     }
 
     public Path logsDir() {

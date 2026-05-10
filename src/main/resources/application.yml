@@ -41,14 +41,8 @@ usage:
   # Additional directories, JSON files, or zip archives with canonical QueryUsage records.
   # The default {dataDir}/usage-catalog is always included.
   catalog-paths: ${JDBC_USAGE_CATALOG_PATHS:}
-  data-source-id: ${JDBC_USAGE_DATA_SOURCE_ID:database}
-  index-on-startup: ${JDBC_USAGE_INDEX_ON_STARTUP:true}
-  index-background: ${JDBC_USAGE_INDEX_BACKGROUND:true}
-  index-disk-cache-enabled: ${JDBC_USAGE_INDEX_DISK_CACHE_ENABLED:false}
-  native-catalog-enabled: ${JDBC_USAGE_NATIVE_CATALOG_ENABLED:false}
   native-schemas: ${JDBC_USAGE_NATIVE_SCHEMAS:}
   native-include-views: ${JDBC_USAGE_NATIVE_INCLUDE_VIEWS:true}
   native-include-routines: ${JDBC_USAGE_NATIVE_INCLUDE_ROUTINES:true}
   native-include-triggers: ${JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS:true}
   native-max-objects: ${JDBC_USAGE_NATIVE_MAX_OBJECTS:10000}
-  native-catalog-lazy: ${JDBC_USAGE_NATIVE_CATALOG_LAZY:true}

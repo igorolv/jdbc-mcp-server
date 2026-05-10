@@ -39,7 +39,7 @@ class DatabaseNativeUsageSourceProviderTest {
         List<QueryUsage> records = provider.load();
 
         assertThat(records).singleElement().satisfies(record -> {
-            assertThat(record.dataSource()).isEqualTo("SHOP");
+            assertThat(record.dataSource()).isEqualTo("database");
             assertThat(record.source().kind()).isEqualTo("database-view");
             assertThat(record.source().path()).isEqualTo("native/view/public.customer_orders_v");
             assertThat(record.sql()).startsWith("SELECT c.id");
@@ -148,17 +148,11 @@ class DatabaseNativeUsageSourceProviderTest {
         return new UsageProperties(
                 true,
                 List.of(),
-                false,
-                false,
-                false,
-                "SHOP",
-                nativeEnabled,
                 List.of(),
                 views,
                 routines,
                 triggers,
-                100,
-                false
+                100
         );
     }
 }

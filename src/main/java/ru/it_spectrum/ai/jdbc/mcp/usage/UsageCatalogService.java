@@ -1,9 +1,13 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import net.sf.jsqlparser.JSQLParserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedColumnUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.ObservedTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticColumnUsage;
@@ -12,6 +16,8 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableUsage;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryColumnRef;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryParameter;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
@@ -23,6 +29,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownTagsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ListQueriesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.usage.IndexerStatusResponse;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.RebuildResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
@@ -36,6 +43,10 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageParameter;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
 
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -51,6 +62,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.stream.Stream;
 
 /**
  * Core service for the local usage catalog.
@@ -62,9 +76,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *       MCP tools.</li>
  * </ul>
  *
- * <p>Resolution strategy (Phase 1): table and column qualifiers are resolved via the parser's
- * alias map and uppercased for case-insensitive matching. Resolution against the live JDBC schema
- * snapshot is deferred to a future {@code reresolveQueries} tool.
+ * <p>Resolution strategy: table and column qualifiers are resolved via the parser's alias map and
+ * uppercased for case-insensitive matching. During source indexing, unqualified table references
+ * are also resolved against the live JDBC schema when possible.
  */
 @Service
 public class UsageCatalogService {
@@ -77,9 +91,33 @@ public class UsageCatalogService {
     private final DataSource catalogDs;
     private final QueryAnalysisService analysis;
     private final JsonResponses json;
-    private final DatabaseNativeUsageSourceProvider nativeProvider;
-    private final AtomicBoolean lazyIndexing = new AtomicBoolean(false);
-    private volatile boolean lazyNativeIndexed = false;
+    private final JdbcMcpProperties jdbcMcpProperties;
+    private final ObjectMapper mapper;
+    private final List<UsageCatalogSource> catalogSources;
+    private final MetadataService metadata;
+    private final AtomicBoolean indexing = new AtomicBoolean(false);
+    private volatile boolean indexReady = false;
+    private volatile IndexerStatusResponse status;
+
+    @Autowired
+    public UsageCatalogService(UsageProperties properties,
+                               DataSource usageDataSource,
+                               QueryAnalysisService analysis,
+                               JsonResponses json,
+                               JdbcMcpProperties jdbcMcpProperties,
+                               ObjectMapper mapper,
+                               List<UsageCatalogSource> catalogSources,
+                               MetadataService metadata) {
+        this.properties = properties;
+        this.catalogDs = usageDataSource;
+        this.analysis = analysis;
+        this.json = json;
+        this.jdbcMcpProperties = jdbcMcpProperties;
+        this.mapper = mapper;
+        this.catalogSources = catalogSources == null ? List.of() : List.copyOf(catalogSources);
+        this.metadata = metadata;
+        this.status = IndexerStatusResponse.initial(properties.catalogEnabled(), configuredSources());
+    }
 
     public UsageCatalogService(UsageProperties properties,
                                DataSource usageDataSource,
@@ -90,7 +128,11 @@ public class UsageCatalogService {
         this.catalogDs = usageDataSource;
         this.analysis = analysis;
         this.json = json;
-        this.nativeProvider = nativeProvider;
+        this.jdbcMcpProperties = null;
+        this.mapper = null;
+        this.catalogSources = nativeProvider == null ? List.of() : List.of(nativeProvider);
+        this.metadata = null;
+        this.status = IndexerStatusResponse.initial(properties.catalogEnabled(), configuredSources());
     }
 
     public boolean enabled() {
@@ -118,7 +160,7 @@ public class UsageCatalogService {
                 log.info("H2 index rebuild: committed {} records ({} parseFailed, {} tables, {} joins, {} ms)",
                         safeRecords.size(), counters.parseFailed, counters.tablesExtracted,
                         counters.joinPairsExtracted, System.currentTimeMillis() - started);
-                resetLazyNativeIndexing();
+                indexReady = true;
             } catch (SQLException | RuntimeException e) {
                 conn.rollback();
                 log.warn("H2 index rebuild: rolled back ({})", e.getMessage());
@@ -142,62 +184,239 @@ public class UsageCatalogService {
     }
 
     // ---------------------------------------------------------------------------------------
-    //  Lazy native indexing
+    //  Source loading / lazy indexing
     // ---------------------------------------------------------------------------------------
 
-    /**
-     * Append native catalog records (views, routines, triggers) into the H2 index without clearing
-     * existing file-based records. Duplicate UIDs are silently skipped. Called once from
-     * {@link #ensureNativeIndexed()} when lazy native indexing is enabled.
-     */
-    public int appendNativeRecords(List<QueryUsage> records) {
-        if (!enabled() || records == null || records.isEmpty()) return 0;
-        Counters counters = new Counters();
-        try (Connection conn = catalogDs.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                insertAll(conn, records, counters, false);
+    public IndexerStatusResponse status() {
+        return status;
+    }
+
+    public IndexerStatusResponse invalidateIndex() {
+        if (!enabled()) return status;
+        synchronized (this) {
+            try (Connection conn = catalogDs.getConnection()) {
+                conn.setAutoCommit(false);
+                clearAll(conn);
                 conn.commit();
-            } catch (SQLException | RuntimeException e) {
-                conn.rollback();
-                throw e;
+            } catch (SQLException e) {
+                throw new IllegalStateException("Failed to invalidate usage catalog index: " + e.getMessage(), e);
             }
-        } catch (SQLException e) {
-            throw new IllegalStateException("Failed to append native records: " + e.getMessage(), e);
+            indexReady = false;
+            status = IndexerStatusResponse.initial(properties.catalogEnabled(), configuredSources())
+                    .withState("invalidated");
+            return status;
         }
-        return records.size();
     }
 
-    /**
-     * Trigger lazy native indexing on first access. Safe to call from every read-side method.
-     * Failed attempts are retried on later reads, and a full rebuild resets the completed marker
-     * because the rebuild clears rows that were appended lazily.
-     */
-    private void ensureNativeIndexed() {
-        if (!enabled() || lazyNativeIndexed) return;
-        if (nativeProvider == null) return;
-        if (properties.nativeCatalogEnabled()) return; // already indexed at startup
-        if (!properties.nativeCatalogLazy()) return;
-        if (lazyIndexing.compareAndSet(false, true)) {
+    public IndexerStatusResponse ensureIndexed() {
+        if (!enabled() || indexReady) return status;
+        synchronized (this) {
+            if (!enabled() || indexReady) return status;
+            if (!indexing.compareAndSet(false, true)) {
+                return status;
+            }
+            long started = System.currentTimeMillis();
+            String startedAt = Instant.ofEpochMilli(started).toString();
+            status = IndexerStatusResponse.indexing(
+                    properties.catalogEnabled(), configuredSources());
             try {
-                List<QueryUsage> nativeRecords = nativeProvider.forceLoad();
-                if (!nativeRecords.isEmpty()) {
-                    int count = appendNativeRecords(nativeRecords);
-                    log.info("Lazy native catalog index complete: {} records (views/routines/triggers)", count);
-                }
-                lazyNativeIndexed = true;
-            } catch (Exception e) {
-                log.warn("Lazy native catalog indexing failed: {}", e.getMessage(), e);
+                LoadResult loaded = loadRecords();
+                RebuildResult rebuildResult = rebuild(loaded.records());
+                ReresolveResult reresolve = autoReresolve();
+                status = IndexerStatusResponse.ready(
+                        properties.catalogEnabled(), "ready", configuredSources(),
+                        startedAt, loaded.filesScanned(), loaded.records().size(),
+                        loaded.errors().size(), loaded.duplicateUids().size(),
+                        loaded.errors(), loaded.duplicateUids(),
+                        Instant.now().toString(), Instant.now().toString(),
+                        System.currentTimeMillis() - started,
+                        rebuildResult.parseFailed(), rebuildResult.paramsStored(),
+                        rebuildResult.tablesExtracted(), rebuildResult.columnsExtracted(),
+                        rebuildResult.joinPairsExtracted(), rebuildResult.outputsStored(),
+                        rebuildResult.fieldUsagesStored(), rebuildResult.indexBuildMs(),
+                        reresolve == null ? null : reresolve.tablesResolved(),
+                        reresolve == null ? null : reresolve.tablesAmbiguous(),
+                        reresolve == null ? null : reresolve.tablesUnresolved()
+                );
+                indexReady = true;
+                return status;
+            } catch (RuntimeException e) {
+                indexReady = false;
+                status = IndexerStatusResponse.ready(
+                        properties.catalogEnabled(), "failed", configuredSources(),
+                        startedAt, 0, 0, 1, 0,
+                        List.of("index rebuild failed: " + e.getMessage()), List.of(),
+                        null, Instant.now().toString(),
+                        System.currentTimeMillis() - started,
+                        null, null, null, null, null, null, null, null,
+                        null, null, null
+                );
+                throw e;
             } finally {
-                lazyIndexing.set(false);
+                indexing.set(false);
             }
         }
     }
 
-    private void resetLazyNativeIndexing() {
-        if (properties.nativeCatalogEnabled()) return;
-        if (!properties.nativeCatalogLazy()) return;
-        lazyNativeIndexed = false;
+    public IndexerStatusResponse rebuildFromSources() {
+        indexReady = false;
+        return ensureIndexed();
+    }
+
+    private LoadResult loadRecords() {
+        Map<String, QueryUsage> records = new LinkedHashMap<>();
+        Set<String> duplicateUids = new LinkedHashSet<>();
+        List<String> errors = new ArrayList<>();
+        int[] filesScanned = {0};
+        for (Path source : resolvedCatalogPaths()) {
+            try {
+                loadSource(source, records, duplicateUids, errors, filesScanned);
+            } catch (RuntimeException | IOException e) {
+                errors.add(source + ": " + e.getMessage());
+            }
+        }
+        for (UsageCatalogSource source : catalogSources) {
+            try {
+                for (QueryUsage usage : source.load()) {
+                    addRecord(source.name(), usage, records, duplicateUids, errors);
+                }
+            } catch (Exception e) {
+                errors.add(source.name() + ": " + e.getMessage());
+            }
+        }
+        return new LoadResult(List.copyOf(records.values()), filesScanned[0],
+                List.copyOf(errors), List.copyOf(duplicateUids));
+    }
+
+    private void loadSource(Path source, Map<String, QueryUsage> records, Set<String> duplicateUids,
+                            List<String> errors, int[] filesScanned) throws IOException {
+        if (mapper == null) return;
+        if (!Files.exists(source)) {
+            log.warn("Usage catalog source does not exist: {}", source);
+            errors.add(source + ": source does not exist");
+            return;
+        }
+        if (Files.isDirectory(source)) {
+            try (Stream<Path> paths = Files.walk(source)) {
+                List<Path> jsonFiles = paths
+                        .filter(Files::isRegularFile)
+                        .filter(UsageCatalogService::isJsonFile)
+                        .sorted()
+                        .toList();
+                for (Path file : jsonFiles) {
+                    loadJson(file.toString(), Files.readAllBytes(file), records,
+                            duplicateUids, errors, filesScanned);
+                }
+            }
+            return;
+        }
+        if (isZipFile(source)) {
+            loadZip(source, records, duplicateUids, errors, filesScanned);
+            return;
+        }
+        if (isJsonFile(source)) {
+            loadJson(source.toString(), Files.readAllBytes(source), records,
+                    duplicateUids, errors, filesScanned);
+        }
+    }
+
+    private void loadZip(Path source, Map<String, QueryUsage> records, Set<String> duplicateUids,
+                         List<String> errors, int[] filesScanned) throws IOException {
+        try (ZipFile zip = new ZipFile(source.toFile())) {
+            List<? extends ZipEntry> entries = zip.stream()
+                    .filter(e -> !e.isDirectory())
+                    .filter(e -> e.getName().toLowerCase(Locale.ROOT).endsWith(".json"))
+                    .sorted((a, b) -> a.getName().compareToIgnoreCase(b.getName()))
+                    .toList();
+            for (ZipEntry entry : entries) {
+                try (InputStream in = zip.getInputStream(entry)) {
+                    loadJson(source + "!" + entry.getName(), in.readAllBytes(), records,
+                            duplicateUids, errors, filesScanned);
+                }
+            }
+        }
+    }
+
+    private void loadJson(String origin, byte[] bytes, Map<String, QueryUsage> records,
+                          Set<String> duplicateUids, List<String> errors, int[] filesScanned) {
+        filesScanned[0]++;
+        try {
+            JsonNode root = mapper.readTree(bytes);
+            if (root.isObject()) {
+                addRecord(origin, mapper.treeToValue(root, QueryUsage.class),
+                        records, duplicateUids, errors);
+                return;
+            }
+            if (root.isArray()) {
+                for (int i = 0; i < root.size(); i++) {
+                    try {
+                        addRecord(origin + "[" + i + "]",
+                                mapper.treeToValue(root.get(i), QueryUsage.class),
+                                records, duplicateUids, errors);
+                    } catch (RuntimeException | IOException e) {
+                        errors.add(origin + "[" + i + "]: " + e.getMessage());
+                    }
+                }
+                return;
+            }
+            errors.add(origin + ": expected QueryUsage object or array of QueryUsage objects");
+        } catch (RuntimeException | IOException e) {
+            errors.add(origin + ": " + e.getMessage());
+        }
+    }
+
+    private void addRecord(String origin, QueryUsage usage, Map<String, QueryUsage> records,
+                           Set<String> duplicateUids, List<String> errors) {
+        QueryUsageSource source = usage.source();
+        String unit = source == null ? null : source.unit();
+        String uid = UsageUid.build(usage.dataSource(), source == null ? null : source.path(), unit);
+        if (records.containsKey(uid)) {
+            duplicateUids.add(uid);
+            errors.add(origin + ": duplicate uid " + uid);
+            return;
+        }
+        records.put(uid, usage);
+    }
+
+    private List<String> configuredSources() {
+        List<String> out = new ArrayList<>(
+                resolvedCatalogPaths().stream().map(Path::toString).toList());
+        for (UsageCatalogSource source : catalogSources) {
+            out.add(source.name());
+        }
+        return List.copyOf(out);
+    }
+
+    private List<Path> resolvedCatalogPaths() {
+        List<Path> paths = new ArrayList<>();
+        if (jdbcMcpProperties != null) {
+            Path defaultDir = jdbcMcpProperties.usageCatalogDir();
+            if (Files.isDirectory(defaultDir)) {
+                paths.add(defaultDir);
+            }
+        }
+        paths.addAll(properties.additionalCatalogPaths());
+        return List.copyOf(paths);
+    }
+
+    private ReresolveResult autoReresolve() {
+        if (metadata == null) return null;
+        return reresolveInternal(null, name -> {
+            List<TableEntry> matches = metadata.findTablesByName(name);
+            List<String[]> out = new ArrayList<>(matches.size());
+            for (TableEntry row : matches) {
+                out.add(new String[]{row.schema(), row.name()});
+            }
+            return out;
+        });
+    }
+
+    private static boolean isJsonFile(Path path) {
+        return path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json");
+    }
+
+    private static boolean isZipFile(Path path) {
+        return path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip");
     }
 
     /**
@@ -605,7 +824,7 @@ public class UsageCatalogService {
 
 public CatalogQueryDetail getQuery(String uid) {
         if (uid == null || uid.isBlank()) throw new IllegalArgumentException("uid is required");
-        ensureNativeIndexed();
+        ensureIndexed();
         CatalogQueryDetail head = querySingle(
                 "SELECT * FROM query WHERE uid = ?",
                 ps -> ps.setString(1, uid),
@@ -651,7 +870,7 @@ public CatalogQueryDetail getQuery(String uid) {
 public ListQueriesResult listQueries(String dataSource, String sourcePath, String sourceKind,
                                           String businessDomain, String tag, String parseStatus,
                                           Integer limit, Integer offset) {
-        ensureNativeIndexed();
+        ensureIndexed();
         StringBuilder sql = new StringBuilder("""
                 SELECT DISTINCT q.uid, q.data_source, q.source_kind, q.source_path, q.source_unit,
                        q.business_label, q.business_domain, q.parse_status, q.ingested_at
@@ -709,7 +928,7 @@ public ListQueriesResult listQueries(String dataSource, String sourcePath, Strin
 
 public FindQueriesByTableResult findQueriesByTable(String schema, String table) {
         if (table == null || table.isBlank()) throw new IllegalArgumentException("table is required");
-        ensureNativeIndexed();
+        ensureIndexed();
         String tableUpper = table.toUpperCase(Locale.ROOT);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
         String sql = """
@@ -744,7 +963,7 @@ public FindQueriesByTableResult findQueriesByTable(String schema, String table) 
 
 public FindQueriesByColumnResult findQueriesByColumn(String schema, String table, String column) {
         if (column == null || column.isBlank()) throw new IllegalArgumentException("column is required");
-        ensureNativeIndexed();
+        ensureIndexed();
         String columnUpper = column.toUpperCase(Locale.ROOT);
         String tableUpper = table == null || table.isBlank() ? null : table.toUpperCase(Locale.ROOT);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
@@ -779,7 +998,7 @@ public FindQueriesByColumnResult findQueriesByColumn(String schema, String table
     }
 
     public ObservedRelationshipsResult observedRelationships(String schema, String table, int minSupport) {
-        ensureNativeIndexed();
+        ensureIndexed();
         int support = Math.max(1, minSupport);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
         String tableUpper = table == null || table.isBlank() ? null : table.toUpperCase(Locale.ROOT);
@@ -821,7 +1040,7 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
     }
 
     public KnownTagsResult listKnownTags(String dataSource) {
-        ensureNativeIndexed();
+        ensureIndexed();
         StringBuilder sql = new StringBuilder("""
                 SELECT t.tag, COUNT(*) AS count
                 FROM query_tag t
@@ -852,7 +1071,7 @@ return new ObservedRelationshipsResult(schemaUpper, tableUpper, support, rels, r
      */
 public List<ObservedEdge> observedEdges(Set<String> tableFilter, int minSupport) {
         if (!enabled()) return List.of();
-        ensureNativeIndexed();
+        ensureIndexed();
         int support = Math.max(1, minSupport);
         String sql = """
                 SELECT
@@ -909,10 +1128,14 @@ public List<ObservedEdge> observedEdges(Set<String> tableFilter, int minSupport)
      * The same propagation is applied to {@code query_column} and to both sides of {@code query_join}.
      */
 public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
+        ensureIndexed();
+        return reresolveInternal(dataSource, lookup);
+    }
+
+    private ReresolveResult reresolveInternal(String dataSource, NameLookup lookup) {
         if (!enabled()) {
             return new ReresolveResult(dataSource, 0, 0, 0, 0);
         }
-        ensureNativeIndexed();
         Map<String, List<String[]>> nameLookups = new LinkedHashMap<>();
         Set<String> distinctNames = collectUnresolvedTableNames(dataSource);
         for (String name : distinctNames) {
@@ -1035,7 +1258,7 @@ public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
     }
 
     public KnownDomainsResult listKnownDomains(String dataSource) {
-        ensureNativeIndexed();
+        ensureIndexed();
         StringBuilder sql = new StringBuilder("""
                 SELECT business_domain, COUNT(*) AS count
                 FROM query
@@ -1063,7 +1286,7 @@ public ReresolveResult reresolve(String dataSource, NameLookup lookup) {
      */
 public TableEvidenceProfile tableEvidenceProfile(String schema, String table) {
         if (table == null || table.isBlank()) throw new IllegalArgumentException("table is required");
-        ensureNativeIndexed();
+        ensureIndexed();
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
         String tableUpper = table.toUpperCase(Locale.ROOT);
         List<String> queryUids = tableQueryUids(schemaUpper, tableUpper);
@@ -1101,7 +1324,7 @@ public SemanticEdgeEvidence semanticEdgeEvidence(String leftSchema, String leftT
         if (!enabled()) return null;
         if (leftTable == null || leftTable.isBlank()) return null;
         if (rightTable == null || rightTable.isBlank()) return null;
-        ensureNativeIndexed();
+        ensureIndexed();
         String leftSchemaUpper = leftSchema == null || leftSchema.isBlank()
                 ? null : leftSchema.toUpperCase(Locale.ROOT);
         String rightSchemaUpper = rightSchema == null || rightSchema.isBlank()
@@ -1181,7 +1404,7 @@ public SemanticEdgeEvidence semanticEdgeEvidence(String leftSchema, String leftT
      */
 public List<SemanticTableCandidate> semanticTableCandidates(String schema, String terms, int limit) {
         if (!enabled()) return List.of();
-        ensureNativeIndexed();
+        ensureIndexed();
         List<String> tokens = semanticTokens(terms);
         if (tokens.isEmpty()) return List.of();
         int safeLimit = Math.max(1, Math.min(limit, 50));
@@ -1666,6 +1889,10 @@ rs.getString("confidence"));
     }
 
     private record ColumnTerm(String column, SemanticTermEvidence evidence) {
+    }
+
+    private record LoadResult(List<QueryUsage> records, int filesScanned,
+                              List<String> errors, List<String> duplicateUids) {
     }
 
     private record SemanticTermRow(String schema, String table, String sourceKind,

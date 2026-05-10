@@ -36,7 +36,7 @@ class EdgeDecorationTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        UsageProperties properties = new UsageProperties(true, List.of(), false, false, false, "");
+        UsageProperties properties = new UsageProperties(true, List.of(), List.of(), true, true, true, 1_000);
         JdbcMcpProperties jdbcMcpProperties = new JdbcMcpProperties("");
         DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
         usageCatalog = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
