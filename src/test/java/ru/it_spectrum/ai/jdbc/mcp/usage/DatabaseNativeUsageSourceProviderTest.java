@@ -87,6 +87,62 @@ class DatabaseNativeUsageSourceProviderTest {
                 .containsExactly("SELECT", "SELECT");
     }
 
+    @Test
+    void extractsOraclePackageBodySubprogramsAsSeparateNativeUsageUnits() throws Exception {
+        UsageProperties properties = properties(true, false, true, false);
+        MetadataService metadata = mock(MetadataService.class);
+        when(metadata.defaultSchema()).thenReturn("APP");
+        when(metadata.listRoutines("APP", "%")).thenReturn(new QueryResult(
+                List.of("schema", "name", "kind", "language"),
+                List.of("TEXT", "TEXT", "TEXT", "TEXT"),
+                List.of(Map.of(
+                        "schema", "APP",
+                        "name", "CUSTOMER_PKG",
+                        "kind", "PACKAGE",
+                        "language", "PL/SQL")),
+                false,
+                1));
+        when(metadata.routineSource("APP", "CUSTOMER_PKG")).thenReturn("""
+                CREATE OR REPLACE PACKAGE BODY customer_pkg AS
+                  FUNCTION active_customer_ids RETURN SYS_REFCURSOR IS
+                    rc SYS_REFCURSOR;
+                  BEGIN
+                    OPEN rc FOR
+                      SELECT c.id FROM customers c WHERE c.status = 'ACTIVE';
+                    RETURN rc;
+                  END active_customer_ids;
+
+                  PROCEDURE touch_customer(p_id NUMBER) AS
+                  BEGIN
+                    UPDATE customers SET touched_at = SYSDATE WHERE id = p_id;
+                  END;
+                END customer_pkg;
+                """);
+
+        DatabaseNativeUsageSourceProvider provider =
+                new DatabaseNativeUsageSourceProvider(properties, metadata);
+
+        List<QueryUsage> records = provider.load();
+
+        assertThat(records)
+                .extracting(record -> record.source().kind())
+                .containsExactly("database-package", "database-package");
+        assertThat(records)
+                .extracting(record -> record.source().path())
+                .containsExactly("native/package/APP.CUSTOMER_PKG", "native/package/APP.CUSTOMER_PKG");
+        assertThat(records)
+                .extracting(record -> record.source().unit())
+                .containsExactly("active_customer_ids#stmt1", "touch_customer#stmt1");
+        assertThat(records)
+                .extracting(QueryUsage::sql)
+                .containsExactly(
+                        "SELECT c.id FROM customers c WHERE c.status = 'ACTIVE'",
+                        "UPDATE customers SET touched_at = SYSDATE WHERE id = p_id");
+        assertThat(records)
+                .extracting(record -> record.sourceMeta().get("subprogramName"))
+                .containsExactly("active_customer_ids", "touch_customer");
+    }
+
     private static UsageProperties properties(boolean nativeEnabled, boolean views,
                                               boolean routines, boolean triggers) {
         return new UsageProperties(

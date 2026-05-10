@@ -103,14 +103,28 @@ public class OracleDialect implements SqlDialect {
 
     @Override
     public String routineSourceQuery() {
-        // Concatenates source lines in order.
+        // Concatenates source lines in order. For packages, prefer PACKAGE BODY over the
+        // declaration spec; both use LINE starting at 1, so returning both would interleave source.
         return """
-                SELECT text AS definition
-                FROM all_source
-                WHERE owner = UPPER(?)
-                  AND name  = UPPER(?)
-                  AND type IN ('FUNCTION', 'PROCEDURE', 'PACKAGE', 'PACKAGE BODY', 'TYPE', 'TYPE BODY')
-                ORDER BY line
+                SELECT s.text AS definition
+                FROM all_source s
+                WHERE s.owner = UPPER(?)
+                  AND s.name  = UPPER(?)
+                  AND (
+                        s.type IN ('FUNCTION', 'PROCEDURE', 'TYPE', 'TYPE BODY')
+                        OR s.type = CASE
+                            WHEN EXISTS (
+                                SELECT 1
+                                FROM all_source b
+                                WHERE b.owner = s.owner
+                                  AND b.name = s.name
+                                  AND b.type = 'PACKAGE BODY'
+                            )
+                            THEN 'PACKAGE BODY'
+                            ELSE 'PACKAGE'
+                        END
+                  )
+                ORDER BY s.line
                 """;
     }
 

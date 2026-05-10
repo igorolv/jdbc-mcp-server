@@ -31,4 +31,15 @@ class OracleDialectTest {
         assertThat(dialect.structuredPlanQuery("JDBC_MCP_abc"))
                 .contains("WHERE statement_id = ?");
     }
+
+    @Test
+    void routineSourcePrefersPackageBodyOverPackageSpec() {
+        String sql = dialect.routineSourceQuery();
+
+        assertThat(sql)
+                .contains("PACKAGE BODY")
+                .contains("EXISTS")
+                .contains("ELSE 'PACKAGE'")
+                .contains("ORDER BY s.line");
+    }
 }

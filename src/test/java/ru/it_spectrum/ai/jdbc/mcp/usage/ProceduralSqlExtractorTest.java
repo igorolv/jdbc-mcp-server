@@ -69,4 +69,38 @@ class ProceduralSqlExtractorTest {
                             .isEqualTo("DELETE FROM customer_queue WHERE customer_id = :id");
                 });
     }
+
+    @Test
+    void extractsStatementsPerOraclePackageSubprogram() {
+        List<ExtractedRoutineSqlStatement> statements = extractor.extractOraclePackageBody("""
+                CREATE OR REPLACE PACKAGE BODY customer_pkg AS
+                  FUNCTION active_customer_ids RETURN SYS_REFCURSOR IS
+                    rc SYS_REFCURSOR;
+                  BEGIN
+                    OPEN rc FOR
+                      SELECT c.id FROM customers c WHERE c.status = 'ACTIVE';
+                    RETURN rc;
+                  END active_customer_ids;
+
+                  PROCEDURE touch_customer(p_id NUMBER) AS
+                  BEGIN
+                    IF p_id IS NOT NULL THEN
+                      UPDATE customers SET touched_at = SYSDATE WHERE id = p_id;
+                    END IF;
+                  END;
+                END customer_pkg;
+                """);
+
+        assertThat(statements)
+                .extracting(ExtractedRoutineSqlStatement::routineName)
+                .containsExactly("active_customer_ids", "touch_customer");
+        assertThat(statements)
+                .extracting(ExtractedRoutineSqlStatement::routineKind)
+                .containsExactly("FUNCTION", "PROCEDURE");
+        assertThat(statements)
+                .extracting(ExtractedRoutineSqlStatement::sql)
+                .containsExactly(
+                        "SELECT c.id FROM customers c WHERE c.status = 'ACTIVE'",
+                        "UPDATE customers SET touched_at = SYSDATE WHERE id = p_id");
+    }
 }

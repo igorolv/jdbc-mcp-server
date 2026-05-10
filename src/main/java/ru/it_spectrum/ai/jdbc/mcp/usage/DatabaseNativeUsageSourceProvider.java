@@ -130,6 +130,10 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
             String source = metadata.routineSource(objectSchema, name);
             if (source == null || source.isBlank()) continue;
             String sourceKind = "database-" + normalizeKind(kind, "routine");
+            if ("PACKAGE".equalsIgnoreCase(kind)) {
+                addPackageRoutines(out, objectSchema, name, kind, sourceKind, source);
+                continue;
+            }
             List<ExtractedSqlStatement> statements = proceduralSqlExtractor.extract(source);
             if (statements.isEmpty()) {
                 out.add(new QueryUsage(
@@ -164,6 +168,49 @@ public class DatabaseNativeUsageSourceProvider implements UsageCatalogSource {
                                 "statementKind", statement.kind()))
                 ));
             }
+        }
+    }
+
+    private void addPackageRoutines(List<QueryUsage> out, String objectSchema, String packageName,
+                                    String kind, String sourceKind, String source) {
+        List<ExtractedRoutineSqlStatement> statements =
+                proceduralSqlExtractor.extractOraclePackageBody(source);
+        if (statements.isEmpty()) {
+            out.add(new QueryUsage(
+                    properties.effectiveDataSourceId(),
+                    new QueryUsageSource(sourceKind, path("package", objectSchema, packageName), null),
+                    "Database package " + qualified(objectSchema, packageName),
+                    null,
+                    List.of("database-native", "routine", "package"),
+                    source,
+                    null,
+                    null,
+                    null,
+                    meta(kind, objectSchema, packageName, null, null)
+            ));
+            return;
+        }
+        for (ExtractedRoutineSqlStatement statement : statements) {
+            if (limitReached(out)) return;
+            String unit = safe(statement.routineName()) + "#stmt" + statement.ordinal();
+            out.add(new QueryUsage(
+                    properties.effectiveDataSourceId(),
+                    new QueryUsageSource(sourceKind, path("package", objectSchema, packageName), unit),
+                    "Database package " + qualified(objectSchema, packageName)
+                            + "." + statement.routineName(),
+                    null,
+                    List.of("database-native", "routine", "package"),
+                    statement.sql(),
+                    null,
+                    null,
+                    null,
+                    meta("PACKAGE BODY", objectSchema, packageName, null, Map.of(
+                            "packageName", packageName,
+                            "subprogramName", statement.routineName(),
+                            "subprogramKind", statement.routineKind(),
+                            "statementOrdinal", statement.ordinal(),
+                            "statementKind", statement.kind()))
+            ));
         }
     }
 
