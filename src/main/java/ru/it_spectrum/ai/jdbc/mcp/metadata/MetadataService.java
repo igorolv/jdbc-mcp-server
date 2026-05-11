@@ -155,8 +155,7 @@ public class MetadataService {
     private TableDescription describeTableUncached(String effectiveSchema, String table) throws SQLException {
         return executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
-            String type = fetchTableType(md, effectiveSchema, table);
-            String remarks = fetchTableRemarks(md, effectiveSchema, table);
+            TableInfo info = fetchTableInfo(md, effectiveSchema, table);
             List<Column> cols = fetchColumns(md, effectiveSchema, table);
             // Supplement COLUMN_DEF and REMARKS via dialect-specific queries (bypasses LONG restriction
             // on Oracle's DatabaseMetaData.getColumns / getString). Uses the same connection to avoid
@@ -165,31 +164,26 @@ public class MetadataService {
             PrimaryKey pk = fetchPrimaryKey(md, effectiveSchema, table);
             List<UniqueConstraint> uniqueConstraints = fetchUniqueConstraints(md, effectiveSchema, table);
             List<Index> indexes = fetchIndexes(md, effectiveSchema, table);
-            List<ForeignKey> foreignKeys = fetchImportedKeys(md, effectiveSchema, table);
-            List<IncomingForeignKey> referencedBy = fetchExportedKeys(md, effectiveSchema, table);
+            List<ForeignKey> foreignKeys = fetchImportedKeys(conn, md, effectiveSchema, table);
+            List<IncomingForeignKey> referencedBy = fetchExportedKeys(conn, md, effectiveSchema, table);
             List<Constraint> constraints = fetchConstraints(effectiveSchema, table);
             Map<String, List<String>> allowedValues = extractAllowedValues(constraints);
             List<Trigger> triggers = fetchTriggers(effectiveSchema, table, false);
             return new TableDescription(
-                    effectiveSchema, table, type, remarks,
+                    effectiveSchema, table, info.type, info.remarks,
                     cols, pk, uniqueConstraints, indexes,
                     foreignKeys, referencedBy, constraints,
                     allowedValues, triggers);
         });
     }
 
-    private String fetchTableType(DatabaseMetaData md, String schema, String table) throws SQLException {
-        try (ResultSet rs = md.getTables(null, schema, table, null)) {
-            if (rs.next()) return rs.getString("TABLE_TYPE");
-        }
-        return null;
-    }
+    private record TableInfo(String type, String remarks) {}
 
-    private String fetchTableRemarks(DatabaseMetaData md, String schema, String table) throws SQLException {
+    private TableInfo fetchTableInfo(DatabaseMetaData md, String schema, String table) throws SQLException {
         try (ResultSet rs = md.getTables(null, schema, table, null)) {
-            if (rs.next()) return rs.getString("REMARKS");
+            if (rs.next()) return new TableInfo(rs.getString("TABLE_TYPE"), rs.getString("REMARKS"));
         }
-        return null;
+        return new TableInfo(null, null);
     }
 
     private List<Column> fetchColumns(DatabaseMetaData md, String schema, String table)
@@ -224,11 +218,49 @@ public class MetadataService {
 
     private List<Column> fetchColumnMetadataSupplement(Connection conn, List<Column> cols,
                                                        String schema, String table) throws SQLException {
-        String commentsSql = dialect.columnCommentsQuery();
-        String defaultsSql = dialect.columnDefaultsQuery();
-
         Map<String, String> comments = new LinkedHashMap<>();
         Map<String, String> defaults = new LinkedHashMap<>();
+
+        // Try combined query first (fewer roundtrips)
+        String combinedSql = dialect.columnMetadataQuery();
+        if (combinedSql != null) {
+            try (PreparedStatement ps = conn.prepareStatement(combinedSql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+                ps.setString(1, schema);
+                ps.setString(2, table);
+                try (ResultSet rs = ps.executeQuery()) {
+                    List<String> colsList = readColumns(rs);
+                    if (colsList.size() >= 3) {
+                        String nameCol = colsList.get(0);
+                        String commentCol = colsList.get(1);
+                        String defaultCol = colsList.get(2);
+                        while (rs.next()) {
+                            Object nameVal = rs.getObject(nameCol);
+                            if (nameVal == null) continue;
+                            String cn = String.valueOf(nameVal).toUpperCase();
+                            Object commentVal = rs.getObject(commentCol);
+                            if (commentVal != null && !String.valueOf(commentVal).isBlank()) {
+                                comments.put(cn, String.valueOf(commentVal));
+                            }
+                            Object defVal = rs.getObject(defaultCol);
+                            if (defVal != null && !String.valueOf(defVal).isBlank()) {
+                                defaults.put(cn, String.valueOf(defVal));
+                            }
+                        }
+                    }
+                }
+            } catch (SQLException e) {
+                // fall through to individual queries
+            }
+            if (!comments.isEmpty() || !defaults.isEmpty()) {
+                return mergeColumnMetadata(cols, comments, defaults);
+            }
+        }
+
+        String commentsSql = dialect.columnCommentsQuery();
+        String defaultsSql = dialect.columnDefaultsQuery();
 
         if (commentsSql != null) {
             try (PreparedStatement ps = conn.prepareStatement(commentsSql,
@@ -282,6 +314,12 @@ public class MetadataService {
             }
         }
 
+        return mergeColumnMetadata(cols, comments, defaults);
+    }
+
+    private List<Column> mergeColumnMetadata(List<Column> cols,
+                                              Map<String, String> comments,
+                                              Map<String, String> defaults) {
         List<Column> out = new ArrayList<>(cols.size());
         for (Column col : cols) {
             String cn = col.name() == null ? "" : col.name().toUpperCase();
@@ -368,7 +406,48 @@ public class MetadataService {
         }
     }
 
-    private List<ForeignKey> fetchImportedKeys(DatabaseMetaData md, String schema, String table)
+    private List<ForeignKey> fetchImportedKeys(Connection conn, DatabaseMetaData md, String schema, String table)
+            throws SQLException {
+        String sql = dialect.importedKeysQuery();
+        if (sql != null) {
+            return fetchImportedKeysSql(conn, sql, schema, table);
+        }
+        return fetchImportedKeysJdbc(md, schema, table);
+    }
+
+    private List<ForeignKey> fetchImportedKeysSql(Connection conn, String sql, String schema, String table)
+            throws SQLException {
+        record Pending(String name, List<String> columns, List<String> referencedColumns,
+                       String[] referencedSchema, String[] referencedTable) {}
+        Map<String, Pending> byName = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            ps.setString(1, schema);
+            ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String fkName = rs.getString("FK_NAME");
+                    if (fkName == null) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
+                    Pending p = byName.computeIfAbsent(fkName, k -> new Pending(
+                            k, new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
+                    p.referencedSchema()[0] = rs.getString("PKTABLE_SCHEM");
+                    p.referencedTable()[0] = rs.getString("PKTABLE_NAME");
+                    p.columns().add(rs.getString("FKCOLUMN_NAME"));
+                    p.referencedColumns().add(rs.getString("PKCOLUMN_NAME"));
+                }
+            }
+        }
+        List<ForeignKey> out = new ArrayList<>(byName.size());
+        for (Pending p : byName.values()) {
+            out.add(new ForeignKey(p.name(), p.columns(),
+                    p.referencedSchema()[0], p.referencedTable()[0], p.referencedColumns()));
+        }
+        return out;
+    }
+
+    private List<ForeignKey> fetchImportedKeysJdbc(DatabaseMetaData md, String schema, String table)
             throws SQLException {
         record Pending(String name, List<String> columns, List<String> referencedColumns,
                        String[] referencedSchema, String[] referencedTable) {}
@@ -393,7 +472,48 @@ public class MetadataService {
         return out;
     }
 
-    private List<IncomingForeignKey> fetchExportedKeys(DatabaseMetaData md, String schema, String table)
+    private List<IncomingForeignKey> fetchExportedKeys(Connection conn, DatabaseMetaData md, String schema, String table)
+            throws SQLException {
+        String sql = dialect.exportedKeysQuery();
+        if (sql != null) {
+            return fetchExportedKeysSql(conn, sql, schema, table);
+        }
+        return fetchExportedKeysJdbc(md, schema, table);
+    }
+
+    private List<IncomingForeignKey> fetchExportedKeysSql(Connection conn, String sql, String schema, String table)
+            throws SQLException {
+        record Pending(String name, List<String> fromColumns, List<String> toColumns,
+                       String[] fromSchema, String[] fromTable) {}
+        Map<String, Pending> byName = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            ps.setString(1, schema);
+            ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String fkName = rs.getString("FK_NAME");
+                    if (fkName == null) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
+                    Pending p = byName.computeIfAbsent(fkName, k -> new Pending(
+                            k, new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
+                    p.fromSchema()[0] = rs.getString("FKTABLE_SCHEM");
+                    p.fromTable()[0] = rs.getString("FKTABLE_NAME");
+                    p.fromColumns().add(rs.getString("FKCOLUMN_NAME"));
+                    p.toColumns().add(rs.getString("PKCOLUMN_NAME"));
+                }
+            }
+        }
+        List<IncomingForeignKey> out = new ArrayList<>(byName.size());
+        for (Pending p : byName.values()) {
+            out.add(new IncomingForeignKey(p.name(),
+                    p.fromSchema()[0], p.fromTable()[0], p.fromColumns(), p.toColumns()));
+        }
+        return out;
+    }
+
+    private List<IncomingForeignKey> fetchExportedKeysJdbc(DatabaseMetaData md, String schema, String table)
             throws SQLException {
         record Pending(String name, List<String> fromColumns, List<String> toColumns,
                        String[] fromSchema, String[] fromTable) {}

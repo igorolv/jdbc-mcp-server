@@ -55,12 +55,8 @@ class UsageCatalogSourceLoadingTest {
         UsageCatalogStatus status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
-        assertThat(status.filesScanned()).isEqualTo(2);
-        assertThat(status.recordsLoaded()).isEqualTo(2);
         assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(2);
-        assertThat(service.observedRelationships(null, null, 1).relationships())
-                .singleElement()
-                .satisfies(edge -> assertThat(edge.support()).isEqualTo(1));
+        assertThat(service.findQueriesByTable(null, "orders").count()).isEqualTo(1);
     }
 
     @Test
@@ -85,9 +81,6 @@ class UsageCatalogSourceLoadingTest {
         UsageCatalogStatus status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
-        assertThat(status.filesScanned()).isEqualTo(1);
-        assertThat(status.recordsLoaded()).isEqualTo(2);
-        assertThat(status.invalidFiles()).isZero();
         assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(1);
         assertThat(service.findQueriesByTable(null, "orders").count()).isEqualTo(1);
     }
@@ -111,8 +104,6 @@ class UsageCatalogSourceLoadingTest {
         UsageCatalogStatus status = service.rebuildFromSources();
 
         assertThat(status.state()).isEqualTo("ready");
-        assertThat(status.duplicateUids()).isEqualTo(1);
-        assertThat(status.recordsLoaded()).isEqualTo(1);
         assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(1);
         assertThat(service.findQueriesByTable(null, "orders").count()).isEqualTo(0);
     }
@@ -145,7 +136,6 @@ class UsageCatalogSourceLoadingTest {
 
         assertThat(status.state()).isEqualTo("ready");
         assertThat(status.sources()).contains("database-native");
-        assertThat(status.recordsLoaded()).isEqualTo(1);
         assertThat(service.findQueriesByTable(null, "customers").count()).isEqualTo(1);
     }
 

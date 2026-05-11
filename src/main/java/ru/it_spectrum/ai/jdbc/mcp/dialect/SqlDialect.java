@@ -203,6 +203,20 @@ public interface SqlDialect {
     }
 
     /**
+     * Optional combined query that returns comments <em>and</em> default values for every
+     * column in one roundtrip. Expected columns:
+     * {@code column_name} (text), {@code comment} (text), {@code default_value} (text).
+     * Params: {@code (schema, table)}.
+     *
+     * <p>When this returns non-null, {@code describeTable} uses it instead of calling
+     * {@link #columnCommentsQuery()} and {@link #columnDefaultsQuery()} separately.
+     * Return {@code null} if the dialect has no such combined query.
+     */
+    default String columnMetadataQuery() {
+        return null;
+    }
+
+    /**
      * SQL that returns table constraints. Expected columns:
      * {@code name}, {@code type}, {@code columns}, {@code definition},
      * {@code referenced_schema}, {@code referenced_table}, {@code referenced_columns}.
@@ -210,6 +224,34 @@ public interface SqlDialect {
      * Params: {@code (schema, table)}.
      */
     default String tableConstraintsQuery() {
+        return null;
+    }
+
+    /**
+     * SQL that returns imported foreign keys (child-side FKs referencing other tables).
+     * Expected columns: {@code FK_NAME}, {@code FKCOLUMN_NAME},
+     * {@code PKTABLE_SCHEM}, {@code PKTABLE_NAME}, {@code PKCOLUMN_NAME}.
+     * Rows should be ordered by FK_NAME then KEY_SEQ (position).
+     * Params: {@code (schema, table)}.
+     *
+     * <p>When non-null, {@code describeTable} uses this instead of the JDBC
+     * {@code DatabaseMetaData.getImportedKeys()} call, which can be slow on Oracle.
+     */
+    default String importedKeysQuery() {
+        return null;
+    }
+
+    /**
+     * SQL that returns exported foreign keys (FKs in other tables referencing this one).
+     * Expected columns: {@code FK_NAME}, {@code FKCOLUMN_NAME},
+     * {@code FKTABLE_SCHEM}, {@code FKTABLE_NAME}, {@code PKCOLUMN_NAME}.
+     * Rows should be ordered by FK_NAME then KEY_SEQ (position).
+     * Params: {@code (schema, table)}.
+     *
+     * <p>When non-null, {@code describeTable} uses this instead of the JDBC
+     * {@code DatabaseMetaData.getExportedKeys()} call, which can be slow on Oracle.
+     */
+    default String exportedKeysQuery() {
         return null;
     }
 

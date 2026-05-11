@@ -699,7 +699,7 @@ abstract class SchemaContextSupport {
 
     protected int clamp(Integer value, int defaultValue, int min, int max) {
         if (value == null) return defaultValue;
-        return Math.clamp(max, min, value);
+        return Math.clamp(value, min, max);
     }
 
     protected String key(String schema, String table) {

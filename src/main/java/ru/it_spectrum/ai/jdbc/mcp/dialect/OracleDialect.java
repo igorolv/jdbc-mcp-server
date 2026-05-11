@@ -282,6 +282,32 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
+    public String columnMetadataQuery() {
+        return """
+                SELECT c.column_name,
+                       co.comments AS comment,
+                       CASE
+                           WHEN c.default_length IS NULL THEN NULL
+                           ELSE EXTRACTVALUE(
+                                   DBMS_XMLGEN.GETXMLTYPE(
+                                       'select data_default from user_tab_columns where table_name = '''
+                                       || c.table_name
+                                       || ''' and column_name = '''
+                                       || c.column_name
+                                       || '''' ),
+                                   '//text()' )
+                       END AS default_value
+                FROM all_tab_columns c
+                LEFT JOIN all_col_comments co
+                  ON co.owner = c.owner
+                 AND co.table_name = c.table_name
+                 AND co.column_name = c.column_name
+                WHERE c.owner = UPPER(?)
+                  AND c.table_name = UPPER(?)
+                """;
+    }
+
+    @Override
     public String columnCommentsQuery() {
         // ALL_COL_COMMENTS has VARCHAR2 remarks — no LONG issue here.
         // Using single-line format to avoid any JDBC driver parsing quirks.
@@ -332,7 +358,7 @@ public class OracleDialect implements SqlDialect {
         return value.replace("'", "''");
     }
 
-    @Override
+@Override
     public String tableConstraintsQuery() {
         return """
                 SELECT c.constraint_name AS name,
@@ -371,6 +397,59 @@ public class OracleDialect implements SqlDialect {
                   AND c.table_name = UPPER(?)
                   AND c.constraint_type IN ('P', 'U', 'R', 'C', 'V', 'O')
                 ORDER BY c.constraint_name
+                """;
+    }
+
+    @Override
+    public String importedKeysQuery() {
+        return """
+                SELECT c.constraint_name AS FK_NAME,
+                       acc.column_name    AS FKCOLUMN_NAME,
+                       rc.owner           AS PKTABLE_SCHEM,
+                       rc.table_name      AS PKTABLE_NAME,
+                       rcc.column_name    AS PKCOLUMN_NAME
+                FROM all_constraints c
+                JOIN all_cons_columns acc
+                  ON acc.owner = c.owner
+                 AND acc.constraint_name = c.constraint_name
+                JOIN all_constraints rc
+                  ON rc.owner = c.r_owner
+                 AND rc.constraint_name = c.r_constraint_name
+                JOIN all_cons_columns rcc
+                  ON rcc.owner = rc.owner
+                 AND rcc.constraint_name = rc.constraint_name
+                 AND rcc.position = acc.position
+                WHERE c.owner = UPPER(?)
+                  AND c.table_name = UPPER(?)
+                  AND c.constraint_type = 'R'
+                ORDER BY c.constraint_name, acc.position
+                """;
+    }
+
+    @Override
+    public String exportedKeysQuery() {
+        return """
+                SELECT c.constraint_name AS FK_NAME,
+                       acc.column_name    AS FKCOLUMN_NAME,
+                       c.owner            AS FKTABLE_SCHEM,
+                       c.table_name       AS FKTABLE_NAME,
+                       rcc.column_name    AS PKCOLUMN_NAME
+                FROM all_constraints rc
+                JOIN all_constraints c
+                  ON c.r_owner = rc.owner
+                 AND c.r_constraint_name = rc.constraint_name
+                JOIN all_cons_columns acc
+                  ON acc.owner = c.owner
+                 AND acc.constraint_name = c.constraint_name
+                JOIN all_cons_columns rcc
+                  ON rcc.owner = rc.owner
+                 AND rcc.constraint_name = rc.constraint_name
+                 AND rcc.position = acc.position
+                WHERE rc.owner = UPPER(?)
+                  AND rc.table_name = UPPER(?)
+                  AND rc.constraint_type = 'P'
+                  AND c.constraint_type = 'R'
+                ORDER BY c.constraint_name, acc.position
                 """;
     }
 
