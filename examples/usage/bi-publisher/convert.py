@@ -685,7 +685,7 @@ def main() -> int:
         description="Convert BI Publisher sources to jdbc-mcp-server QueryUsageRecord format.",
     )
     parser.add_argument("path", nargs="?", default=".", help="Path to BI Publisher source tree (default: current directory)")
-    parser.add_argument("--output", "-o", default="query_usage_records.json", help="Output JSON file")
+    parser.add_argument("--output", "-o", default="bi-publisher.json", help="Output JSON file")
     parser.add_argument("--pretty", "-p", action="store_true", default=True, help="Pretty-print output (default: true)")
     args = parser.parse_args()
 
