@@ -40,12 +40,16 @@ public class DistributionTools {
             @McpToolParam(description = "Column name") String column
     ) {
         log.info("Tool call: columnStats (schema={}, table={}, column={})", schema, table, column);
+        long start = System.nanoTime();
         try {
             ColumnStats r = distribution.columnStats(schema, table, column);
+            ToolLogger.completed(log, "columnStats", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "columnStats", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "columnStats", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -62,12 +66,16 @@ public class DistributionTools {
             @McpToolParam(description = "Number of top values to return (default 20, max 1000)", required = false) Integer topN
     ) {
         log.info("Tool call: columnDistribution (schema={}, table={}, column={})", schema, table, column);
+        long start = System.nanoTime();
         try {
             var r = distribution.columnDistribution(schema, table, column, topN);
+            ToolLogger.completed(log, "columnDistribution", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "columnDistribution", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "columnDistribution", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -83,12 +91,16 @@ public class DistributionTools {
             @McpToolParam(description = "Column name") String column
     ) {
         log.info("Tool call: columnHistogram (schema={}, table={}, column={})", schema, table, column);
+        long start = System.nanoTime();
         try {
             var r = distribution.columnHistogram(schema, table, column);
+            ToolLogger.completed(log, "columnHistogram", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "columnHistogram", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "columnHistogram", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -102,12 +114,16 @@ public class DistributionTools {
             @McpToolParam(description = "Table or view name") String table
     ) {
         log.info("Tool call: nullRatio (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             var r = distribution.nullRatio(schema, table);
+            ToolLogger.completed(log, "nullRatio", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "nullRatio", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "nullRatio", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -125,12 +141,16 @@ public class DistributionTools {
             @McpToolParam(description = "Boolean predicate expression — raw SQL, without the WHERE keyword") String predicate
     ) {
         log.info("Tool call: estimateSelectivity (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             var r = distribution.estimateSelectivity(schema, table, predicate);
+            ToolLogger.completed(log, "estimateSelectivity", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "estimateSelectivity", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "estimateSelectivity", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -150,13 +170,17 @@ public class DistributionTools {
             @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType
     ) {
         log.info("Tool call: joinCardinality ({}.{} <-> {}.{})", fromTable, leftColumn, toTable, rightColumn);
+        long start = System.nanoTime();
         try {
             var r = distribution.joinCardinality(fromSchema, fromTable, leftColumn,
                     toSchema, toTable, rightColumn, joinType);
+            ToolLogger.completed(log, "joinCardinality", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "joinCardinality", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "joinCardinality", start, e.getMessage());
             return errors.argument(e);
         }
     }

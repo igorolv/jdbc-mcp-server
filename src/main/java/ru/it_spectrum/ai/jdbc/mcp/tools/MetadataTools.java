@@ -41,10 +41,13 @@ public class MetadataTools {
             @McpToolParam(description = "Include system schemas. Default false.", required = false) Boolean includeSystem
     ) {
         log.info("Tool call: listSchemas (includeSystem={})", includeSystem);
+        long start = System.nanoTime();
         try {
             List<String> schemas = metadata.listSchemas(Boolean.TRUE.equals(includeSystem));
+            ToolLogger.completed(log, "listSchemas", start);
             return json.write(schemas);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "listSchemas", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -59,11 +62,14 @@ public class MetadataTools {
             @McpToolParam(description = "Comma-separated list of types: TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM (optional)", required = false) String types
     ) {
         log.info("Tool call: listTables (schema={}, pattern={})", schema, namePattern);
+        long start = System.nanoTime();
         try {
             String[] typeArr = parseTypes(types);
             List<TableEntry> entries = metadata.listTables(schema, namePattern, typeArr);
+            ToolLogger.completed(log, "listTables", start);
             return json.write(entries);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "listTables", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -76,12 +82,16 @@ public class MetadataTools {
             @McpToolParam(description = "Table or view name") String table
     ) {
         log.info("Tool call: describeTable (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             TableDescription info = metadata.describeTable(schema, table);
+            ToolLogger.completed(log, "describeTable", start);
             return json.write(info);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "describeTable", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "describeTable", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -93,12 +103,16 @@ public class MetadataTools {
             @McpToolParam(description = "Trigger name") String trigger
     ) {
         log.info("Tool call: getTriggerDefinition (schema={}, table={}, trigger={})", schema, table, trigger);
+        long start = System.nanoTime();
         try {
             String def = metadata.triggerDefinition(schema, table, trigger);
+            ToolLogger.completed(log, "getTriggerDefinition", start);
             return def == null || def.isBlank() ? errors.notFound("trigger", trigger) : def;
         } catch (SQLException e) {
+            ToolLogger.failed(log, "getTriggerDefinition", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "getTriggerDefinition", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -109,10 +123,13 @@ public class MetadataTools {
             @McpToolParam(description = "View name") String name
     ) {
         log.info("Tool call: getViewDefinition (schema={}, name={})", schema, name);
+        long start = System.nanoTime();
         try {
             String def = metadata.viewDefinition(schema, name);
+            ToolLogger.completed(log, "getViewDefinition", start);
             return def == null ? errors.notFound("view", name) : def;
         } catch (SQLException e) {
+            ToolLogger.failed(log, "getViewDefinition", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -124,10 +141,13 @@ public class MetadataTools {
             @McpToolParam(description = "Name pattern (optional, e.g. '%calculate%')", required = false) String namePattern
     ) {
         log.info("Tool call: listRoutines (schema={}, pattern={})", schema, namePattern);
+        long start = System.nanoTime();
         try {
             List<RoutineEntry> r = metadata.listRoutines(schema, namePattern);
+            ToolLogger.completed(log, "listRoutines", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "listRoutines", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -139,10 +159,13 @@ public class MetadataTools {
             @McpToolParam(description = "Routine name") String name
     ) {
         log.info("Tool call: getRoutineDefinition (schema={}, name={})", schema, name);
+        long start = System.nanoTime();
         try {
             String source = metadata.routineSource(schema, name);
+            ToolLogger.completed(log, "getRoutineDefinition", start);
             return source == null || source.isEmpty() ? errors.notFound("routine", name) : source;
         } catch (SQLException e) {
+            ToolLogger.failed(log, "getRoutineDefinition", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -152,10 +175,13 @@ public class MetadataTools {
             @McpToolParam(description = "Schema name (optional)", required = false) String schema
     ) {
         log.info("Tool call: listSequences (schema={})", schema);
+        long start = System.nanoTime();
         try {
             List<SequenceEntry> r = metadata.listSequences(schema);
+            ToolLogger.completed(log, "listSequences", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "listSequences", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -168,10 +194,13 @@ public class MetadataTools {
             @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String namePattern
     ) {
         log.info("Tool call: searchObjects (pattern={})", namePattern);
+        long start = System.nanoTime();
         try {
             List<SearchObjectEntry> r = metadata.searchObjects(namePattern);
+            ToolLogger.completed(log, "searchObjects", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "searchObjects", start, e.getMessage());
             return errors.sql(e);
         }
     }

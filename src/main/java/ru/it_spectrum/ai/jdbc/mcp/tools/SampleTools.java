@@ -41,14 +41,20 @@ public class SampleTools {
             @McpToolParam(description = "Number of rows to return (default 10, max 100)", required = false) Integer limit
     ) {
         log.info("Tool call: sampleRows (schema={}, table={})", schema, table);
-        if (table == null || table.isBlank()) return errors.argument("table must be provided");
+        long start = System.nanoTime();
+        if (table == null || table.isBlank()) {
+            ToolLogger.failed(log, "sampleRows", start, "table must be provided");
+            return errors.argument("table must be provided");
+        }
         int n = limit == null ? 10 : Math.clamp(limit, 1, 100);
         String qualified = qualify(schema, table);
         String sql = dialect.limitQuery("SELECT * FROM " + qualified, n);
         try {
             QueryResult r = executor.queryInternal(sql, Collections.emptyList(), n);
+            ToolLogger.completed(log, "sampleRows", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "sampleRows", start, e.getMessage());
             return errors.sql(e);
         }
     }

@@ -69,18 +69,29 @@ public class BenchmarkTools {
             @McpToolParam(description = "Number of warm runs (default 3). Aggregated into min/median/max.", required = false) Integer warmRuns
     ) {
         log.info("Tool call: benchmarkQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={}, coldRuns={}, warmRuns={})", sql, params, namedParams, limit, timeoutSeconds, coldRuns, warmRuns);
-        if (limit == null) return errors.argument("limit is required");
-        if (timeoutSeconds == null) return errors.argument("timeoutSeconds is required");
+        long start = System.nanoTime();
+        if (limit == null) {
+            ToolLogger.failed(log, "benchmarkQuery", start, "limit is required");
+            return errors.argument("limit is required");
+        }
+        if (timeoutSeconds == null) {
+            ToolLogger.failed(log, "benchmarkQuery", start, "timeoutSeconds is required");
+            return errors.argument("timeoutSeconds is required");
+        }
         int cold = coldRuns == null ? 1 : coldRuns;
         int warm = warmRuns == null ? 3 : warmRuns;
         try {
             BenchmarkResult result = benchmarks.benchmark(sql, params, namedParams, limit, timeoutSeconds, cold, warm);
+            ToolLogger.completed(log, "benchmarkQuery", start);
             return json.write(result);
         } catch (SqlNotAllowedException e) {
+            ToolLogger.failed(log, "benchmarkQuery", start, e.getMessage());
             return errors.rejected(e);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "benchmarkQuery", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "benchmarkQuery", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -101,14 +112,19 @@ public class BenchmarkTools {
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {
         log.info("Tool call: timedQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
+        long start = System.nanoTime();
         try {
             TimedQueryResult result = benchmarks.timed(sql, params, namedParams, limit, timeoutSeconds);
+            ToolLogger.completed(log, "timedQuery", start);
             return json.write(result);
         } catch (SqlNotAllowedException e) {
+            ToolLogger.failed(log, "timedQuery", start, e.getMessage());
             return errors.rejected(e);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "timedQuery", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "timedQuery", start, e.getMessage());
             return errors.argument(e);
         }
     }

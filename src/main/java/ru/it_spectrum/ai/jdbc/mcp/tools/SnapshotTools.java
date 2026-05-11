@@ -48,7 +48,10 @@ public class SnapshotTools {
             @McpToolParam(description = "Schema name (optional — omit to see all cached schemas)", required = false) String schema
     ) {
         log.info("Tool call: getSchemaSnapshot (schema={})", schema);
-        return json.write(cache.snapshotInfo(schema));
+        long start = System.nanoTime();
+        String result = json.write(cache.snapshotInfo(schema));
+        ToolLogger.completed(log, "getSchemaSnapshot", start);
+        return result;
     }
 
     @McpTool(description = "Invalidate cached metadata and (by default) eagerly rebuild it. " +
@@ -62,6 +65,7 @@ public class SnapshotTools {
             @McpToolParam(description = "Maximum tables to warm when refreshing a whole schema. Default 300.", required = false) Integer maxTables
     ) {
         log.info("Tool call: refreshSchemaSnapshot (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         RefreshSchemaSnapshotResult result;
         try {
             if (table != null && !table.isBlank()) {
@@ -96,10 +100,13 @@ public class SnapshotTools {
                         null, null);
             }
         } catch (SQLException e) {
+            ToolLogger.failed(log, "refreshSchemaSnapshot", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "refreshSchemaSnapshot", start, e.getMessage());
             return errors.argument(e);
         }
+        ToolLogger.completed(log, "refreshSchemaSnapshot", start);
         return json.write(result);
     }
 
@@ -111,6 +118,7 @@ public class SnapshotTools {
             @McpToolParam(description = "Single table to invalidate (optional)", required = false) String table
     ) {
         log.info("Tool call: invalidateSnapshot (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         InvalidateSnapshotResult result;
         if (table != null && !table.isBlank()) {
             cache.invalidateTable(schema, table);
@@ -122,6 +130,7 @@ public class SnapshotTools {
             cache.invalidateAll();
             result = new InvalidateSnapshotResult("all", null, null);
         }
+        ToolLogger.completed(log, "invalidateSnapshot", start);
         return json.write(result);
     }
 

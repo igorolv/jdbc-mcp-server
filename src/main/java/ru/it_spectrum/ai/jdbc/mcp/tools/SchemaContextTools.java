@@ -40,13 +40,17 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum tables/views to describe. Default 50, capped at 300.", required = false) Integer maxTables
     ) {
         log.info("Tool call: schemaOverview (schema={})", schema);
+        long start = System.nanoTime();
         try {
             var result = schemaContext.schemaOverview(
                     schema, namePattern, includeViews, includeStats, includeObserved, maxTables);
+            ToolLogger.completed(log, "schemaOverview", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "schemaOverview", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "schemaOverview", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -64,13 +68,17 @@ public class SchemaContextTools {
             @McpToolParam(description = "Augment relationships with the three-layer 'evidence' bundle from the local usage catalog (see schemaOverview for the layer breakdown). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         log.info("Tool call: tableContext (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             var result = schemaContext.tableContext(
                     schema, table, depth, includeIncoming, includeStats, includeObserved);
+            ToolLogger.completed(log, "tableContext", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "tableContext", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "tableContext", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -90,14 +98,18 @@ public class SchemaContextTools {
             @McpToolParam(description = "Include observed equi-join pairs from the local usage catalog as additional edges in the search graph. Each path step then carries an 'evidence' bundle with 'declaredSchema', 'observedQuery' and 'semanticUsage' layers (any of which may be absent). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         log.info("Tool call: findJoinPaths ({}.{} -> {}.{})", fromSchema, fromTable, toSchema, toTable);
+        long start = System.nanoTime();
         try {
             var result = schemaContext.findJoinPaths(
                     fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, scanLimit,
                     includeObserved);
+            ToolLogger.completed(log, "findJoinPaths", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "findJoinPaths", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "findJoinPaths", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -115,13 +127,17 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum findings to return. Default 200, capped at 1000.", required = false) Integer maxFindings
     ) {
         log.info("Tool call: schemaLint (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             var result = schemaContext.schemaLint(
                     schema, table, checks, maxTables, maxFindings);
+            ToolLogger.completed(log, "schemaLint", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "schemaLint", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "schemaLint", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -136,11 +152,16 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum tables to scan. Default 50, capped at 300.", required = false) Integer maxTables
     ) {
         log.info("Tool call: schemaBrief (schema={})", schema);
+        long start = System.nanoTime();
         try {
-            return schemaContext.schemaBrief(schema, terms, maxTables);
+            String result = schemaContext.schemaBrief(schema, terms, maxTables);
+            ToolLogger.completed(log, "schemaBrief", start);
+            return result;
         } catch (SQLException e) {
+            ToolLogger.failed(log, "schemaBrief", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "schemaBrief", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -156,13 +177,17 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum hops for shortestPath. Default 4, capped at 4.", required = false) Integer maxDepth
     ) {
         log.info("Tool call: schemaGraph (schema={})", schema);
+        long start = System.nanoTime();
         try {
             var result = schemaContext.schemaGraph(
                     schema, maxTables, fromTable, toTable, maxDepth);
+            ToolLogger.completed(log, "schemaGraph", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "schemaGraph", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "schemaGraph", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -178,13 +203,17 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum tables to include. Default 12, capped at 50.", required = false) Integer maxTables
     ) {
         log.info("Tool call: queryContext (schema={})", schema);
+        long start = System.nanoTime();
         try {
             var result = schemaContext.queryContext(
                     schema, terms, tables, includeSamples, maxTables);
+            ToolLogger.completed(log, "queryContext", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "queryContext", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "queryContext", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -198,11 +227,16 @@ public class SchemaContextTools {
             @McpToolParam(description = "Comma-separated table names to include, e.g. 'customers,orders' (optional — all tables if omitted)", required = false) String tables
     ) {
         log.info("Tool call: schemaGraphDot (schema={})", schema);
+        long start = System.nanoTime();
         try {
-            return schemaContext.schemaGraphDot(schema, tables);
+            String result = schemaContext.schemaGraphDot(schema, tables);
+            ToolLogger.completed(log, "schemaGraphDot", start);
+            return result;
         } catch (SQLException e) {
+            ToolLogger.failed(log, "schemaGraphDot", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "schemaGraphDot", start, e.getMessage());
             return errors.argument(e);
         }
     }

@@ -42,12 +42,16 @@ public class StatsTools {
             @McpToolParam(description = "Table name") String table
     ) {
         log.info("Tool call: tableStats (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             TableStats info = stats.tableStats(schema, table);
+            ToolLogger.completed(log, "tableStats", start);
             return json.write(info);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "tableStats", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "tableStats", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -62,10 +66,13 @@ public class StatsTools {
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
         log.info("Tool call: indexStats (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             IndexStats r = stats.indexStats(schema, table);
+            ToolLogger.completed(log, "indexStats", start);
             return json.write(r);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "indexStats", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -81,10 +88,13 @@ public class StatsTools {
             @McpToolParam(description = "Minimum index size in bytes to report (optional — filters out tiny indexes)", required = false) Long minSizeBytes
     ) {
         log.info("Tool call: unusedIndexes (schema={})", schema);
+        long start = System.nanoTime();
         try {
             var result = stats.unusedIndexes(schema, minSizeBytes);
+            ToolLogger.completed(log, "unusedIndexes", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "unusedIndexes", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -98,10 +108,13 @@ public class StatsTools {
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
         log.info("Tool call: redundantIndexes (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             var result = stats.redundantIndexes(schema, table);
+            ToolLogger.completed(log, "redundantIndexes", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "redundantIndexes", start, e.getMessage());
             return errors.sql(e);
         }
     }
@@ -116,10 +129,13 @@ public class StatsTools {
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
         log.info("Tool call: fkIndexCoverage (schema={}, table={})", schema, table);
+        long start = System.nanoTime();
         try {
             var result = stats.fkIndexCoverage(schema, table);
+            ToolLogger.completed(log, "fkIndexCoverage", start);
             return json.write(result);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "fkIndexCoverage", start, e.getMessage());
             return errors.sql(e);
         }
     }
