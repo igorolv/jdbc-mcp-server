@@ -8,7 +8,7 @@
 > - Full build: `./gradlew build`
 
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
-It exposes 51 read-only tools across nine groups:
+It exposes 50 read-only tools across nine groups:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarized plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
@@ -148,7 +148,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **51 read-only MCP tools**.
+The server exposes **50 read-only MCP tools**.
 
 ### Query tools
 
@@ -222,10 +222,9 @@ keep the response compact; raise the caps when needed.
 
 | Tool | Description |
 |---|---|
-| `schemaOverview` | Compact schema snapshot: tables/views, columns, PK/FK, indexes, relationship edges. Params: `schema`, `namePattern`, `includeViews`, `includeStats`, `includeObserved`, `maxTables` (default 50, cap 300) |
 | `tableContext` | Neighbourhood around one table: the table, FK parents, optionally child tables and edges. Params: `schema`, `table`, `depth` (default 1, cap 4), `includeIncoming`, `includeStats`, `includeObserved` |
 | `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, cap 300), `includeObserved` |
-| `schemaBrief` | Plain-text synopsis: hub tables, fact/detail, lookup/reference, key relationships, enum-like CHECK columns. Use when full JSON would be too verbose. Params: `schema`, `terms` (optional substring narrowing), `maxTables` (default 50, cap 300) |
+| `schemaBrief` | Plain-text full-schema map: all matching tables/views with column counts, PK, incoming/outgoing relationship counts, key-like columns, central/isolated tables, and capped key FK relationships. Use this first when relevant tables are unknown; follow with `queryContext` for detailed context. Params: `schema`, `terms` (optional substring narrowing), `maxTables` (safety cap; default 2000, cap 5000) |
 | `schemaGraph` | Relationship-graph metrics: nodes with in/out degree, central tables, isolated tables, components, cycle hints; optional shortest path. Params: `schema`, `maxTables` (default 50, cap 300), `fromTable`, `toTable`, `maxDepth` |
 | `schemaLint` | Lint audit: missing PK, FK without index, FK type mismatch, nullable unique, status/type without CHECK, orphan `*_id`, missing remarks, isolated and wide tables. Params: `schema`, `table`, `checks` (allow-list), `maxTables` (default 50, cap 300), `maxFindings` |
 | `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables` (default 12, cap 50 — narrower than the other context tools to keep responses concise) |
@@ -239,7 +238,7 @@ not cached. Hard cap on entries: `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000
 
 | Tool | Description |
 |---|---|
-| `getSchemaSnapshot` | Meta-info about the cache (TTL, hit/miss counters, cached table names per schema). Does not return full table descriptions — use `schemaOverview` for that. Params: `schema` (optional filter) |
+| `getSchemaSnapshot` | Meta-info about the cache (TTL, hit/miss counters, cached table names per schema). Does not return full table descriptions — use `tableContext`, `queryContext`, or `describeTable` for that. Params: `schema` (optional filter) |
 | `refreshSchemaSnapshot` | Invalidate and eagerly re-warm the cache. With `table` — only that table; with `schema` — all tables in the schema; with neither — full clear (no warm). Params: `schema`, `table`, `maxTables` (default 300) |
 | `invalidateSnapshot` | Drop cached entries without re-warming. Params: `schema`, `table` |
 
@@ -273,7 +272,7 @@ Called methods return `{"catalog_enabled":false,"rows":[]}` when the catalog is 
 | `listKnownKinds` | Source-kinds with their query counts — discover valid values for `listQueries` `sourceKind` filter |
 
 These tools feed the `evidence` bundle (`observedQuery` / `semanticUsage` layers) in
-`schemaOverview`, `tableContext`, and `findJoinPaths` when `includeObserved=true`.
+`tableContext` and `findJoinPaths` when `includeObserved=true`.
 
 All tools are **read-only**. Any attempt to run a non-SELECT statement is rejected by the
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
@@ -310,8 +309,8 @@ Recommended flow when the user asks a data question:
 1. If the agent does not already know the schema, prefer the high-level context tools over
    manual chaining. `queryContext` (natural-language terms or explicit table list) returns the
    tables, columns, constraints, allowed values, relationships and join paths in one call.
-   Fall back to `schemaOverview` / `tableContext` / `schemaBrief` for broader exploration, and
-   to `listSchemas` + `listTables` only when those are not enough.
+   Fall back to `schemaBrief` for broader exploration, to `tableContext` for known-table
+   neighborhoods, and to `listSchemas` + `listTables` only when those are not enough.
 2. If a single table is the focus, call `describeTable` — one call returns columns, PK, FKs,
    indexes, constraints, allowed values from CHECKs, and triggers.
 3. Optionally call `sampleRows` to peek at actual data shape.
@@ -351,7 +350,7 @@ Recommended flow when the user asks to optimize / audit queries or schema:
 Notes on the metadata snapshot cache:
 
 - Structural metadata is cached in memory with a TTL (default 300 s; set
-  `JDBC_METADATA_CACHE_TTL_SECONDS=0` to disable). Repeated `schemaOverview`,
+  `JDBC_METADATA_CACHE_TTL_SECONDS=0` to disable). Repeated
   `tableContext`, `findJoinPaths`, `schemaLint`, `schemaGraph`, `queryContext` and
   `describeTable` calls are served from the cache.
 - Live counters (table/index/column stats, samples, plans) are **never** cached.

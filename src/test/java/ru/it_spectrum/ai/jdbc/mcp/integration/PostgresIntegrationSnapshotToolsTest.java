@@ -12,14 +12,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PostgresIntegrationSnapshotToolsTest extends AbstractPostgresToolsIntegrationTest {
 
     @Test
-    void schemaOverviewHitsCacheOnRepeatedCall() {
+    void tableContextHitsCacheOnRepeatedCall() {
         snapshotTools().invalidateSnapshot(null, null);
 
-        schemaContextTools().schemaOverview("public", "%", true, false, false, 50);
+        schemaContextTools().tableContext("public", "orders", 1, true, false, false);
 
         ObjectNode afterFirst = object(snapshotTools().getSchemaSnapshot("public"));
 
-        schemaContextTools().schemaOverview("public", "%", true, false, false, 50);
+        schemaContextTools().tableContext("public", "orders", 1, true, false, false);
 
         ObjectNode afterSecond = object(snapshotTools().getSchemaSnapshot("public"));
 
@@ -36,12 +36,12 @@ class PostgresIntegrationSnapshotToolsTest extends AbstractPostgresToolsIntegrat
     @Test
     void invalidateForcesReFetch() {
         snapshotTools().invalidateSnapshot(null, null);
-        schemaContextTools().schemaOverview("public", "%", true, false, false, 50);
+        schemaContextTools().tableContext("public", "orders", 1, true, false, false);
 
         ObjectNode invalidated = object(snapshotTools().invalidateSnapshot("public", null));
         assertThat(field(invalidated, "invalidated").asText()).isEqualTo("schema");
 
-        schemaContextTools().schemaOverview("public", "%", true, false, false, 50);
+        schemaContextTools().tableContext("public", "orders", 1, true, false, false);
 
         ObjectNode afterReWarm = object(snapshotTools().getSchemaSnapshot("public"));
         ArrayNode schemas = (ArrayNode) field(afterReWarm, "schemas");

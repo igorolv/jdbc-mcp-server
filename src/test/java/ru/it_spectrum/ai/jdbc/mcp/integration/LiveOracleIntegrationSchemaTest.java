@@ -13,7 +13,6 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
-import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaOverview;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
@@ -29,7 +28,7 @@ import java.util.Locale;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Diagnostic test for schemaOverview performance on a live Oracle database.
+ * Diagnostic test for schema context performance on a live Oracle database.
  * <p>Run with: {@code ./gradlew liveOracleTest --tests "*LiveOracleIntegrationSchemaTest"}
  * <p>Required env vars: LIVE_ORACLE_URL, LIVE_ORACLE_USERNAME, LIVE_ORACLE_PASSWORD.
  */
@@ -84,7 +83,7 @@ class LiveOracleIntegrationSchemaTest {
     }
 
     @Test
-    void measureSchemaOverviewPhases() throws Exception {
+    void measureDescribeTablePhases() throws Exception {
         // Phase 1: listTables
         long t0 = System.currentTimeMillis();
         List<TableEntry> tables = metadata.listTables(schema, "%", null);
@@ -105,28 +104,21 @@ class LiveOracleIntegrationSchemaTest {
                     desc.indexes().size());
         }
 
-        // Phase 3: full schemaOverview (cached — second call)
-        long t4 = System.currentTimeMillis();
-        SchemaOverview overview = schemaContext.schemaOverview(schema, "%", true, false, false, 50);
-        long t5 = System.currentTimeMillis();
-        System.out.printf("[TIMING] schemaOverview (cached): %d ms, %d tables, %d relationships%n",
-                (t5 - t4), overview.tables().size(), overview.relationships().size());
-
-        assertThat(overview).isNotNull();
+        assertThat(tables).isNotEmpty();
     }
 
     @Test
-    void measureSchemaOverviewFirstCall() throws Exception {
+    void measureSchemaBriefFirstCall() throws Exception {
         long t0 = System.currentTimeMillis();
-        String json = schemaContextTools.schemaOverview(schema, "%", true, false, false, 50);
+        String brief = schemaContextTools.schemaBrief(schema, null, 2000);
         long t1 = System.currentTimeMillis();
-        System.out.printf("[TIMING] schemaOverview (first call, via tools): %d ms%n", (t1 - t0));
-        System.out.printf("[TIMING] response length: %d chars%n", json.length());
-        assertThat(json).contains("\"tables\"");
+        System.out.printf("[TIMING] schemaBrief (first call, via tools): %d ms%n", (t1 - t0));
+        System.out.printf("[TIMING] response length: %d chars%n", brief.length());
+        assertThat(brief).contains("Schema brief").contains("Tables");
     }
 
     @Test
-    void measureSchemaOverviewLightweightPhases() throws Exception {
+    void measureSchemaBriefLightweightPhases() throws Exception {
         long t0 = System.currentTimeMillis();
         List<TableEntry> listed = metadata.listTables(schema, "%",
                 new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
@@ -141,12 +133,12 @@ class LiveOracleIntegrationSchemaTest {
                 (t3 - t2), described.size());
 
         long t4 = System.currentTimeMillis();
-        SchemaOverview overview = schemaContext.schemaOverview(schema, "%", true, false, false, 50);
+        String brief = schemaContext.schemaBrief(schema, null, 2000);
         long t5 = System.currentTimeMillis();
-        System.out.printf("[TIMING] schemaOverview service: %d ms, %d tables, %d relationships%n",
-                (t5 - t4), overview.tables().size(), overview.relationships().size());
+        System.out.printf("[TIMING] schemaBrief service: %d ms, %d chars%n",
+                (t5 - t4), brief.length());
 
-        assertThat(overview.tables()).hasSize(selected.size());
+        assertThat(brief).contains("Tables");
     }
 
     @Test
@@ -180,7 +172,7 @@ class LiveOracleIntegrationSchemaTest {
     }
 
     @Test
-    void countSchemaOverviewDatabaseCallsPerTable() throws Exception {
+    void countDescribeTableDatabaseCallsPerTable() throws Exception {
         // This test evaluates how many database roundtrips describeTable makes
         // by examining the OracleDialect queries
         List<TableEntry> tables = metadata.listTables(schema, "%", new String[]{"TABLE"});
@@ -222,11 +214,11 @@ class LiveOracleIntegrationSchemaTest {
     }
 
     @Test
-    void schemaOverviewProducesValidJson() {
-        String json = schemaContextTools.schemaOverview(schema, "%", true, false, false, 50);
-        assertThat(json)
-                .contains("\"tables\"")
-                .contains("\"relationships\"")
+    void schemaBriefProducesText() {
+        String brief = schemaContextTools.schemaBrief(schema, null, 2000);
+        assertThat(brief)
+                .contains("Schema brief")
+                .contains("Tables")
                 .doesNotContain("\"error\"");
     }
 }

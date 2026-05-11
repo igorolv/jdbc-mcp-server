@@ -7,7 +7,6 @@ import ru.it_spectrum.ai.jdbc.mcp.model.context.FindJoinPaths;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContext;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaGraph;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaLint;
-import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaOverview;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.TableContext;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -20,7 +19,6 @@ import java.sql.SQLException;
 @Service
 public class SchemaContextService {
 
-    private final SchemaOverviewService overview;
     private final SchemaTableContextService tableContext;
     private final SchemaJoinPathService joinPaths;
     private final SchemaLintService lint;
@@ -29,14 +27,12 @@ public class SchemaContextService {
     private final SchemaQueryContextService queryContext;
 
     @Autowired
-    public SchemaContextService(SchemaOverviewService overview,
-                                SchemaTableContextService tableContext,
+    public SchemaContextService(SchemaTableContextService tableContext,
                                 SchemaJoinPathService joinPaths,
                                 SchemaLintService lint,
                                 SchemaBriefService brief,
                                 SchemaGraphService graph,
                                 SchemaQueryContextService queryContext) {
-        this.overview = overview;
         this.tableContext = tableContext;
         this.joinPaths = joinPaths;
         this.lint = lint;
@@ -48,21 +44,12 @@ public class SchemaContextService {
     public SchemaContextService(MetadataService metadata, StatsService stats,
                                 SqlExecutor executor, SqlDialect dialect,
                                 UsageCatalogService usageCatalog) {
-        this(new SchemaOverviewService(metadata, stats, executor, dialect, usageCatalog),
-                new SchemaTableContextService(metadata, stats, executor, dialect, usageCatalog),
+        this(new SchemaTableContextService(metadata, stats, executor, dialect, usageCatalog),
                 new SchemaJoinPathService(metadata, stats, executor, dialect, usageCatalog),
                 new SchemaLintService(metadata, stats, executor, dialect, usageCatalog),
                 new SchemaBriefService(metadata, stats, executor, dialect, usageCatalog),
                 new SchemaGraphService(metadata, stats, executor, dialect, usageCatalog),
                 new SchemaQueryContextService(metadata, stats, executor, dialect, usageCatalog));
-    }
-
-    public SchemaOverview schemaOverview(String schema, String namePattern,
-                                              Boolean includeViews, Boolean includeStats,
-                                              Boolean includeObserved,
-                                              Integer maxTables) throws SQLException {
-        return overview.schemaOverview(schema, namePattern, includeViews, includeStats,
-                includeObserved, maxTables);
     }
 
     public TableContext tableContext(String schema, String table, Integer depth,

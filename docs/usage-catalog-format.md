@@ -95,7 +95,7 @@ and columns as an `evidence` block. That projection is intentionally aggregative
 can have several business roles, labels or domains with separate support counts and contributing
 query UIDs.
 
-Relationship edges in `schemaOverview` / `tableContext` / `findJoinPaths` carry a typed
+Relationship edges in `tableContext` / `findJoinPaths` carry a typed
 three-layer `evidence` bundle bringing the same separation to FK / observed-join pairs:
 
 - `declaredSchema` - present iff the edge originates from a declared catalog FK; carries the FK

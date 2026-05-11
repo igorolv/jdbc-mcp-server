@@ -20,7 +20,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
  *
  * <p>The cache holds structural metadata (columns, keys, indexes, FKs, constraints, triggers)
  * with a TTL configured by {@code JDBC_METADATA_CACHE_TTL_SECONDS} (default 300). It speeds up
- * {@code schemaOverview}, {@code tableContext}, {@code findJoinPaths}, {@code schemaLint},
+ * {@code tableContext}, {@code findJoinPaths}, {@code schemaLint},
  * {@code schemaGraph}, {@code queryContext} and repeated {@code describeTable} calls.
  */
 @Service
@@ -42,7 +42,7 @@ public class SnapshotTools {
 
     @McpTool(description = "Return meta-information about the in-memory metadata snapshot cache: " +
             "TTL, hit/miss counters, per-schema cached table names, and list-cache entries. " +
-            "Does NOT return the full table descriptions — use schemaOverview for that. " +
+            "Does NOT return the full table descriptions — use tableContext, queryContext, or describeTable for that. " +
             "Pass schema to filter to a single schema.")
     public String getSchemaSnapshot(
             @McpToolParam(description = "Schema name (optional — omit to see all cached schemas)", required = false) String schema

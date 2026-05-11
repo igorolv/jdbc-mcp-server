@@ -19,7 +19,7 @@ month." Without this server, the LLM may:
 
 With this server, the LLM can:
 
-1. call `schemaOverview`, `schemaBrief`, or `queryContext` to get ready-to-use schema context: tables, columns, relationships, and constraints;
+1. call `schemaBrief` to discover the schema map, or `queryContext` to get ready-to-use detailed context: tables, columns, relationships, and constraints;
 2. refine the context with `tableContext` around a specific table or `findJoinPaths` for JOIN path discovery;
 3. write a query and optionally call `inspectQuery`, `queryLint`, or `resolveQueryLineage` for AST, metadata, and view/routine lineage checks;
 4. call `validateQuery` with the same `params` or `namedParams` that will be used for execution, validating syntax without running the query;
@@ -96,10 +96,9 @@ context in one call: tables, columns, relationships, constraints, and sample row
 
 | Tool | Description |
 |---|---|
-| `schemaOverview` | Compact schema snapshot for SQL authoring: tables/views, columns, primary keys, foreign keys, indexes, and relationship edges. Parameters: `schema`, `namePattern` (with `%` / `_`), `includeViews`, `includeStats`, `includeObserved` (decorate edges with usage-catalog evidence — see *Edge evidence* below), `maxTables` (default 50, max 300) |
 | `tableContext` | Context around one table: the table itself, FK parents, and optionally child tables and relationship edges. FK traversal uses the requested depth (default 1, max 4). Parameters: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeObserved` |
 | `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition` and a typed `evidence` bundle (see *Edge evidence* below). Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, max 300), `includeObserved` |
-| `schemaBrief` | Compact text summary of a schema: hub tables, fact/detail tables, lookup/reference tables, key relationships, enum-like CHECK columns, and brief table notes. Useful when full JSON would be too verbose. Parameters: `schema`, `terms` (optional substring search), `maxTables` |
+| `schemaBrief` | Plain-text full-schema map for SQL authoring: all matching tables/views with column counts, PK, incoming/outgoing relationship counts, key-like columns, central/isolated tables, and capped key FK relationships. Use this first when relevant tables are unknown; follow with `queryContext` for detailed context. Parameters: `schema`, `terms` (optional substring search), `maxTables` (safety cap; default 2000, max 5000) |
 | `schemaGraph` | Schema relationship graph metrics: nodes with in/out degree and classification, edges, central tables, isolated tables, connected components, and cycle hints. Optionally includes the shortest path between two tables |
 | `schemaLint` | Schema lint audit: missing primary keys, FKs without indexes, FK type mismatches, nullable unique constraints, status/type columns without CHECK constraints, orphan `*_id` columns, missing remarks, isolated tables, and wide tables. Checks are configurable through `checks` |
 | `queryContext` | Build compact SQL-authoring context from search terms and/or explicit tables. Finds relevant tables and columns using declared schema names/comments plus usage-catalog semantic evidence when available, includes constraints and allowed values, relationships and JOIN paths between selected tables, and optionally sample rows (up to 3 per table) |
@@ -107,7 +106,7 @@ context in one call: tables, columns, relationships, constraints, and sample row
 
 #### Edge evidence
 
-When `includeObserved` is left unset, `schemaOverview` / `tableContext` / `findJoinPaths` enable
+When `includeObserved` is left unset, `tableContext` / `findJoinPaths` enable
 it automatically if the local usage catalog is enabled (see *Usage Catalog* below). Every
 relationship edge then carries a typed three-layer `evidence` bundle. Each layer is independently
 optional and is omitted when there is no signal:
@@ -277,7 +276,7 @@ implemented inside the JDBC MCP server.
 | `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `searchText` (case-insensitive full-text search across raw SQL, normalized SQL, labels, source paths, and domains) |
 | `findQueriesByTable` | All catalog queries that reference a given table. Case-insensitive matching against alias-resolved, uppercased table names. Optional `schema` filter |
 | `findQueriesByColumn` | All catalog queries that reference a given column, with the SQL `context` of the reference (`select` / `where` / `join` / `order_by` / `having`). Optional `schema` and `table` filters |
-| `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `observedQuery` layer of the relationship `evidence` bundle in `schemaOverview` / `tableContext` / `findJoinPaths` |
+| `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `observedQuery` layer of the relationship `evidence` bundle in `tableContext` / `findJoinPaths` |
 | `listKnownTags` | Tags currently used in the catalog, with query counts. Lets the agent reuse a stable vocabulary across ingest calls |
 | `listKnownDomains` | Same for `businessDomain` values |
 | `listKnownKinds` | Source-kinds currently used in the catalog with their query counts. Helps the agent discover valid values for `listQueries` `sourceKind` filter |
@@ -291,7 +290,7 @@ marked `ambiguous`, and zero matches stay `unresolved`.
 ### Snapshot / Metadata Cache
 
 Structural metadata (columns, keys, indexes, FKs, constraints, triggers) is cached in memory with a
-TTL. This speeds up repeated calls to `schemaOverview`, `tableContext`, `findJoinPaths`,
+TTL. This speeds up repeated calls to `tableContext`, `findJoinPaths`,
 `schemaLint`, `schemaGraph`, `queryContext`, and `describeTable`. Statistics tools such as
 `tableStats`, `indexStats`, `columnStats`, and `sampleRows` are **not** cached; their counters are
 live.
@@ -644,7 +643,7 @@ such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment va
 |       +-- DistributionTools.java      - columnStats, columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality
 |       +-- StatsTools.java             - tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 |       +-- BenchmarkTools.java         - benchmarkQuery, timedQuery
-|       +-- SchemaContextTools.java     - schemaOverview, tableContext, findJoinPaths, schemaLint, schemaBrief, schemaGraph, queryContext, schemaGraphDot
+|       +-- SchemaContextTools.java     - schemaBrief, tableContext, findJoinPaths, schemaLint, schemaGraph, queryContext, schemaGraphDot
 |       +-- UsageTools.java             - usageCatalogStatus, invalidateUsageCatalogCache, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, listKnownTags/Domains
 +-- src/main/resources/
     +-- application.yml                 - MCP stdio + JDBC properties

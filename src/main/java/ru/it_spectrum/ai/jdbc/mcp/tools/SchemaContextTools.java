@@ -27,34 +27,6 @@ public class SchemaContextTools {
         this.errors = errors;
     }
 
-    @McpTool(description = "Return a compact schema snapshot for writing SQL: tables/views, columns, " +
-            "primary keys, foreign keys, indexes, and FK relationship edges. " +
-            "Use this before drafting queries when the relevant tables are not known yet. " +
-            "Defaults are intentionally compact: maxTables defaults to 50 and is capped at 300.")
-    public String schemaOverview(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
-            @McpToolParam(description = "Table/view name pattern with JDBC wildcards, e.g. '%customer%' (optional)", required = false) String namePattern,
-            @McpToolParam(description = "Include views and materialized views. Default true.", required = false) Boolean includeViews,
-            @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
-            @McpToolParam(description = "Augment relationships with a typed three-layer 'evidence' bundle from the local usage catalog: 'declaredSchema' for catalog FKs, 'observedQuery' (joinSupport + queryUids) when matching equi-joins exist in stored application queries, and 'semanticUsage' (shared business domains/objects/output labels across queries that touch both tables). Observed-only equi-join pairs are appended as new edges with 'relationshipType: observed'. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved,
-            @McpToolParam(description = "Maximum tables/views to describe. Default 50, capped at 300.", required = false) Integer maxTables
-    ) {
-        log.info("Tool call: schemaOverview (schema={})", schema);
-        long start = System.nanoTime();
-        try {
-            var result = schemaContext.schemaOverview(
-                    schema, namePattern, includeViews, includeStats, includeObserved, maxTables);
-            ToolLogger.completed(log, "schemaOverview", start);
-            return json.write(result);
-        } catch (SQLException e) {
-            ToolLogger.failed(log, "schemaOverview", start, e.getMessage());
-            return errors.sql(e);
-        } catch (IllegalArgumentException e) {
-            ToolLogger.failed(log, "schemaOverview", start, e.getMessage());
-            return errors.argument(e);
-        }
-    }
-
     @McpTool(description = "Return a compact context around one table: the table itself, FK parent tables, " +
             "optionally child tables that reference it, and relationship edges. " +
             "Use this when a query starts from a known table and needs nearby joins. " +
@@ -65,7 +37,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "FK traversal depth. Default 1, capped at 4.", required = false) Integer depth,
             @McpToolParam(description = "Include incoming references from child tables. Default true.", required = false) Boolean includeIncoming,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
-            @McpToolParam(description = "Augment relationships with the three-layer 'evidence' bundle from the local usage catalog (see schemaOverview for the layer breakdown). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
+            @McpToolParam(description = "Augment relationships with the three-layer 'evidence' bundle from the local usage catalog: declared schema FKs, observed equi-joins, and shared semantic usage. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         log.info("Tool call: tableContext (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -142,14 +114,14 @@ public class SchemaContextTools {
         }
     }
 
-    @McpTool(description = "Return a compact plain-text synopsis of a schema for LLM SQL authoring. " +
-            "Summarizes hub tables, fact/detail tables, lookup/reference tables, key relationships, " +
-            "enum-like CHECK columns, and brief per-table notes. " +
-            "Use this when a full JSON schema overview would be too verbose.")
+    @McpTool(description = "Return a plain-text full-schema map for SQL authoring. " +
+            "Lists all matching tables/views with column counts, PK, relationship counts, and key-like columns; " +
+            "also summarizes central/isolated tables and key FK relationships. " +
+            "Use this first when the relevant tables are not known yet, then call queryContext for detailed context.")
     public String schemaBrief(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Optional search terms to narrow table discovery; falls back to whole schema if no table matches.", required = false) String terms,
-            @McpToolParam(description = "Maximum tables to scan. Default 50, capped at 300.", required = false) Integer maxTables
+            @McpToolParam(description = "Maximum tables/views to include as a safety cap. Default 2000, capped at 5000.", required = false) Integer maxTables
     ) {
         log.info("Tool call: schemaBrief (schema={})", schema);
         long start = System.nanoTime();

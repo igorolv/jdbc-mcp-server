@@ -12,21 +12,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsIntegrationTest {
 
     @Test
-    void returnsCompactSchemaOverview() {
-        ObjectNode overview = object(schemaContextTools().schemaOverview(
-                "public", "%", true, false, false, 20));
-
-        assertThat(field(overview, "truncated").asBoolean()).isFalse();
-        ArrayNode tables = (ArrayNode) field(overview, "tables");
-        assertThat(findByField(tables, "name", "customers")).isNotNull();
-        assertThat(findByField(tables, "name", "orders")).isNotNull();
-
-        ArrayNode relationships = (ArrayNode) field(overview, "relationships");
-        assertThat(relationship(relationships, "orders", "customers")).isNotNull();
-        assertThat(relationship(relationships, "customer_notes", "customers")).isNull();
-    }
-
-    @Test
     void returnsTableNeighborhood() {
         ObjectNode context = object(schemaContextTools().tableContext(
                 "public", "orders", 1, true, false, false));
@@ -70,10 +55,12 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
         String brief = schemaContextTools().schemaBrief("public", null, 100);
 
         assertThat(brief).contains("Schema brief");
+        assertThat(brief).contains("Tables");
+        assertThat(brief).contains("customers [TABLE]");
+        assertThat(brief).contains("orders [TABLE]");
+        assertThat(brief).contains("keys id");
         assertThat(brief).contains("Key relationships");
         assertThat(brief).contains("orders.customer_id -> customers.id");
-        assertThat(brief).contains("Enum-like columns");
-        assertThat(brief).contains("events.status in [OK, FAIL]");
     }
 
     @Test

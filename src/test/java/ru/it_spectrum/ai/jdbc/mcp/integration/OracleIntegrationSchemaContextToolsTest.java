@@ -12,21 +12,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegrationTest {
 
     @Test
-    void returnsCompactSchemaOverview() {
-        ObjectNode overview = object(schemaContextTools().schemaOverview(
-                schema(), "%", true, false, false, 20));
-
-        assertThat(field(overview, "truncated").asBoolean()).isFalse();
-        ArrayNode tables = (ArrayNode) field(overview, "tables");
-        assertThat(findByField(tables, "name", "CUSTOMERS")).isNotNull();
-        assertThat(findByField(tables, "name", "ORDERS")).isNotNull();
-
-        ArrayNode relationships = (ArrayNode) field(overview, "relationships");
-        assertThat(relationship(relationships, "ORDERS", "CUSTOMERS")).isNotNull();
-        assertThat(relationship(relationships, "CUSTOMER_NOTES", "CUSTOMERS")).isNull();
-    }
-
-    @Test
     void returnsTableNeighborhood() {
         ObjectNode context = object(schemaContextTools().tableContext(
                 schema(), "ORDERS", 1, true, false, false));
@@ -70,10 +55,12 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
         String brief = schemaContextTools().schemaBrief(schema(), null, 100);
 
         assertThat(brief).contains("Schema brief");
+        assertThat(brief).contains("Tables");
+        assertThat(brief).contains("CUSTOMERS [TABLE]");
+        assertThat(brief).contains("ORDERS [TABLE]");
+        assertThat(brief).contains("keys ID");
         assertThat(brief).contains("Key relationships");
         assertThat(brief).contains("ORDERS.CUSTOMER_ID -> CUSTOMERS.ID");
-        assertThat(brief).contains("Enum-like columns");
-        assertThat(brief).contains("EVENTS.status in [OK, FAIL]");
     }
 
     @Test
