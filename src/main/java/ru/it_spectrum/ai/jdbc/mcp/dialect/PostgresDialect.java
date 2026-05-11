@@ -389,23 +389,6 @@ public class PostgresDialect implements SqlDialect {
     }
 
     @Override
-    public String schemaColumnMetadataQuery() {
-        return """
-                SELECT c.relname AS table_name,
-                       a.attname AS column_name,
-                       COALESCE(col_description(c.oid, a.attnum), '') AS comment,
-                       pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) AS default_value
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-                LEFT JOIN pg_attrdef ad ON ad.adrelid = c.oid AND ad.adnum = a.attnum
-                WHERE n.nspname = ?
-                  AND c.relkind IN ('r', 'p', 'v', 'm')
-                ORDER BY c.relname, a.attnum
-                """;
-    }
-
-    @Override
     public String schemaConstraintsQuery() {
         return """
                 SELECT t.relname AS table_name,

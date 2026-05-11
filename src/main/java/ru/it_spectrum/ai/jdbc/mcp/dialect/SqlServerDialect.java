@@ -260,28 +260,6 @@ public class SqlServerDialect implements SqlDialect {
     }
 
     @Override
-    public String schemaColumnMetadataQuery() {
-        return """
-                SELECT t.name AS table_name,
-                       c.name AS column_name,
-                       CAST(ep.value AS nvarchar(max)) AS comment,
-                       dc.definition AS default_value
-                FROM sys.tables t
-                JOIN sys.schemas s ON s.schema_id = t.schema_id
-                JOIN sys.columns c ON c.object_id = t.object_id
-                LEFT JOIN sys.extended_properties ep
-                  ON ep.major_id = c.object_id
-                 AND ep.minor_id = c.column_id
-                 AND ep.name = 'MS_Description'
-                LEFT JOIN sys.default_constraints dc
-                  ON dc.parent_object_id = c.object_id
-                 AND dc.parent_column_id = c.column_id
-                WHERE s.name = ?
-                ORDER BY t.name, c.column_id
-                """;
-    }
-
-    @Override
     public String schemaConstraintsQuery() {
         return """
                 WITH targets AS (

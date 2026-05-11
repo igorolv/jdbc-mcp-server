@@ -276,18 +276,6 @@ public interface SqlDialect {
     }
 
     /**
-     * Bulk variant of {@link #columnMetadataQuery()} that returns column comments <em>and</em>
-     * default values for <b>all</b> tables in a schema in one roundtrip.
-     * Expected columns: {@code table_name} (text), {@code column_name} (text),
-     * {@code comment} (text), {@code default_value} (text).
-     * Params: {@code (schema)} only.
-     * When this returns non-null, {@code describeSchema} uses it instead of iterating per-table.
-     */
-    default String schemaColumnMetadataQuery() {
-        return null;
-    }
-
-    /**
      * Bulk variant of {@link #tableConstraintsQuery()} that returns constraints for
      * <b>all</b> tables in a schema in one roundtrip.
      * Expected columns: same as {@code tableConstraintsQuery()} plus

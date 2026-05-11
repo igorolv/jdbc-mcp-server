@@ -454,33 +454,6 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
-    public String schemaColumnMetadataQuery() {
-        return """
-                SELECT c.table_name,
-                        c.column_name,
-                        co.comments AS "comment",
-                       CASE
-                           WHEN c.default_length IS NULL THEN NULL
-                           ELSE EXTRACTVALUE(
-                                   DBMS_XMLGEN.GETXMLTYPE(
-                                       'select data_default from user_tab_columns where table_name = '''
-                                       || c.table_name
-                                       || ''' and column_name = '''
-                                       || c.column_name
-                                       || '''' ),
-                                   '//text()' )
-                       END AS default_value
-                FROM all_tab_columns c
-                LEFT JOIN all_col_comments co
-                  ON co.owner = c.owner
-                 AND co.table_name = c.table_name
-                 AND co.column_name = c.column_name
-                WHERE c.owner = UPPER(?)
-                ORDER BY c.table_name, c.column_id
-                """;
-    }
-
-    @Override
     public String schemaConstraintsQuery() {
         return """
                 SELECT c.table_name,

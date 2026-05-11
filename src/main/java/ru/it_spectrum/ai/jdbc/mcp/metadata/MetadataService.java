@@ -172,132 +172,12 @@ public class MetadataService {
                     // some drivers may not provide this column
                 }
                 Boolean autoIncrement = "YES".equalsIgnoreCase(autoInc) ? Boolean.TRUE : null;
-                // NOTE: COLUMN_DEF and REMARKS are LONG in Oracle — fetched separately via
-                // dialect-specific queries (columnDefaultsQuery / columnCommentsQuery) to avoid
-                // ORA-17027. fetchColumnMetadataSupplement will fill default/remarks.
                 cols.add(new Column(name, ordinal, typeName, size, decimalDigits, nullable,
-                        null, null, autoIncrement));
+                        rs.getString("COLUMN_DEF"), rs.getString("REMARKS"), autoIncrement));
             }
         }
         cols.sort(Comparator.comparingInt(Column::ordinalPosition));
         return cols;
-    }
-
-    private List<Column> fetchColumnMetadataSupplement(Connection conn, List<Column> cols,
-                                                       String schema, String table) throws SQLException {
-        Map<String, String> comments = new LinkedHashMap<>();
-        Map<String, String> defaults = new LinkedHashMap<>();
-
-        // Try combined query first (fewer roundtrips)
-        String combinedSql = dialect.columnMetadataQuery();
-        if (combinedSql != null) {
-            try (PreparedStatement ps = conn.prepareStatement(combinedSql,
-                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                ps.setQueryTimeout(properties.queryTimeoutSeconds());
-                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
-                ps.setString(1, schema);
-                ps.setString(2, table);
-                try (ResultSet rs = ps.executeQuery()) {
-                    List<String> colsList = readColumns(rs);
-                    if (colsList.size() >= 3) {
-                        String nameCol = colsList.get(0);
-                        String commentCol = colsList.get(1);
-                        String defaultCol = colsList.get(2);
-                        while (rs.next()) {
-                            Object nameVal = rs.getObject(nameCol);
-                            if (nameVal == null) continue;
-                            String cn = String.valueOf(nameVal).toUpperCase();
-                            Object commentVal = rs.getObject(commentCol);
-                            if (commentVal != null && !String.valueOf(commentVal).isBlank()) {
-                                comments.put(cn, String.valueOf(commentVal));
-                            }
-                            Object defVal = rs.getObject(defaultCol);
-                            if (defVal != null && !String.valueOf(defVal).isBlank()) {
-                                defaults.put(cn, String.valueOf(defVal));
-                            }
-                        }
-                    }
-                }
-            } catch (SQLException e) {
-                // fall through to individual queries
-            }
-            if (!comments.isEmpty() || !defaults.isEmpty()) {
-                return mergeColumnMetadata(cols, comments, defaults);
-            }
-        }
-
-        String commentsSql = dialect.columnCommentsQuery();
-        String defaultsSql = dialect.columnDefaultsQuery();
-
-        if (commentsSql != null) {
-            try (PreparedStatement ps = conn.prepareStatement(commentsSql,
-                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                ps.setQueryTimeout(properties.queryTimeoutSeconds());
-                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
-                ps.setString(1, schema);
-                ps.setString(2, table);
-                try (ResultSet rs = ps.executeQuery()) {
-                    List<String> colsList = readColumns(rs);
-                    if (colsList.size() >= 2) {
-                        String nameCol = colsList.get(0);
-                        String valCol = colsList.get(1);
-                        while (rs.next()) {
-                            Object nameVal = rs.getObject(nameCol);
-                            Object commentVal = rs.getObject(valCol);
-                            if (nameVal != null && commentVal != null && !String.valueOf(commentVal).isBlank()) {
-                                comments.put(String.valueOf(nameVal).toUpperCase(), String.valueOf(commentVal));
-                            }
-                        }
-                    }
-                }
-            } catch (SQLException e) {
-                // silently skip — remarks will remain null for this column
-            }
-        }
-
-        if (defaultsSql != null) {
-            try (PreparedStatement ps = conn.prepareStatement(defaultsSql,
-                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                ps.setQueryTimeout(properties.queryTimeoutSeconds());
-                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
-                ps.setString(1, schema);
-                ps.setString(2, table);
-                try (ResultSet rs = ps.executeQuery()) {
-                    List<String> colsList = readColumns(rs);
-                    if (colsList.size() >= 2) {
-                        String nameCol = colsList.get(0);
-                        String valCol = colsList.get(1);
-                        while (rs.next()) {
-                            Object nameVal = rs.getObject(nameCol);
-                            Object defVal = rs.getObject(valCol);
-                            if (nameVal != null && defVal != null && !String.valueOf(defVal).isBlank()) {
-                                defaults.put(String.valueOf(nameVal).toUpperCase(), String.valueOf(defVal));
-                            }
-                        }
-                    }
-                }
-            } catch (SQLException e) {
-                // silently skip — defaults will remain null for this column
-            }
-        }
-
-        return mergeColumnMetadata(cols, comments, defaults);
-    }
-
-    private List<Column> mergeColumnMetadata(List<Column> cols,
-                                              Map<String, String> comments,
-                                              Map<String, String> defaults) {
-        List<Column> out = new ArrayList<>(cols.size());
-        for (Column col : cols) {
-            String cn = col.name() == null ? "" : col.name().toUpperCase();
-            String comment = comments.get(cn);
-            String def = defaults.get(cn);
-            String newDefault = (def != null && !def.isBlank()) ? def : col.defaultValue();
-            String newRemarks = (comment != null && !comment.isBlank()) ? comment : col.remarks();
-            out.add(new Column(col.name(), col.ordinalPosition(), col.typeName(), col.size(),
-                    col.decimalDigits(), col.nullable(), newDefault, newRemarks, col.autoIncrement()));
-        }
-        return out;
     }
 
     private static List<String> readColumns(ResultSet rs) throws SQLException {
@@ -560,7 +440,6 @@ public class MetadataService {
             }
 
             Map<String, List<Column>> columnsMap = fetchColumnsForTables(md, effectiveSchema, tableNames);
-            mergeAllColumnMetadata(conn, columnsMap, effectiveSchema);
 
             Map<String, List<Index>> indexesMap = new LinkedHashMap<>();
             Map<String, List<UniqueConstraint>> uniqueMap = new LinkedHashMap<>();
@@ -617,23 +496,39 @@ public class MetadataService {
         return byTable;
     }
 
-private Map<String, List<Column>> fetchOracleColumnsForTables(Connection conn, String schema,
-                                                                   Set<String> tableNames)
+    private Map<String, List<Column>> fetchOracleColumnsForTables(Connection conn, String schema,
+                                                                    Set<String> tableNames)
             throws SQLException {
         Map<String, List<Column>> byTable = new LinkedHashMap<>();
         for (Set<String> chunk : partition(tableNames, ORACLE_IN_LIST_LIMIT)) {
             String sql = """
-                    SELECT table_name,
-                           column_name,
-                           column_id AS ordinal_position,
-                           data_type AS type_name,
-                           COALESCE(data_precision, char_length, data_length) AS column_size,
-                           data_scale AS decimal_digits,
-                           nullable AS is_nullable
-                    FROM all_tab_columns
-                    WHERE owner = UPPER(?)
-                      AND table_name IN (%s)
-                    ORDER BY table_name, column_id
+                    SELECT c.table_name,
+                           c.column_name,
+                           c.column_id AS ordinal_position,
+                           c.data_type AS type_name,
+                           COALESCE(c.data_precision, c.char_length, c.data_length) AS column_size,
+                           c.data_scale AS decimal_digits,
+                           c.nullable AS is_nullable,
+                           co.comments AS "comment",
+                           CASE
+                               WHEN c.default_length IS NULL THEN NULL
+                               ELSE EXTRACTVALUE(
+                                       DBMS_XMLGEN.GETXMLTYPE(
+                                           'select data_default from user_tab_columns where table_name = '''
+                                           || c.table_name
+                                           || ''' and column_name = '''
+                                           || c.column_name
+                                           || '''' ),
+                                       '//text()' )
+                           END AS default_value
+                    FROM all_tab_columns c
+                    LEFT JOIN all_col_comments co
+                      ON co.owner = c.owner
+                     AND co.table_name = c.table_name
+                     AND co.column_name = c.column_name
+                    WHERE c.owner = UPPER(?)
+                      AND c.table_name IN (%s)
+                    ORDER BY c.table_name, c.column_id
                     """.formatted(upperPlaceholders(chunk.size()));
             try (PreparedStatement ps = conn.prepareStatement(sql,
                     ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
@@ -650,9 +545,11 @@ private Map<String, List<Column>> fetchOracleColumnsForTables(Connection conn, S
                         int decimals = rs.getInt("decimal_digits");
                         Integer decimalDigits = rs.wasNull() ? null : decimals;
                         boolean nullable = "Y".equalsIgnoreCase(rs.getString("is_nullable"));
+                        String comment = rs.getString("comment");
+                        String defaultVal = rs.getString("default_value");
                         byTable.computeIfAbsent(table, ignored -> new ArrayList<>())
                                 .add(new Column(name, ordinal, typeName, size, decimalDigits,
-                                        nullable, null, null, null));
+                                        nullable, defaultVal, comment, null));
                     }
                 }
             }
@@ -732,76 +629,14 @@ private Map<String, List<Column>> fetchOracleColumnsForTables(Connection conn, S
                 Boolean autoIncrement = "YES".equalsIgnoreCase(autoInc) ? Boolean.TRUE : null;
                 byTable.computeIfAbsent(table, k -> new ArrayList<>())
                         .add(new Column(name, ordinal, typeName, size, decimalDigits,
-                                nullable, null, null, autoIncrement));
+                                nullable, rs.getString("COLUMN_DEF"), rs.getString("REMARKS"),
+                                autoIncrement));
             }
         }
         for (List<Column> cols : byTable.values()) {
             cols.sort(Comparator.comparingInt(Column::ordinalPosition));
         }
         return byTable;
-    }
-
-    private void mergeAllColumnMetadata(Connection conn, Map<String, List<Column>> columnsMap,
-                                         String schema) throws SQLException {
-        String sql = dialect.schemaColumnMetadataQuery();
-        if (sql == null) {
-            // fallback: merge per-table
-            for (Map.Entry<String, List<Column>> entry : columnsMap.entrySet()) {
-                String table = entry.getKey();
-                List<Column> merged = fetchColumnMetadataSupplement(conn, entry.getValue(), schema, table);
-                entry.setValue(merged);
-            }
-            return;
-        }
-        Map<String, Map<String, String>> commentsByTable = new LinkedHashMap<>();
-        Map<String, Map<String, String>> defaultsByTable = new LinkedHashMap<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql,
-                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-            ps.setQueryTimeout(properties.queryTimeoutSeconds());
-            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
-            ps.setString(1, schema);
-            try (ResultSet rs = ps.executeQuery()) {
-                List<String> colsList = readColumns(rs);
-                if (colsList.size() >= 4) {
-                    String tableCol = colsList.get(0);
-                    String nameCol = colsList.get(1);
-                    String commentCol = colsList.get(2);
-                    String defaultCol = colsList.get(3);
-                    while (rs.next()) {
-                        Object tableVal = rs.getObject(tableCol);
-                        if (tableVal == null) continue;
-                        String tn = String.valueOf(tableVal).toUpperCase();
-                        Object nameVal = rs.getObject(nameCol);
-                        if (nameVal == null) continue;
-                        String cn = String.valueOf(nameVal).toUpperCase();
-                        Object commentVal = rs.getObject(commentCol);
-                        if (commentVal != null && !String.valueOf(commentVal).isBlank()) {
-                            commentsByTable.computeIfAbsent(tn, k -> new LinkedHashMap<>())
-                                    .put(cn, String.valueOf(commentVal));
-                        }
-                        Object defVal = rs.getObject(defaultCol);
-                        if (defVal != null && !String.valueOf(defVal).isBlank()) {
-                            defaultsByTable.computeIfAbsent(tn, k -> new LinkedHashMap<>())
-                                    .put(cn, String.valueOf(defVal));
-                        }
-                    }
-                }
-            } catch (SQLException e) {
-                // fallback per-table
-                for (Map.Entry<String, List<Column>> entry : columnsMap.entrySet()) {
-                    String table = entry.getKey();
-                    List<Column> merged = fetchColumnMetadataSupplement(conn, entry.getValue(), schema, table);
-                    entry.setValue(merged);
-                }
-                return;
-            }
-        }
-        for (Map.Entry<String, List<Column>> entry : columnsMap.entrySet()) {
-            String tn = entry.getKey().toUpperCase();
-            Map<String, String> comments = commentsByTable.getOrDefault(tn, Map.of());
-            Map<String, String> defaults = defaultsByTable.getOrDefault(tn, Map.of());
-            entry.setValue(mergeColumnMetadata(entry.getValue(), comments, defaults));
-        }
     }
 
     private void fetchAllIndexesBulk(Connection conn, String schema,
