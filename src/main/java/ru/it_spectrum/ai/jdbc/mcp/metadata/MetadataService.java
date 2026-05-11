@@ -407,7 +407,7 @@ public class MetadataService {
         }
 
         if (!uncached.isEmpty()) {
-            Map<String, TableDescription> loaded = describeListedTables(effectiveSchema, new LinkedHashSet<>(uncached), true);
+            Map<String, TableDescription> loaded = describeListedTables(effectiveSchema, new LinkedHashSet<>(uncached));
             cache.putAll(loaded);
             result.putAll(loaded);
         }
@@ -417,8 +417,7 @@ public class MetadataService {
 
     private Map<String, TableDescription> describeListedTables(
             String effectiveSchema,
-            Set<String> tableNames,
-            boolean includeColumnMetadata) throws SQLException {
+            Set<String> tableNames) throws SQLException {
         if (tableNames.isEmpty()) return Map.of();
 
         Map<String, TableDescription> result = executor.withConnection(conn -> {
