@@ -99,15 +99,20 @@ public class QueryTools {
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {
         log.info("Tool call: executeQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
+        long start = System.nanoTime();
         try {
             String normalizedSql = normalizeSql(sql);
             QueryResult result = query(normalizedSql, params, namedParams, limit, timeoutSeconds);
+            ToolLogger.completed(log, "executeQuery", start);
             return json.write(result);
         } catch (SqlNotAllowedException e) {
+            ToolLogger.failed(log, "executeQuery", start, e.getMessage());
             return errors.rejected(e);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "executeQuery", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "executeQuery", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -127,19 +132,22 @@ public class QueryTools {
                     "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
     ) {
         log.info("Tool call: explainQuery (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
+        long start = System.nanoTime();
         try {
             String normalizedSql = normalizeSql(sql);
             guard.check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
             if (dialect.kind() == DatabaseKind.MSSQL) {
-                return explainSqlServer(normalizedSql, params, namedParams);
+                String result = explainSqlServer(normalizedSql, params, namedParams);
+                ToolLogger.completed(log, "explainQuery", start);
+                return result;
             }
             String statementId = newExplainStatementId();
             String explainSql = dialect.buildExplain(normalizedSql, doAnalyze, statementId);
             String displaySql = dialect.explainDisplayQuery(statementId);
             List<Object> displayParams = displaySql == null ? Collections.emptyList() : List.of(statementId);
 
-            return executor.withConnection(conn -> {
+            String result = executor.withConnection(conn -> {
                 SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
                 String preparedExplainSql;
                 List<Object> preparedParams;
@@ -163,11 +171,16 @@ public class QueryTools {
                 QueryResult planRows = queryWithParams(conn, preparedExplainSql, preparedParams);
                 return rowsAsText(planRows);
             }, displaySql == null);
+            ToolLogger.completed(log, "explainQuery", start);
+            return result;
         } catch (SqlNotAllowedException e) {
+            ToolLogger.failed(log, "explainQuery", start, e.getMessage());
             return errors.rejected(e);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "explainQuery", start, e.getMessage());
             return errors.sql(e);
         } catch (Exception e) {
+            ToolLogger.failed(log, "explainQuery", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -190,13 +203,16 @@ public class QueryTools {
                     "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
     ) {
         log.info("Tool call: analyzePlan (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
+        long start = System.nanoTime();
         try {
             String normalizedSql = normalizeSql(sql);
             guard.check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
             if (dialect.kind() == DatabaseKind.MSSQL) {
                 ParsedPlan parsed = structuredSqlServerPlan(normalizedSql, params, namedParams);
-                return json.write(PlanAnalyzer.summarize(parsed));
+                String result = json.write(PlanAnalyzer.summarize(parsed));
+                ToolLogger.completed(log, "analyzePlan", start);
+                return result;
             }
             String statementId = newExplainStatementId();
             String explainSql = dialect.buildStructuredExplain(normalizedSql, doAnalyze, statementId);
@@ -228,14 +244,20 @@ public class QueryTools {
                 }
                 return planParser.parse(planRows, doAnalyze);
             }, displaySql == null);
-            return json.write(PlanAnalyzer.summarize(parsed));
+            String result = json.write(PlanAnalyzer.summarize(parsed));
+            ToolLogger.completed(log, "analyzePlan", start);
+            return result;
         } catch (SqlNotAllowedException e) {
+            ToolLogger.failed(log, "analyzePlan", start, e.getMessage());
             return errors.rejected(e);
         } catch (SQLException e) {
+            ToolLogger.failed(log, "analyzePlan", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "analyzePlan", start, e.getMessage());
             return errors.planParse(e);
         } catch (Exception e) {
+            ToolLogger.failed(log, "analyzePlan", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -251,10 +273,12 @@ public class QueryTools {
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams
     ) {
         log.info("Tool call: validateQuery (sql={}, params={}, namedParams={})", sql, params, namedParams);
+        long start = System.nanoTime();
         String normalizedSql = normalizeSql(sql);
         try {
             guard.check(normalizedSql);
         } catch (SqlNotAllowedException e) {
+            ToolLogger.failed(log, "validateQuery", start, e.getMessage());
             return validationFailure("guard", e.getMessage(), analysis.inspect(normalizedSql));
         }
         try {
@@ -269,7 +293,7 @@ public class QueryTools {
             }
             final String finalPreparedSql = preparedSql;
             final List<Object> finalPreparedParams = preparedParams;
-            return executor.withConnection(conn -> {
+            String result = executor.withConnection(conn -> {
                 try (PreparedStatement ps = conn.prepareStatement(finalPreparedSql)) {
                     bind(ps, finalPreparedParams);
                     int paramCount = ps.getParameterMetaData().getParameterCount();
@@ -283,9 +307,13 @@ public class QueryTools {
                             paramCount, colCount, analysis.inspect(normalizedSql)));
                 }
             });
+            ToolLogger.completed(log, "validateQuery", start);
+            return result;
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "validateQuery", start, e.getMessage());
             return validationFailure("params", e.getMessage(), analysis.inspect(normalizedSql));
         } catch (SQLException e) {
+            ToolLogger.failed(log, "validateQuery", start, e.getMessage());
             return validationFailure("driver", e.getMessage(), analysis.inspect(normalizedSql));
         }
     }
@@ -298,7 +326,10 @@ public class QueryTools {
             @McpToolParam(description = "SQL statement to inspect") String sql
     ) {
         log.info("Tool call: inspectQuery (sql={})", sql);
-        return json.write(analysis.inspect(normalizeSql(sql)));
+        long start = System.nanoTime();
+        String result = json.write(analysis.inspect(normalizeSql(sql)));
+        ToolLogger.completed(log, "inspectQuery", start);
+        return result;
     }
 
     @McpTool(description = "Parse SQL and run metadata-aware lint checks for LLM query authoring. " +
@@ -310,11 +341,16 @@ public class QueryTools {
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema
     ) {
         log.info("Tool call: queryLint (sql={}, schema={})", sql, schema);
+        long start = System.nanoTime();
         try {
-            return json.write(lint.lint(normalizeSql(sql), schema));
+            String result = json.write(lint.lint(normalizeSql(sql), schema));
+            ToolLogger.completed(log, "queryLint", start);
+            return result;
         } catch (SQLException e) {
+            ToolLogger.failed(log, "queryLint", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "queryLint", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -331,11 +367,16 @@ public class QueryTools {
             @McpToolParam(description = "Maximum recursive expansion depth. Default 5, hard cap 20.", required = false) Integer maxDepth
     ) {
         log.info("Tool call: resolveQueryLineage (sql={}, schema={}, expandViews={}, expandRoutines={}, maxDepth={})", sql, schema, expandViews, expandRoutines, maxDepth);
+        long start = System.nanoTime();
         try {
-            return json.write(lineage.resolve(normalizeSql(sql), schema, expandViews, expandRoutines, maxDepth));
+            String result = json.write(lineage.resolve(normalizeSql(sql), schema, expandViews, expandRoutines, maxDepth));
+            ToolLogger.completed(log, "resolveQueryLineage", start);
+            return result;
         } catch (SQLException e) {
+            ToolLogger.failed(log, "resolveQueryLineage", start, e.getMessage());
             return errors.sql(e);
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "resolveQueryLineage", start, e.getMessage());
             return errors.argument(e);
         }
     }
@@ -356,7 +397,7 @@ public class QueryTools {
     }
 
     private SqlParameterBindingResolver.Binding resolveBinding(String sql, List<Object> params,
-                                                              Map<String, Object> namedParams) {
+                                                               Map<String, Object> namedParams) {
         return SqlParameterBindingResolver.resolve(sql, params, namedParams);
     }
 

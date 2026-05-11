@@ -31,16 +31,23 @@ public class UsageTools {
     @McpTool(description = "Return the runtime usage-catalog index status: configured JSON/zip sources, indexing state, record counts, parse failures, duplicate UIDs and load errors.")
     public String usageCatalogStatus() {
         log.info("Tool call: usageCatalogStatus");
-        return json.write(service.status());
+        long start = System.nanoTime();
+        String result = json.write(service.status());
+        ToolLogger.completed(log, "usageCatalogStatus", start);
+        return result;
     }
 
     @McpTool(description = "Invalidate the runtime usage-catalog index. The next usage-catalog lookup rebuilds it synchronously from configured files and database-native objects.")
     public String invalidateUsageCatalogCache() {
         log.info("Tool call: invalidateUsageCatalogCache");
         if (!service.enabled()) return disabled("invalidateUsageCatalogCache");
+        long start = System.nanoTime();
         try {
-            return json.write(service.invalidateIndex());
+            String result = json.write(service.invalidateIndex());
+            ToolLogger.completed(log, "invalidateUsageCatalogCache", start);
+            return result;
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "invalidateUsageCatalogCache", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -53,11 +60,16 @@ public class UsageTools {
     ) {
         log.info("Tool call: getQuery (kind={}, path={}, unit={})", sourceKind, sourcePath, sourceUnit);
         if (!service.enabled()) return disabled("getQuery");
+        long start = System.nanoTime();
         try {
-            return json.write(service.getQuery(sourceKind, sourcePath, sourceUnit));
+            String result = json.write(service.getQuery(sourceKind, sourcePath, sourceUnit));
+            ToolLogger.completed(log, "getQuery", start);
+            return result;
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "getQuery", start, e.getMessage());
             return errors.argument(e);
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "getQuery", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -75,12 +87,17 @@ public class UsageTools {
     ) {
         log.info("Tool call: listQueries (searchText={})", searchText);
         if (!service.enabled()) return disabledWithRows("listQueries", "queries");
+        long start = System.nanoTime();
         try {
-            return json.write(service.listQueries(
+            String result = json.write(service.listQueries(
                     sourcePath, sourceKind, businessDomain, tag, parseStatus, searchText, limit, offset));
+            ToolLogger.completed(log, "listQueries", start);
+            return result;
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "listQueries", start, e.getMessage());
             return errors.argument(e);
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "listQueries", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -92,11 +109,16 @@ public class UsageTools {
     ) {
         log.info("Tool call: findQueriesByTable (schema={}, table={})", schema, table);
         if (!service.enabled()) return disabledWithRows("findQueriesByTable", "matches");
+        long start = System.nanoTime();
         try {
-            return json.write(service.findQueriesByTable(schema, table));
+            String result = json.write(service.findQueriesByTable(schema, table));
+            ToolLogger.completed(log, "findQueriesByTable", start);
+            return result;
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "findQueriesByTable", start, e.getMessage());
             return errors.argument(e);
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "findQueriesByTable", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -109,11 +131,16 @@ public class UsageTools {
     ) {
         log.info("Tool call: findQueriesByColumn (schema={}, table={}, column={})", schema, table, column);
         if (!service.enabled()) return disabledWithRows("findQueriesByColumn", "matches");
+        long start = System.nanoTime();
         try {
-            return json.write(service.findQueriesByColumn(schema, table, column));
+            String result = json.write(service.findQueriesByColumn(schema, table, column));
+            ToolLogger.completed(log, "findQueriesByColumn", start);
+            return result;
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "findQueriesByColumn", start, e.getMessage());
             return errors.argument(e);
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "findQueriesByColumn", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -126,11 +153,16 @@ public class UsageTools {
     ) {
         log.info("Tool call: observedRelationships (schema={}, table={})", schema, table);
         if (!service.enabled()) return disabledWithRows("observedRelationships", "relationships");
+        long start = System.nanoTime();
         try {
-            return json.write(service.observedRelationships(schema, table, minSupport == null ? 1 : minSupport));
+            String result = json.write(service.observedRelationships(schema, table, minSupport == null ? 1 : minSupport));
+            ToolLogger.completed(log, "observedRelationships", start);
+            return result;
         } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "observedRelationships", start, e.getMessage());
             return errors.argument(e);
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "observedRelationships", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -139,9 +171,13 @@ public class UsageTools {
     public String listKnownTags() {
         log.info("Tool call: listKnownTags");
         if (!service.enabled()) return disabledWithRows("listKnownTags", "tags");
+        long start = System.nanoTime();
         try {
-            return json.write(service.listKnownTags());
+            String result = json.write(service.listKnownTags());
+            ToolLogger.completed(log, "listKnownTags", start);
+            return result;
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "listKnownTags", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -150,9 +186,13 @@ public class UsageTools {
     public String listKnownDomains() {
         log.info("Tool call: listKnownDomains");
         if (!service.enabled()) return disabledWithRows("listKnownDomains", "domains");
+        long start = System.nanoTime();
         try {
-            return json.write(service.listKnownDomains());
+            String result = json.write(service.listKnownDomains());
+            ToolLogger.completed(log, "listKnownDomains", start);
+            return result;
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "listKnownDomains", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
@@ -161,9 +201,13 @@ public class UsageTools {
     public String listKnownKinds() {
         log.info("Tool call: listKnownKinds");
         if (!service.enabled()) return disabledWithRows("listKnownKinds", "kinds");
+        long start = System.nanoTime();
         try {
-            return json.write(service.listKnownSourceKinds());
+            String result = json.write(service.listKnownSourceKinds());
+            ToolLogger.completed(log, "listKnownKinds", start);
+            return result;
         } catch (RuntimeException e) {
+            ToolLogger.failed(log, "listKnownKinds", start, e.getMessage());
             return errors.unexpected(e);
         }
     }
