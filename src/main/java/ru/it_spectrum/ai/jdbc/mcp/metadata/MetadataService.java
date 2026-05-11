@@ -567,23 +567,11 @@ public class MetadataService {
     }
 
     /**
-     * Bulk-load structural metadata for a pre-selected list of table entries. Uses schema-level
-     * bulk queries (≈10 round trips total, regardless of table count) — much faster than calling
-     * {@link #describeTable} in a loop. Writes results into the metadata cache so subsequent
-     * per-table lookups hit the cache.
-     */
-    public Map<String, TableDescription> describeTables(String schema, List<TableEntry> tables)
-            throws SQLException {
-        String effectiveSchema = resolveSchema(schema);
-        Map<String, TableDescription> result = describeListedTables(effectiveSchema, tables, true);
-        cache.putAll(result);
-        return result;
-    }
-
-    /**
-     * Bulk-load structural metadata for a collection of table names (same schema). Checks the
-     * metadata cache first and only loads uncached tables via the bulk engine. All loaded tables
-     * are written to the cache for subsequent fast lookup.
+     * Bulk-load structural metadata for a collection of table names (same schema). Uses
+     * schema-level bulk queries (≈10 round trips total, regardless of table count) — much faster
+     * than calling {@link #describeTable} in a loop. Checks the metadata cache first and only
+     * loads uncached tables. All loaded results are written to the cache for subsequent fast
+     * lookup.
      */
     public Map<String, TableDescription> describeTables(String schema, Collection<String> tableNames)
             throws SQLException {
@@ -607,12 +595,15 @@ public class MetadataService {
             }
         }
 
-        if (uncached.isEmpty()) return result;
+        if (!uncached.isEmpty()) {
+            List<TableEntry> entries = uncached.stream()
+                    .map(n -> new TableEntry(effectiveSchema, n, null, null))
+                    .toList();
+            Map<String, TableDescription> loaded = describeListedTables(effectiveSchema, entries, true);
+            cache.putAll(loaded);
+            result.putAll(loaded);
+        }
 
-        List<TableEntry> entries = uncached.stream()
-                .map(n -> new TableEntry(effectiveSchema, n, null, null))
-                .toList();
-        result.putAll(describeTables(effectiveSchema, entries));
         return result;
     }
 

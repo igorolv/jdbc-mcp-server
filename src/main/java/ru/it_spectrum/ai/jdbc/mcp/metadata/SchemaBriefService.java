@@ -38,7 +38,8 @@ class SchemaBriefService extends SchemaContextSupport {
         List<TableEntry> listed = listBriefTables(schema, terms);
         boolean truncated = listed.size() > tableLimit;
         List<TableEntry> selected = listed.subList(0, Math.min(tableLimit, listed.size()));
-        Map<String, TableDescription> tables = metadata.describeTables(schema, selected);
+        List<String> names = tableEntryNames(selected);
+        Map<String, TableDescription> tables = names.isEmpty() ? Map.of() : metadata.describeTables(schema, names);
         List<RelationshipEdge> fkEdges = new ArrayList<>();
         for (TableDescription info : tables.values()) {
             fkEdges.addAll(outgoingEdges(info));

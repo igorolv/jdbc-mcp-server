@@ -124,10 +124,11 @@ class LiveOracleIntegrationSchemaTest {
                 new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
         long t1 = System.currentTimeMillis();
         List<TableEntry> selected = listed.subList(0, Math.min(50, listed.size()));
+        List<String> names = selected.stream().map(TableEntry::name).filter(java.util.Objects::nonNull).toList();
         System.out.printf("[TIMING] listTables: %d ms, %d tables%n", (t1 - t0), listed.size());
 
         long t2 = System.currentTimeMillis();
-        var described = metadata.describeTables(schema, selected);
+        var described = metadata.describeTables(schema, names);
         long t3 = System.currentTimeMillis();
         System.out.printf("[TIMING] describeTables selected: %d ms, %d tables%n",
                 (t3 - t2), described.size());

@@ -66,7 +66,8 @@ abstract class SchemaContextSupport {
     protected Map<String, TableDescription> loadSchemaTables(String schema, int limit) throws SQLException {
         List<TableEntry> listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
         List<TableEntry> selected = listed.subList(0, Math.min(limit, listed.size()));
-        return metadata.describeTables(schema, selected);
+        List<String> names = tableEntryNames(selected);
+        return names.isEmpty() ? Map.of() : metadata.describeTables(schema, names);
     }
 
     protected Map<String, TableDescription> loadBriefTables(String schema, String terms, int limit)
@@ -77,7 +78,8 @@ abstract class SchemaContextSupport {
             listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
         }
         List<TableEntry> selected = listed.subList(0, Math.min(limit, listed.size()));
-        return metadata.describeTables(schema, selected);
+        List<String> names = tableEntryNames(selected);
+        return names.isEmpty() ? Map.of() : metadata.describeTables(schema, names);
     }
 
     protected Map<String, TableDescription> loadSingleTable(String schema, String table) throws SQLException {
@@ -685,6 +687,14 @@ abstract class SchemaContextSupport {
     protected String key(String schema, String table) {
         return (schema == null ? "" : schema.toLowerCase(Locale.ROOT)) + "."
                 + (table == null ? "" : table.toLowerCase(Locale.ROOT));
+    }
+
+    protected static List<String> tableEntryNames(List<TableEntry> entries) {
+        List<String> names = new ArrayList<>(entries.size());
+        for (TableEntry e : entries) {
+            if (e.name() != null && !e.name().isBlank()) names.add(e.name());
+        }
+        return names;
     }
 
     protected String str(Object value) {
