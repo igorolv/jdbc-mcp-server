@@ -1,5 +1,6 @@
 # JDBC MCP Server
 
+[![SafeSkill 50/100](https://img.shields.io/badge/SafeSkill-50%2F100_Use%20with%20Caution-orange)](https://safeskill.dev/scan/igorolv-jdbc-mcp-server)
 A local MCP server for read-only access to PostgreSQL, Oracle, and Microsoft SQL Server databases.
 It lets AI agents such as Claude Code, Cursor, VS Code Copilot, and others write SQL queries,
 inspect execution plans, and explore database structure: tables, columns, indexes, foreign keys,
