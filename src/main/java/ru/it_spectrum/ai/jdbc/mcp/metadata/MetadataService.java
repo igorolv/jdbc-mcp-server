@@ -497,25 +497,6 @@ public class MetadataService {
         return out;
     }
 
-    // ---------- describeSchema (bulk: entire schema in ~10 RS instead of N×10) ----------
-
-    /**
-     * Bulk-load structural metadata for every table in a schema using schema-level metadata
-     * calls and SQL queries. Returns a map keyed by {@code "schema.table"}.
-     * <p>Instead of {@code N × 10} database roundtrips (one per table), this makes roughly 10
-     * roundtrips total — one for each metadata aspect — regardless of the number of tables.
-     * <p>The result is also pushed into the per-table snapshot cache so subsequent
-     * {@link #describeTable} calls hit the cache.
-     */
-    public Map<String, TableDescription> describeSchema(String schema) throws SQLException {
-        String effectiveSchema = resolveSchema(schema);
-        List<TableEntry> tables = listTables(effectiveSchema, "%",
-                new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
-        Map<String, TableDescription> result = describeListedTables(effectiveSchema, tables, true);
-        cache.putAll(result);
-        return result;
-    }
-
     /**
      * Bulk-load structural metadata for a collection of table names (same schema). Uses
      * schema-level bulk queries (≈10 round trips total, regardless of table count) — much faster
@@ -546,10 +527,7 @@ public class MetadataService {
         }
 
         if (!uncached.isEmpty()) {
-            List<TableEntry> entries = uncached.stream()
-                    .map(n -> new TableEntry(effectiveSchema, n, null, null))
-                    .toList();
-            Map<String, TableDescription> loaded = describeListedTables(effectiveSchema, entries, true);
+            Map<String, TableDescription> loaded = describeListedTables(effectiveSchema, new LinkedHashSet<>(uncached), true);
             cache.putAll(loaded);
             result.putAll(loaded);
         }
@@ -559,21 +537,27 @@ public class MetadataService {
 
     private Map<String, TableDescription> describeListedTables(
             String effectiveSchema,
-            List<TableEntry> tables,
+            Set<String> tableNames,
             boolean includeColumnMetadata) throws SQLException {
-        Set<String> tableNames = new LinkedHashSet<>();
-        Map<String, TableEntry> tableEntryByName = new LinkedHashMap<>();
-        for (TableEntry t : tables) {
-            if (t.name() != null && !t.name().isBlank()) {
-                tableNames.add(t.name());
-                tableEntryByName.put(t.name(), t);
-            }
-        }
-
         if (tableNames.isEmpty()) return Map.of();
 
         Map<String, TableDescription> result = executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
+
+            Map<String, TableEntry> tableEntryByName = new LinkedHashMap<>();
+            String[] allTypes = {"TABLE", "VIEW", "MATERIALIZED VIEW", "SYNONYM", "ALIAS", "SYSTEM TABLE", "GLOBAL TEMPORARY"};
+            for (String name : tableNames) {
+                try (ResultSet rs = md.getTables(null, effectiveSchema, name, allTypes)) {
+                    if (rs.next()) {
+                        tableEntryByName.put(name, new TableEntry(
+                                effectiveSchema, name,
+                                rs.getString("TABLE_TYPE"),
+                                rs.getString("REMARKS")));
+                    } else {
+                        tableEntryByName.put(name, new TableEntry(effectiveSchema, name, null, null));
+                    }
+                }
+            }
 
             Map<String, List<Column>> columnsMap = fetchColumnsForTables(md, effectiveSchema, tableNames);
             if (includeColumnMetadata) {
