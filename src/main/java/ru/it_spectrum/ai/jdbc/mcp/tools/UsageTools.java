@@ -62,21 +62,22 @@ public class UsageTools {
         }
     }
 
-    @McpTool(description = "List queries in the usage catalog. All filters are optional; default ordering is by most-recent ingest. sourcePath supports SQL LIKE wildcards ('%' / '_').")
+    @McpTool(description = "List queries in the usage catalog. All filters are optional; default ordering is by most-recent ingest. sourcePath supports SQL LIKE wildcards ('%' / '_'). searchText performs a case-insensitive search across raw SQL, labels, source paths, and domains.")
     public String listQueries(
             @McpToolParam(description = "Filter by source path (LIKE — '%' / '_' allowed).", required = false) String sourcePath,
             @McpToolParam(description = "Filter by source kind ('bi-publisher-report', 'dao', etc.).", required = false) String sourceKind,
             @McpToolParam(description = "Filter by business domain (exact).", required = false) String businessDomain,
             @McpToolParam(description = "Filter by tag (exact).", required = false) String tag,
             @McpToolParam(description = "Filter by parse status: 'parsed' or 'failed'.", required = false) String parseStatus,
+            @McpToolParam(description = "Full-text search across raw SQL, normalized SQL, business label, domain, and source path (case-insensitive).", required = false) String searchText,
             @McpToolParam(description = "Maximum rows to return (default 100, max 1000).", required = false) Integer limit,
             @McpToolParam(description = "Skip this many rows (for paging, default 0).", required = false) Integer offset
     ) {
-        log.info("Tool call: listQueries");
+        log.info("Tool call: listQueries (searchText={})", searchText);
         if (!service.enabled()) return disabledWithRows("listQueries", "queries");
         try {
             return json.write(service.listQueries(
-                    sourcePath, sourceKind, businessDomain, tag, parseStatus, limit, offset));
+                    sourcePath, sourceKind, businessDomain, tag, parseStatus, searchText, limit, offset));
         } catch (IllegalArgumentException e) {
             return errors.argument(e);
         } catch (RuntimeException e) {

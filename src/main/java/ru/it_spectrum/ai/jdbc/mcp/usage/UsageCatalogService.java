@@ -868,6 +868,7 @@ public class UsageCatalogService {
 
     public ListQueriesResult listQueries(String sourcePath, String sourceKind,
                                           String businessDomain, String tag, String parseStatus,
+                                          String searchText,
                                           Integer limit, Integer offset) {
         ensureIndexed();
         StringBuilder sql = new StringBuilder("""
@@ -896,6 +897,13 @@ public class UsageCatalogService {
         if (parseStatus != null && !parseStatus.isBlank()) {
             sql.append(" AND q.parse_status = ?");
             args.add(parseStatus);
+        }
+        if (searchText != null && !searchText.isBlank()) {
+            String likePattern = "%" + searchText.toLowerCase(Locale.ROOT) + "%";
+            sql.append(" AND (LOWER(q.raw_sql) LIKE ? OR LOWER(q.normalized_sql) LIKE ?"
+                    + " OR LOWER(q.business_label) LIKE ? OR LOWER(q.business_domain) LIKE ?"
+                    + " OR LOWER(q.source_path) LIKE ?)");
+            for (int i = 0; i < 5; i++) args.add(likePattern);
         }
         sql.append(" ORDER BY q.source_kind, q.source_path, q.source_unit");
         int safeLimit = limit == null || limit <= 0 ? 100 : Math.min(limit, 1000);

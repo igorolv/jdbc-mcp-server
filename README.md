@@ -274,7 +274,7 @@ implemented inside the JDBC MCP server.
 | `usageCatalogStatus` | Runtime index status: configured sources, indexing state, counts, duplicate uids, invalid files and load errors |
 | `invalidateUsageCatalogCache` | Drop the runtime index. The next lookup rebuilds it synchronously from configured files and database-native objects |
 | `getQuery` | Full record by uid: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns), and field usages |
-| `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus` |
+| `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `searchText` (case-insensitive full-text search across raw SQL, normalized SQL, labels, source paths, and domains) |
 | `findQueriesByTable` | All catalog queries that reference a given table. Case-insensitive matching against alias-resolved, uppercased table names. Optional `schema` filter |
 | `findQueriesByColumn` | All catalog queries that reference a given column, with the SQL `context` of the reference (`select` / `where` / `join` / `order_by` / `having`). Optional `schema` and `table` filters |
 | `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `observedQuery` layer of the relationship `evidence` bundle in `schemaOverview` / `tableContext` / `findJoinPaths` |

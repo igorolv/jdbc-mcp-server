@@ -501,7 +501,7 @@ class UsageCatalogServiceTest {
                         "good.stmt1", "SELECT id FROM customers")));
         UsageCatalogService svc = newService(properties, provider);
 
-        assertThat(svc.listQueries(null, null, null, null, null, 100, 0)
+        assertThat(svc.listQueries(null, null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::sourcePath)
                 .containsExactly("native/package/APP.CUSTOMER_PKG");
@@ -519,14 +519,14 @@ class UsageCatalogServiceTest {
                         null, "SELECT id FROM orders")));
         UsageCatalogService svc = newService(properties, provider);
 
-        assertThat(svc.listQueries(null, null, null, null, null, 100, 0)
+        assertThat(svc.listQueries(null, null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::sourcePath)
                 .contains("native/view/APP.CUSTOMERS_V");
 
         svc.invalidateIndex();
 
-        assertThat(svc.listQueries(null, null, null, null, null, 100, 0)
+        assertThat(svc.listQueries(null, null, null, null, null, null, 100, 0)
                 .queries())
                 .extracting(ListQueriesResult.QueryEntry::sourcePath)
                 .contains("native/view/APP.ORDERS_V")

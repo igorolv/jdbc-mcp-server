@@ -264,7 +264,7 @@ Called methods return `{"catalog_enabled":false,"rows":[]}` when the catalog is 
 | `usageCatalogStatus` | Runtime index status: configured sources, indexing state, record/parse-failure/duplicate counts |
 | `invalidateUsageCatalogCache` | Drop the runtime usage index. The next lookup rebuilds it synchronously from configured files and database-native objects |
 | `getQuery` | Full stored record for one query uid (`{dataSource}/{path}#{unit}`): SQL, parameters, parsed tables/columns/joins, outputs, field usages |
-| `listQueries` | List stored queries with filters: `dataSource`, `sourcePath` (LIKE), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `limit`, `offset` |
+| `listQueries` | List stored queries with filters: `dataSource`, `sourcePath` (LIKE), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `searchText` (case-insensitive full-text across raw SQL, labels, source paths, and domains), `limit`, `offset` |
 | `findQueriesByTable` | Find queries referencing a table (case-insensitive, alias-expanded). Params: `schema`, `table` |
 | `findQueriesByColumn` | Find queries referencing a column, with usage context (`select`, `where`, `join`, `order_by`, `having`). Params: `schema`, `table`, `column` |
 | `observedRelationships` | Aggregate equi-join pairs across all queries: `(left_table.left_col = right_table.right_col)` with support count and contributing query uids. Params: `schema`, `table`, `minSupport` |
