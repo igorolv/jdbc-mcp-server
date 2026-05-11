@@ -8,7 +8,7 @@
 > - Full build: `./gradlew build`
 
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
-It exposes 50 read-only tools across nine groups:
+It exposes 47 read-only tools across nine groups:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarized plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
@@ -148,7 +148,7 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **50 read-only MCP tools**.
+The server exposes **47 read-only MCP tools**.
 
 ### Query tools
 
@@ -230,17 +230,14 @@ keep the response compact; raise the caps when needed.
 | `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables` (default 12, cap 50 — narrower than the other context tools to keep responses concise) |
 | `schemaGraphDot` | DOT/Graphviz ERD: nodes are tables with all columns and types (PK marked 🔑, FK with →). Params: `schema`, `tables` (optional filter) |
 
-### Snapshot / metadata cache tools
+### Snapshot / metadata cache (internal)
 
 Structural metadata (columns, keys, indexes, FKs, constraints, triggers) is cached in memory with
-a TTL set by `JDBC_METADATA_CACHE_TTL_SECONDS` (default 300, `0` disables). Live statistics are
+a TTL set by `JDBC_METADATA_CACHE_TTL_SECONDS` (default 86400, `0` disables). Live statistics are
 not cached. Hard cap on entries: `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000).
 
-| Tool | Description |
-|---|---|
-| `getSchemaSnapshot` | Meta-info about the cache (TTL, hit/miss counters, cached table names per schema). Does not return full table descriptions — use `tableContext`, `queryContext`, or `describeTable` for that. Params: `schema` (optional filter) |
-| `refreshSchemaSnapshot` | Invalidate and eagerly re-warm the cache. With `table` — only that table; with `schema` — all tables in the schema; with neither — full clear (no warm). Params: `schema`, `table`, `maxTables` (default 300) |
-| `invalidateSnapshot` | Drop cached entries without re-warming. Params: `schema`, `table` |
+No MCP tools expose the cache directly — it is managed internally. A server restart clears and
+re-warms the cache automatically.
 
 ### Usage catalog tools
 
@@ -349,14 +346,13 @@ Recommended flow when the user asks to optimize / audit queries or schema:
 
 Notes on the metadata snapshot cache:
 
-- Structural metadata is cached in memory with a TTL (default 300 s; set
+- Structural metadata is cached in memory with a TTL (default 86400 s / 24 h; set
   `JDBC_METADATA_CACHE_TTL_SECONDS=0` to disable). Repeated
   `tableContext`, `findJoinPaths`, `schemaLint`, `schemaGraph`, `queryContext` and
   `describeTable` calls are served from the cache.
 - Live counters (table/index/column stats, samples, plans) are **never** cached.
-- If an external DDL changes the schema during a session, call `refreshSchemaSnapshot`
-  (warms the cache) or `invalidateSnapshot` (drops it) to force a re-read. Use
-  `getSchemaSnapshot` to inspect what is currently cached and the hit/miss counters.
+- The cache is internal and not exposed as MCP tools. A server restart clears and re-warms it.
+
 
 ## Troubleshooting
 

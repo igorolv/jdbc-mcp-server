@@ -27,7 +27,6 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SampleTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
-import ru.it_spectrum.ai.jdbc.mcp.tools.SnapshotTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.ToolErrors;
 import ru.it_spectrum.ai.jdbc.mcp.usage.ProceduralSqlExtractor;
@@ -84,8 +83,7 @@ abstract class AbstractSqlServerToolsIntegrationTest extends AbstractToolsIntegr
                     new StatsTools(stats, json, errors),
                     new SchemaContextTools(schemaContext, json, errors),
                     new DistributionTools(distribution, json, errors),
-                    new BenchmarkTools(benchmarks, json, errors),
-                    new SnapshotTools(metadata, cache, json, errors)
+                    new BenchmarkTools(benchmarks, json, errors)
             );
         } catch (Exception e) {
             throw new ExceptionInInitializerError(e);

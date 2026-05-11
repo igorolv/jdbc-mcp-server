@@ -16,7 +16,7 @@ import java.sql.SQLException;
  *
  * <p>Helpers for the most common cases — call them instead of building strings inline so the
  * format stays consistent across QueryTools, MetadataTools, StatsTools, DistributionTools,
- * SchemaContextTools, BenchmarkTools and SnapshotTools.
+ * SchemaContextTools, and BenchmarkTools.
  */
 @Component
 public class ToolErrors {

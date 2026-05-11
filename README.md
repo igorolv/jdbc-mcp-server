@@ -297,14 +297,10 @@ live.
 
 Configuration:
 
-- `JDBC_METADATA_CACHE_TTL_SECONDS` - TTL in seconds. Default: `300`. Set to `0` to disable the cache.
+- `JDBC_METADATA_CACHE_TTL_SECONDS` - TTL in seconds. Default: `86400` (24 hours). Set to `0` to disable the cache.
 - `JDBC_METADATA_CACHE_MAX_ENTRIES` - safety cap, default `2000`; when exceeded, the cache is cleared completely.
 
-| Tool | Description |
-|---|---|
-| `getSchemaSnapshot` | Cache metadata: TTL, hit/miss counters, number of cached tables per schema (names only, not contents), and list-cache entries. Parameter: `schema` filter |
-| `refreshSchemaSnapshot` | Invalidate and immediately warm the cache. With `table`, only one table is warmed; with `schema`, all tables in the schema are warmed through `describeTable`; with no arguments, the cache is fully cleared without warming. `maxTables` limits warming (default 300) |
-| `invalidateSnapshot` | Targeted invalidation without warming: `table` for one table, `schema` for a whole schema, or no arguments for the entire cache |
+The cache is internal and not exposed as MCP tools.
 
 ### Data Exploration
 

@@ -4,10 +4,6 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
-import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.CachedSchemaEntry;
-import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.CachedTableEntry;
-import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.ListCacheEntry;
-import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.SchemaSnapshot;
 
 import java.sql.SQLException;
 import java.util.*;
@@ -80,7 +76,7 @@ public class SchemaSnapshotCache {
     }
 
     public TableDescription describeTable(String schema, String table,
-                                          SqlSupplier<TableDescription> loader) throws SQLException {
+                                           SqlSupplier<TableDescription> loader) throws SQLException {
         if (!enabled()) return loader.get();
         TableKey key = TableKey.of(schema, table);
         long now = System.currentTimeMillis();
@@ -97,7 +93,7 @@ public class SchemaSnapshotCache {
     }
 
     public List<TableEntry> listTables(String schema, String namePattern, String[] types,
-                                       SqlSupplier<List<TableEntry>> loader) throws SQLException {
+                                        SqlSupplier<List<TableEntry>> loader) throws SQLException {
         if (!enabled()) return loader.get();
         ListKey key = ListKey.of(schema, namePattern, types);
         long now = System.currentTimeMillis();
@@ -131,7 +127,6 @@ public class SchemaSnapshotCache {
     public void invalidateTable(String schema, String table) {
         if (table == null || table.isBlank()) return;
         describes.remove(TableKey.of(schema, table));
-        // any list result that could include this table is now suspect; drop list cache for the schema
         String norm = normalize(schema);
         lists.keySet().removeIf(listKey -> Objects.equals(norm, listKey.schema));
     }
@@ -150,44 +145,6 @@ public class SchemaSnapshotCache {
             if (maxEntries > 0 && describes.size() >= maxEntries) describes.clear();
             describes.put(key, new Entry<>(td, now));
         }
-    }
-
-    public SchemaSnapshot snapshotInfo(String schema) {
-        String norm = normalize(schema);
-
-        // describes
-        Map<String, List<CachedTableEntry>> bySchema = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (Map.Entry<TableKey, Entry<TableDescription>> e : describes.entrySet()) {
-            TableKey k = e.getKey();
-            if (norm != null && !Objects.equals(norm, k.schema)) continue;
-            String schemaLabel = k.schema == null ? "" : k.schema;
-            List<CachedTableEntry> entries = bySchema.computeIfAbsent(schemaLabel, s -> new ArrayList<>());
-            entries.add(new CachedTableEntry(k.table));
-        }
-
-        // lists
-        List<ListCacheEntry> listEntries = new ArrayList<>();
-        for (Map.Entry<ListKey, Entry<List<TableEntry>>> e : lists.entrySet()) {
-            ListKey k = e.getKey();
-            if (norm != null && !Objects.equals(norm, k.schema)) continue;
-            listEntries.add(new ListCacheEntry(
-                    k.schema,
-                    k.pattern,
-                    k.typesSig,
-                    e.getValue().value.size()));
-        }
-
-        List<CachedSchemaEntry> schemas = new ArrayList<>();
-        for (Map.Entry<String, List<CachedTableEntry>> e : bySchema.entrySet()) {
-            schemas.add(new CachedSchemaEntry(e.getKey(), e.getValue().size(), e.getValue()));
-        }
-        return new SchemaSnapshot(
-                enabled(),
-                ttlMs / 1000L,
-                maxEntries,
-                schemas,
-                listEntries,
-                norm);
     }
 
     private static String normalize(String value) {
