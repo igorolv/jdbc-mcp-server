@@ -149,42 +149,8 @@ public class MetadataService {
             throw new IllegalArgumentException("table must be provided");
         }
         String effectiveSchema = resolveSchema(schema);
-        return cache.describeTable(effectiveSchema, table,
-                () -> describeTableUncached(effectiveSchema, table));
-    }
-
-    private TableDescription describeTableUncached(String effectiveSchema, String table) throws SQLException {
-        return executor.withConnection(conn -> {
-            DatabaseMetaData md = conn.getMetaData();
-            TableInfo info = fetchTableInfo(md, effectiveSchema, table);
-            List<Column> cols = fetchColumns(md, effectiveSchema, table);
-            // Supplement COLUMN_DEF and REMARKS via dialect-specific queries (bypasses LONG restriction
-            // on Oracle's DatabaseMetaData.getColumns / getString). Uses the same connection to avoid
-            // consuming extra pooled connections.
-            cols = fetchColumnMetadataSupplement(conn, cols, effectiveSchema, table);
-            PrimaryKey pk = fetchPrimaryKey(md, effectiveSchema, table);
-            List<UniqueConstraint> uniqueConstraints = fetchUniqueConstraints(md, effectiveSchema, table);
-            List<Index> indexes = fetchIndexes(md, effectiveSchema, table);
-            List<ForeignKey> foreignKeys = fetchImportedKeys(conn, md, effectiveSchema, table);
-            List<IncomingForeignKey> referencedBy = fetchExportedKeys(conn, md, effectiveSchema, table);
-            List<Constraint> constraints = fetchConstraints(effectiveSchema, table);
-            Map<String, List<String>> allowedValues = extractAllowedValues(constraints);
-            List<Trigger> triggers = fetchTriggers(effectiveSchema, table, false);
-            return new TableDescription(
-                    effectiveSchema, table, info.type, info.remarks,
-                    cols, pk, uniqueConstraints, indexes,
-                    foreignKeys, referencedBy, constraints,
-                    allowedValues, triggers);
-        });
-    }
-
-    private record TableInfo(String type, String remarks) {}
-
-    private TableInfo fetchTableInfo(DatabaseMetaData md, String schema, String table) throws SQLException {
-        try (ResultSet rs = md.getTables(null, schema, table, null)) {
-            if (rs.next()) return new TableInfo(rs.getString("TABLE_TYPE"), rs.getString("REMARKS"));
-        }
-        return new TableInfo(null, null);
+        Map<String, TableDescription> result = describeTables(effectiveSchema, List.of(table));
+        return result.get(key(effectiveSchema, table));
     }
 
     private List<Column> fetchColumns(DatabaseMetaData md, String schema, String table)
@@ -370,22 +336,6 @@ public class MetadataService {
         }
         if (cols.isEmpty()) return null;
         return new PrimaryKey(name, cols);
-    }
-
-    private List<UniqueConstraint> fetchUniqueConstraints(DatabaseMetaData md, String schema, String table)
-            throws SQLException {
-        Map<String, List<String>> byName = new LinkedHashMap<>();
-        try (ResultSet rs = md.getIndexInfo(null, schema, table, /*unique*/ true, /*approximate*/ false)) {
-            while (rs.next()) {
-                String idxName = rs.getString("INDEX_NAME");
-                String col = rs.getString("COLUMN_NAME");
-                if (idxName == null || col == null) continue;
-                byName.computeIfAbsent(idxName, k -> new ArrayList<>()).add(col);
-            }
-        }
-        List<UniqueConstraint> out = new ArrayList<>(byName.size());
-        byName.forEach((name, cols) -> out.add(new UniqueConstraint(name, cols)));
-        return out;
     }
 
     private List<Index> fetchIndexes(DatabaseMetaData md, String schema, String table)
@@ -1539,7 +1489,7 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
         return out;
     }
 
-private Map<String, List<Trigger>> fetchOracleTriggersForTables(
+    private Map<String, List<Trigger>> fetchOracleTriggersForTables(
             Connection conn,
             String schema,
             Set<String> tableNames) throws SQLException {
