@@ -14,8 +14,7 @@ public record ListQueriesResult(
             String sourceUnit,
             String businessLabel,
             String businessDomain,
-            String parseStatus,
-            String ingestedAt
+            String parseStatus
     ) {
     }
 }

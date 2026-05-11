@@ -4,8 +4,6 @@ public record ListCacheEntry(
         String schema,
         String namePattern,
         String types,
-        int rows,
-        long ageSeconds,
-        boolean expired
+        int rows
 ) {
 }

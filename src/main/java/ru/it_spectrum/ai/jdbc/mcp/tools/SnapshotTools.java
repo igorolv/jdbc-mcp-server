@@ -62,14 +62,13 @@ public class SnapshotTools {
             @McpToolParam(description = "Maximum tables to warm when refreshing a whole schema. Default 300.", required = false) Integer maxTables
     ) {
         log.info("Tool call: refreshSchemaSnapshot (schema={}, table={})", schema, table);
-        long startedAt = System.currentTimeMillis();
         RefreshSchemaSnapshotResult result;
         try {
             if (table != null && !table.isBlank()) {
                 cache.invalidateTable(schema, table);
                 TableDescription described = metadata.describeTable(schema, table);
-                result = refreshResult(schema, table, 1, described.schema(), described.name(),
-                        null, null, null, null, null, startedAt);
+                result = refreshResult(schema, table, described.schema(), described.name(),
+                        null, null);
             } else if (schema != null && !schema.isBlank()) {
                 cache.invalidateSchema(schema);
                 int limit = maxTables == null ? 300 : Math.max(1, Math.min(maxTables, 5000));
@@ -89,12 +88,12 @@ public class SnapshotTools {
                         errors++;
                     }
                 }
-                result = refreshResult(schema, table, count, null, null,
-                        listed.size(), errors, limit, listed.size() > count, null, startedAt);
+                result = refreshResult(schema, table, null, null,
+                        limit, listed.size() > count);
             } else {
                 cache.invalidateAll();
-                result = refreshResult(schema, table, 0, null, null,
-                        null, null, null, null, true, startedAt);
+                result = refreshResult(schema, table, null, null,
+                        null, null);
             }
         } catch (SQLException e) {
             return errors.sql(e);
@@ -129,28 +128,18 @@ public class SnapshotTools {
     private RefreshSchemaSnapshotResult refreshResult(
             String schema,
             String table,
-            Integer refreshedTables,
             String tableSchema,
             String tableName,
-            Integer listedTables,
-            Integer errors,
             Integer limit,
-            Boolean truncated,
-            Boolean clearedAll,
-            long startedAt
+            Boolean truncated
     ) {
         return new RefreshSchemaSnapshotResult(
                 schema,
                 table,
-                refreshedTables,
                 tableSchema,
                 tableName,
-                listedTables,
-                errors,
                 limit,
                 truncated,
-                clearedAll,
-                System.currentTimeMillis() - startedAt,
                 cache.ttlMs() / 1000L,
                 cache.enabled());
     }

@@ -10,16 +10,9 @@ import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.ListCacheEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.SchemaSnapshot;
 
 import java.sql.SQLException;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -148,7 +141,6 @@ public class SchemaSnapshotCache {
     }
 
     public SchemaSnapshot snapshotInfo(String schema) {
-        long now = System.currentTimeMillis();
         String norm = normalize(schema);
 
         // describes
@@ -158,8 +150,7 @@ public class SchemaSnapshotCache {
             if (norm != null && !Objects.equals(norm, k.schema)) continue;
             String schemaLabel = k.schema == null ? "" : k.schema;
             List<CachedTableEntry> entries = bySchema.computeIfAbsent(schemaLabel, s -> new ArrayList<>());
-            long ageMs = now - e.getValue().loadedAtMs;
-            entries.add(new CachedTableEntry(k.table, ageMs / 1000L, ageMs >= ttlMs));
+            entries.add(new CachedTableEntry(k.table));
         }
 
         // lists
@@ -167,14 +158,11 @@ public class SchemaSnapshotCache {
         for (Map.Entry<ListKey, Entry<List<TableEntry>>> e : lists.entrySet()) {
             ListKey k = e.getKey();
             if (norm != null && !Objects.equals(norm, k.schema)) continue;
-            long ageMs = now - e.getValue().loadedAtMs;
             listEntries.add(new ListCacheEntry(
                     k.schema,
                     k.pattern,
                     k.typesSig,
-                    e.getValue().value.size(),
-                    ageMs / 1000L,
-                    ageMs >= ttlMs));
+                    e.getValue().value.size()));
         }
 
         List<CachedSchemaEntry> schemas = new ArrayList<>();
@@ -185,13 +173,6 @@ public class SchemaSnapshotCache {
                 enabled(),
                 ttlMs / 1000L,
                 maxEntries,
-                describes.size(),
-                lists.size(),
-                describeHits.get(),
-                describeMisses.get(),
-                listHits.get(),
-                listMisses.get(),
-                Instant.ofEpochMilli(now).toString(),
                 schemas,
                 listEntries,
                 norm);

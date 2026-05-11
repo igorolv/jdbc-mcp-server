@@ -135,7 +135,7 @@ public class UsageCatalogService {
 
     public InvalidateUsageCatalogCacheResult rebuild(List<QueryUsage> records) {
         if (!enabled()) {
-            return new InvalidateUsageCatalogCacheResult(0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return new InvalidateUsageCatalogCacheResult(0);
         }
         List<QueryUsage> safeRecords = records == null ? List.of() : records;
         Counters counters = new Counters();
@@ -160,17 +160,7 @@ public class UsageCatalogService {
             throw new IllegalStateException("Failed to rebuild usage catalog index: " + e.getMessage(), e);
         }
 
-        return new InvalidateUsageCatalogCacheResult(
-                safeRecords.size(),
-                counters.parseFailed,
-                counters.paramsStored,
-                counters.tablesExtracted,
-                counters.columnsExtracted,
-                counters.joinPairsExtracted,
-                counters.outputsStored,
-                counters.fieldUsagesStored,
-                System.currentTimeMillis() - started
-        );
+        return new InvalidateUsageCatalogCacheResult(safeRecords.size());
     }
 
     // ---------------------------------------------------------------------------------------
@@ -205,8 +195,6 @@ public class UsageCatalogService {
             if (!indexing.compareAndSet(false, true)) {
                 return status;
             }
-            long started = System.currentTimeMillis();
-            String startedAt = Instant.ofEpochMilli(started).toString();
             status = UsageCatalogStatus.indexing(
                     properties.catalogEnabled(), configuredSources());
             try {
@@ -217,44 +205,21 @@ public class UsageCatalogService {
                         loaded.records().size(), loaded.filesScanned(), System.currentTimeMillis() - t);
                 t = System.currentTimeMillis();
                 InvalidateUsageCatalogCacheResult rebuildResult = rebuild(loaded.records());
-                log.info("ensureIndexed: rebuild completed: {} records ({} parseFailed, {} joins), {} ms",
-                        rebuildResult.recordsLoaded(), rebuildResult.parseFailed(),
-                        rebuildResult.joinPairsExtracted(), System.currentTimeMillis() - t);
+                log.info("ensureIndexed: rebuild completed: {} records, {} ms",
+                        rebuildResult.recordsLoaded(), System.currentTimeMillis() - t);
                 t = System.currentTimeMillis();
-                ReresolveResult reresolve = autoReresolve();
-                log.info("ensureIndexed: reresolve completed: {} resolved, {} ambiguous, {} unresolved, {} ms",
-                        reresolve != null ? reresolve.tablesResolved() : 0,
-                        reresolve != null ? reresolve.tablesAmbiguous() : 0,
-                        reresolve != null ? reresolve.tablesUnresolved() : 0,
+                autoReresolve();
+                log.info("ensureIndexed: reresolve completed, {} ms",
                         System.currentTimeMillis() - t);
                 status = UsageCatalogStatus.ready(
-                        properties.catalogEnabled(), "ready", configuredSources(),
-                        startedAt, loaded.filesScanned(), loaded.records().size(),
-                        loaded.errors().size(), loaded.duplicateKeys().size(),
-                        loaded.errors(), loaded.duplicateKeys(),
-                        Instant.now().toString(), Instant.now().toString(),
-                        System.currentTimeMillis() - started,
-                        rebuildResult.parseFailed(), rebuildResult.paramsStored(),
-                        rebuildResult.tablesExtracted(), rebuildResult.columnsExtracted(),
-                        rebuildResult.joinPairsExtracted(), rebuildResult.outputsStored(),
-                        rebuildResult.fieldUsagesStored(), rebuildResult.indexBuildMs(),
-                        reresolve == null ? null : reresolve.tablesResolved(),
-                        reresolve == null ? null : reresolve.tablesAmbiguous(),
-                        reresolve == null ? null : reresolve.tablesUnresolved()
-                );
+                        properties.catalogEnabled(), configuredSources());
                 indexReady = true;
                 return status;
             } catch (RuntimeException e) {
                 indexReady = false;
                 status = UsageCatalogStatus.ready(
-                        properties.catalogEnabled(), "failed", configuredSources(),
-                        startedAt, 0, 0, 1, 0,
-                        List.of("index rebuild failed: " + e.getMessage()), List.of(),
-                        null, Instant.now().toString(),
-                        System.currentTimeMillis() - started,
-                        null, null, null, null, null, null, null, null,
-                        null, null, null
-                );
+                        properties.catalogEnabled(), configuredSources())
+                        .withState("failed");
                 throw e;
             } finally {
                 indexing.set(false);
@@ -899,7 +864,7 @@ public class UsageCatalogService {
         return new QueryDetail(
                 head.sourceKind(), head.sourcePath(), head.sourceUnit(),
                 head.businessLabel(), head.businessDomain(), head.rawSql(), head.normalizedSql(),
-                head.parseStatus(), head.parseError(), head.sourceMetaJson(), head.ingestedAt(),
+                head.parseStatus(),
                 tags, params, tables, columns, joinPairs, outputs, fieldUsages);
     }
 
@@ -909,7 +874,7 @@ public class UsageCatalogService {
         ensureIndexed();
         StringBuilder sql = new StringBuilder("""
                 SELECT DISTINCT q.source_kind, q.source_path, q.source_unit,
-                       q.business_label, q.business_domain, q.parse_status, q.ingested_at
+                   q.business_label, q.business_domain, q.parse_status
                 FROM query q
                 """);
         List<Object> args = new ArrayList<>();
@@ -934,7 +899,7 @@ public class UsageCatalogService {
             sql.append(" AND q.parse_status = ?");
             args.add(parseStatus);
         }
-        sql.append(" ORDER BY q.ingested_at DESC, q.source_kind, q.source_path, q.source_unit");
+        sql.append(" ORDER BY q.source_kind, q.source_path, q.source_unit");
         int safeLimit = limit == null || limit <= 0 ? 100 : Math.min(limit, 1000);
         sql.append(" LIMIT ?");
         args.add(safeLimit);
@@ -950,8 +915,7 @@ public class UsageCatalogService {
                 emptyToNull(rs.getString("source_unit")),
                 rs.getString("business_label"),
                 rs.getString("business_domain"),
-                rs.getString("parse_status"),
-                rs.getString("ingested_at")));
+                rs.getString("parse_status")));
 
         return new ListQueriesResult(entries, safeLimit, safeOffset, entries.size());
     }
@@ -1174,7 +1138,7 @@ public class UsageCatalogService {
         if (lookup == null) throw new IllegalArgumentException("lookup is required");
         Set<String> names = collectUnresolvedTableNames();
         if (names.isEmpty()) {
-            return new ReresolveResult(0, 0, 0, 0);
+            return new ReresolveResult();
         }
         log.info("reresolve: {} unresolved names to check", names.size());
         int resolved = 0;
@@ -1212,7 +1176,7 @@ public class UsageCatalogService {
             throw new IllegalStateException("Catalog write failed: " + e.getMessage(), e);
         }
 
-        return new ReresolveResult(names.size(), resolved, ambiguous, unresolved);
+        return new ReresolveResult();
     }
 
     private Set<String> collectUnresolvedTableNames() {
@@ -1668,9 +1632,6 @@ public class UsageCatalogService {
                 rs.getString("raw_sql"),
                 rs.getString("normalized_sql"),
                 rs.getString("parse_status"),
-                rs.getString("parse_error"),
-                rs.getString("source_meta_json"),
-                rs.getString("ingested_at"),
                 null, null, null, null, null, null, null
         );
     }
@@ -1738,15 +1699,12 @@ public class UsageCatalogService {
 
     private QueryDetail.FieldUsage fieldUsageRow(ResultSet rs) throws SQLException {
         return new QueryDetail.FieldUsage(
-                rs.getObject("query_output_id", Long.class),
                 rs.getString("business_object"),
                 new QueryDetail.FieldUsage.Transformation(
                         rs.getString("transformation_kind"),
                         rs.getString("transformation_description")),
                 new QueryDetail.FieldUsage.Location(
-                        rs.getString("location_kind"),
-                        rs.getString("location_details_json")),
-                rs.getString("headers_json"),
+                        rs.getString("location_kind")),
                 rs.getString("confidence"));
     }
 

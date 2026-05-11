@@ -265,7 +265,6 @@ public class BenchmarkService {
             if (qSig.equals(availSig) || qSig.equals(snapSig)) continue;
 
             out.add(new PgStatStatementEntry(
-                    e.getKey(),
                     trimQuery(a.query),
                     dCalls,
                     round1(a.totalExecTimeMs - (b == null ? 0.0 : b.totalExecTimeMs)),

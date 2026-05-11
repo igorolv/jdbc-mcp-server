@@ -11,9 +11,6 @@ public record QueryDetail(
         String rawSql,
         String normalizedSql,
         String parseStatus,
-        String parseError,
-        String sourceMetaJson,
-        String ingestedAt,
         List<String> tags,
         List<Param> parameters,
         List<Table> tables,
@@ -74,17 +71,15 @@ public record QueryDetail(
     }
 
     public record FieldUsage(
-            Long outputId,
             String businessObject,
             Transformation transformation,
             Location location,
-            String headersJson,
             String confidence
     ) {
         public record Transformation(String kind, String description) {
         }
 
-        public record Location(String kind, String detailsJson) {
+        public record Location(String kind) {
         }
     }
 }

@@ -19,7 +19,6 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.ListQueriesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.InvalidateUsageCatalogCacheResult;
-import ru.it_spectrum.ai.jdbc.mcp.model.usage.ReresolveResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
@@ -67,10 +66,6 @@ class UsageCatalogServiceTest {
         InvalidateUsageCatalogCacheResult result = service.rebuild(List.of(req));
 
         assertThat(result.recordsLoaded()).isEqualTo(1);
-        assertThat(result.parseFailed()).isEqualTo(0);
-        assertThat(result.tablesExtracted()).isEqualTo(2);
-        assertThat(result.columnsExtracted()).isGreaterThanOrEqualTo(4);
-        assertThat(result.joinPairsExtracted()).isEqualTo(1);
 
         QueryDetail stored = service.getQuery("dao", "app/dao/CustomerOrders.java", "findOrders");
         assertThat(stored.tables())
@@ -268,10 +263,9 @@ class UsageCatalogServiceTest {
 
         InvalidateUsageCatalogCacheResult result = service.rebuild(List.of(req));
 
-        assertThat(result.parseFailed()).isEqualTo(1);
+        assertThat(result.recordsLoaded()).isEqualTo(1);
         QueryDetail stored = service.getQuery("manual", "broken.sql", null);
         assertThat(stored.parseStatus()).isEqualTo("failed");
-        assertThat(stored.parseError()).isNotNull();
         assertThat(stored.parameters()).hasSize(1);
         assertThat(stored.outputs()).hasSize(1);
         assertThat(stored.fieldUsages()).hasSize(1);
@@ -392,17 +386,13 @@ class UsageCatalogServiceTest {
                 buildSimple("q2.sql",
                         "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id")));
 
-        ReresolveResult result = service.reresolve(name -> {
+        service.reresolve(name -> {
             List<String[]> matches = new java.util.ArrayList<>();
             if ("CUSTOMERS".equals(name) || "ORDERS".equals(name)) {
                 matches.add(new String[]{"app", name});
             }
             return matches;
         });
-
-        assertThat(result.tablesResolved()).isEqualTo(2);
-        assertThat(result.tablesAmbiguous()).isEqualTo(0);
-        assertThat(result.tablesUnresolved()).isEqualTo(0);
 
         QueryDetail stored = service.getQuery("dao", "q2.sql", null);
         assertThat(stored.tables())
@@ -420,14 +410,13 @@ class UsageCatalogServiceTest {
     void reresolveMarksAmbiguousWhenMultipleMatchesFound() {
         service.rebuild(List.of(buildSimple("q.sql", "SELECT id FROM orders")));
 
-        ReresolveResult result = service.reresolve(name -> {
+        service.reresolve(name -> {
             List<String[]> matches = new java.util.ArrayList<>();
             matches.add(new String[]{"app", name});
             matches.add(new String[]{"audit", name});
             return matches;
         });
 
-        assertThat(result.tablesAmbiguous()).isEqualTo(1);
         QueryDetail stored = service.getQuery("dao", "q.sql", null);
         assertThat(stored.tables()).singleElement()
                 .satisfies(t -> {
@@ -440,9 +429,8 @@ class UsageCatalogServiceTest {
     void reresolveLeavesUnresolvedWhenLookupReturnsNothing() {
         service.rebuild(List.of(buildSimple("q.sql", "SELECT id FROM orders")));
 
-        ReresolveResult result = service.reresolve(name -> new java.util.ArrayList<>());
+        service.reresolve(name -> new java.util.ArrayList<>());
 
-        assertThat(result.tablesUnresolved()).isEqualTo(1);
         QueryDetail stored = service.getQuery("dao", "q.sql", null);
         assertThat(stored.tables()).singleElement()
                 .satisfies(t -> assertThat(t.resolutionStatus()).isEqualTo("unresolved"));
