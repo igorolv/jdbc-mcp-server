@@ -54,18 +54,31 @@ class SchemaQueryContextService extends SchemaContextSupport {
         if (selected.size() < tableLimit && usageCatalog != null && usageCatalog.enabled()
                 && terms != null && !terms.isBlank()) {
             semanticCandidates = usageCatalog.semanticTableCandidates(schema, terms, tableLimit);
-            for (SemanticTableCandidate candidate : semanticCandidates) {
+
+            Map<String, List<String>> candidatesBySchema = new LinkedHashMap<>();
+            Map<String, SemanticTableCandidate> candidateByKey = new LinkedHashMap<>();
+            for (SemanticTableCandidate c : semanticCandidates) {
                 if (selected.size() >= tableLimit) break;
-                String candidateSchema = candidate.schema() == null ? schema : candidate.schema();
-                TableDescription described;
+                String cs = c.schema() == null ? schema : c.schema();
+                String ck = key(cs, c.table());
+                if (selected.containsKey(ck)) continue;
+                candidatesBySchema.computeIfAbsent(cs, k -> new ArrayList<>()).add(c.table());
+                candidateByKey.putIfAbsent(ck, c);
+            }
+            for (var entry : candidatesBySchema.entrySet()) {
+                Map<String, TableDescription> loaded;
                 try {
-                    described = metadata.describeTable(candidateSchema, candidate.table());
+                    loaded = metadata.describeTables(entry.getKey(), entry.getValue());
                 } catch (SQLException ignored) {
                     continue;
                 }
-                String tableKey = key(described.schema(), described.name());
-                selected.putIfAbsent(tableKey, described);
-                semanticMatchesByTable.put(tableKey, candidate);
+                for (TableDescription td : loaded.values()) {
+                    if (selected.size() >= tableLimit) break;
+                    String tk = key(td.schema(), td.name());
+                    selected.putIfAbsent(tk, td);
+                    SemanticTableCandidate c = candidateByKey.get(tk);
+                    if (c != null) semanticMatchesByTable.put(tk, c);
+                }
             }
         }
 

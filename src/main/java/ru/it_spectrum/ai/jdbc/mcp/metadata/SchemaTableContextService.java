@@ -54,12 +54,19 @@ class SchemaTableContextService extends SchemaContextSupport {
             TableDescription currentInfo = described.get(key(current.schema(), current.table()));
             if (currentInfo == null) continue;
 
+            Map<String, List<String>> neighborsBySchema = new LinkedHashMap<>();
             for (Neighbor neighbor : neighbors(currentInfo, incoming)) {
                 String neighborKey = key(neighbor.schema(), neighbor.table());
                 if (described.containsKey(neighborKey)) continue;
-                TableDescription neighborInfo = metadata.describeTable(neighbor.schema(), neighbor.table());
-                described.put(neighborKey, neighborInfo);
-                queue.add(new NodeDepth(neighbor.schema(), neighbor.table(), current.depth() + 1));
+                neighborsBySchema.computeIfAbsent(neighbor.schema(), k -> new ArrayList<>()).add(neighbor.table());
+            }
+            for (var entry : neighborsBySchema.entrySet()) {
+                Map<String, TableDescription> loaded = metadata.describeTables(entry.getKey(), entry.getValue());
+                for (TableDescription nd : loaded.values()) {
+                    String nk = key(nd.schema(), nd.name());
+                    described.put(nk, nd);
+                    queue.add(new NodeDepth(nd.schema(), nd.name(), current.depth() + 1));
+                }
             }
         }
 
