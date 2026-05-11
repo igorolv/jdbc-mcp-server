@@ -64,6 +64,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.stream.Stream;
@@ -388,14 +389,45 @@ public class UsageCatalogService {
         return path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip");
     }
 
-    private void insertAll(Connection conn, List<QueryUsage> records, Counters counters,
+private void insertAll(Connection conn, List<QueryUsage> records, Counters counters,
                            boolean throwOnDuplicate) throws SQLException {
-        Set<String> seen = new LinkedHashSet<>();
-        int total = records.size();
+        long phaseStart = System.currentTimeMillis();
+        List<PreparedRecord> prepared = prepareRecords(records, counters, throwOnDuplicate);
+
+        long insertStart = System.currentTimeMillis();
+        int total = prepared.size();
         int processed = 0;
         long lastLog = System.currentTimeMillis();
-        long totalParseMs = 0;
-        long totalInsertMs = 0;
+
+        for (PreparedRecord pr : prepared) {
+            long queryId = insertQuery(conn, pr.req, pr.src, pr.unit, pr.model, pr.parseStatus, pr.parseError);
+            insertTags(conn, queryId, pr.req.businessTags());
+            counters.paramsStored += insertParams(conn, queryId, pr.model, pr.req.parameters());
+            List<TableInsertResult> tableInserts = insertTables(conn, queryId, pr.model);
+            counters.tablesExtracted += tableInserts.size();
+            counters.columnsExtracted += insertColumns(conn, queryId, pr.model, tableInserts);
+            counters.joinPairsExtracted += insertJoinPairs(conn, queryId, pr.model);
+            Map<String, Long> outputAliasToId = insertOutputs(conn, queryId, pr.req.outputs());
+            counters.outputsStored += outputAliasToId.size();
+            counters.fieldUsagesStored += insertFieldUsages(conn, queryId, pr.req.fieldUsages(), outputAliasToId);
+            processed++;
+
+            long now = System.currentTimeMillis();
+            if (processed % 200 == 0 || now - lastLog > 5000) {
+                log.info("Insert progress: {}/{} records (elapsed: {} ms)",
+                        processed, total, System.currentTimeMillis() - insertStart);
+                lastLog = now;
+            }
+        }
+        log.info("Insert phase: {}/{} records in {} ms (total: {} ms)",
+                processed, total, System.currentTimeMillis() - insertStart,
+                System.currentTimeMillis() - phaseStart);
+    }
+
+    private List<PreparedRecord> prepareRecords(List<QueryUsage> records, Counters counters,
+                                                 boolean throwOnDuplicate) {
+        List<QueryUsage> valid = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
         for (QueryUsage req : records) {
             validateRequest(req);
             QueryUsageSource src = req.source();
@@ -409,46 +441,42 @@ public class UsageCatalogService {
                 }
                 continue;
             }
-
-            QueryModel model;
-            String parseStatus;
-            String parseError = null;
-            long t = System.currentTimeMillis();
-            try {
-                model = analysis.model(req.sql());
-                parseStatus = "parsed";
-            } catch (JSQLParserException | RuntimeException e) {
-                model = new QueryModel();
-                parseStatus = "failed";
-                parseError = rootMessage(e);
-                counters.parseFailed++;
-            }
-            totalParseMs += System.currentTimeMillis() - t;
-            t = System.currentTimeMillis();
-            long queryId = insertQuery(conn, req, src, unit, model, parseStatus, parseError);
-            insertTags(conn, queryId, req.businessTags());
-            counters.paramsStored += insertParams(conn, queryId, model, req.parameters());
-            List<TableInsertResult> tableInserts = insertTables(conn, queryId, model);
-            counters.tablesExtracted += tableInserts.size();
-            counters.columnsExtracted += insertColumns(conn, queryId, model, tableInserts);
-            counters.joinPairsExtracted += insertJoinPairs(conn, queryId, model);
-            Map<String, Long> outputAliasToId = insertOutputs(conn, queryId, req.outputs());
-            counters.outputsStored += outputAliasToId.size();
-            counters.fieldUsagesStored += insertFieldUsages(conn, queryId, req.fieldUsages(), outputAliasToId);
-            totalInsertMs += System.currentTimeMillis() - t;
-            processed++;
-
-            long now = System.currentTimeMillis();
-            if (processed % 200 == 0 || now - lastLog > 5000) {
-                log.info("insertAll progress: {}/{} records (failed: {}, parseAvg: {} ms, insertAvg: {} ms, total: {} ms)",
-                        processed, total, counters.parseFailed,
-                        totalParseMs / processed, totalInsertMs / processed, now - lastLog);
-                lastLog = now;
-            }
+            valid.add(req);
         }
-        log.info("insertAll done: {}/{} records, {} parseFailed, {} parseMs, {} insertMs, {} tables, {} joins, {} columns",
-                processed, total, counters.parseFailed, totalParseMs, totalInsertMs,
-                counters.tablesExtracted, counters.joinPairsExtracted, counters.columnsExtracted);
+
+        if (valid.isEmpty()) return List.of();
+
+        int cores = Runtime.getRuntime().availableProcessors();
+        boolean parallel = valid.size() > 100 && cores > 1;
+        long t = System.currentTimeMillis();
+
+        AtomicInteger parseFailed = new AtomicInteger();
+        Stream<QueryUsage> stream = parallel ? valid.parallelStream() : valid.stream();
+
+        List<PreparedRecord> result = stream
+                .map(req -> {
+                    QueryModel model;
+                    String parseStatus;
+                    String parseError = null;
+                    try {
+                        model = analysis.model(req.sql());
+                        parseStatus = "parsed";
+                    } catch (JSQLParserException | RuntimeException e) {
+                        model = new QueryModel();
+                        parseStatus = "failed";
+                        parseError = rootMessage(e);
+                        parseFailed.incrementAndGet();
+                    }
+                    QueryUsageSource src = req.source();
+                    String unit = src.unit() == null ? "" : src.unit();
+                    return new PreparedRecord(req, src, unit, model, parseStatus, parseError);
+                })
+                .toList();
+
+        counters.parseFailed += parseFailed.get();
+        log.info("Parse phase: {} records ({} failed, {} parallel) in {} ms",
+                result.size(), parseFailed.get(), parallel, System.currentTimeMillis() - t);
+return result;
     }
 
     private void validateRequest(QueryUsage req) {
@@ -1907,6 +1935,16 @@ public class UsageCatalogService {
 
     private record SemanticTermRow(String schema, String table, String sourceKind,
                                    String termValue, int support, List<QuerySourceRef> sourceRefs) {
+    }
+
+    private record PreparedRecord(
+            QueryUsage req,
+            QueryUsageSource src,
+            String unit,
+            QueryModel model,
+            String parseStatus,
+            String parseError
+    ) {
     }
 
     private record ParamRow(int ordinal, String name, String dataType, String defaultValue,
