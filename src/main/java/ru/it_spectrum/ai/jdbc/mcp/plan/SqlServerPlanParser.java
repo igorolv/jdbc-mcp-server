@@ -132,7 +132,7 @@ public final class SqlServerPlanParser implements PlanParser {
             Node n = all.item(i);
             if (!(n instanceof Element e)) continue;
             String name = localName(e);
-            if (name != null && name.startsWith("Stmt") && firstDirectChild(e, "QueryPlan") != null) {
+            if (name.startsWith("Stmt") && firstDirectChild(e, "QueryPlan") != null) {
                 return e;
             }
         }

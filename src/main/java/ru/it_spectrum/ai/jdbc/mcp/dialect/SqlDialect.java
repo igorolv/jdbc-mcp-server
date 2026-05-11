@@ -5,7 +5,6 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Database-specific SQL generation and fix-ups. Each concrete implementation knows how to:
