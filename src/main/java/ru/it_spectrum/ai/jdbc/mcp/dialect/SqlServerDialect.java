@@ -260,6 +260,105 @@ public class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String schemaColumnMetadataQuery() {
+        return """
+                SELECT t.name AS table_name,
+                       c.name AS column_name,
+                       CAST(ep.value AS nvarchar(max)) AS comment,
+                       dc.definition AS default_value
+                FROM sys.tables t
+                JOIN sys.schemas s ON s.schema_id = t.schema_id
+                JOIN sys.columns c ON c.object_id = t.object_id
+                LEFT JOIN sys.extended_properties ep
+                  ON ep.major_id = c.object_id
+                 AND ep.minor_id = c.column_id
+                 AND ep.name = 'MS_Description'
+                LEFT JOIN sys.default_constraints dc
+                  ON dc.parent_object_id = c.object_id
+                 AND dc.parent_column_id = c.column_id
+                WHERE s.name = ?
+                ORDER BY t.name, c.column_id
+                """;
+    }
+
+    @Override
+    public String schemaConstraintsQuery() {
+        return """
+                WITH targets AS (
+                    SELECT t.object_id, t.name AS table_name
+                    FROM sys.tables t
+                    JOIN sys.schemas s ON s.schema_id = t.schema_id
+                    WHERE s.name = ?
+                )
+                SELECT targets.table_name,
+                       kc.name AS name,
+                       CASE kc.type WHEN 'PK' THEN 'PRIMARY_KEY' ELSE 'UNIQUE' END AS type,
+                       STUFF((
+                           SELECT ',' + c.name
+                           FROM sys.index_columns ic
+                           JOIN sys.columns c
+                             ON c.object_id = ic.object_id
+                            AND c.column_id = ic.column_id
+                           WHERE ic.object_id = kc.parent_object_id
+                             AND ic.index_id = kc.unique_index_id
+                             AND ic.is_included_column = 0
+                           ORDER BY ic.key_ordinal
+                           FOR XML PATH(''), TYPE
+                       ).value('.', 'nvarchar(max)'), 1, 1, '') AS columns,
+                       CAST(NULL AS nvarchar(max)) AS definition,
+                       CAST(NULL AS nvarchar(128)) AS referenced_schema,
+                       CAST(NULL AS nvarchar(128)) AS referenced_table,
+                       CAST(NULL AS nvarchar(max)) AS referenced_columns
+                FROM sys.key_constraints kc
+                JOIN targets ON targets.object_id = kc.parent_object_id
+                WHERE kc.type IN ('PK', 'UQ')
+                UNION ALL
+                SELECT targets.table_name,
+                       fk.name AS name,
+                       CAST('FOREIGN_KEY' AS varchar(20)) AS type,
+                       STUFF((
+                           SELECT ',' + pc.name
+                           FROM sys.foreign_key_columns fkc
+                           JOIN sys.columns pc
+                             ON pc.object_id = fkc.parent_object_id
+                            AND pc.column_id = fkc.parent_column_id
+                           WHERE fkc.constraint_object_id = fk.object_id
+                           ORDER BY fkc.constraint_column_id
+                           FOR XML PATH(''), TYPE
+                       ).value('.', 'nvarchar(max)'), 1, 1, '') AS columns,
+                       CAST(NULL AS nvarchar(max)) AS definition,
+                       rs.name AS referenced_schema,
+                       rt.name AS referenced_table,
+                       STUFF((
+                           SELECT ',' + rc.name
+                           FROM sys.foreign_key_columns fkc
+                           JOIN sys.columns rc
+                             ON rc.object_id = fkc.referenced_object_id
+                            AND rc.column_id = fkc.referenced_column_id
+                           WHERE fkc.constraint_object_id = fk.object_id
+                           ORDER BY fkc.constraint_column_id
+                           FOR XML PATH(''), TYPE
+                       ).value('.', 'nvarchar(max)'), 1, 1, '') AS referenced_columns
+                FROM sys.foreign_keys fk
+                JOIN targets ON targets.object_id = fk.parent_object_id
+                JOIN sys.tables rt ON rt.object_id = fk.referenced_object_id
+                JOIN sys.schemas rs ON rs.schema_id = rt.schema_id
+                UNION ALL
+                SELECT targets.table_name,
+                       cc.name AS name,
+                       CAST('CHECK' AS varchar(20)) AS type,
+                       CASE WHEN cc.parent_column_id > 0 THEN COL_NAME(cc.parent_object_id, cc.parent_column_id) ELSE NULL END AS columns,
+                       cc.definition AS definition,
+                       CAST(NULL AS nvarchar(128)) AS referenced_schema,
+                       CAST(NULL AS nvarchar(128)) AS referenced_table,
+                       CAST(NULL AS nvarchar(max)) AS referenced_columns
+                FROM sys.check_constraints cc
+                JOIN targets ON targets.object_id = cc.parent_object_id
+                ORDER BY name
+                """;
+    }
+
+    @Override
     public String columnDefaultsQuery() {
         return """
                 SELECT c.name AS column_name,

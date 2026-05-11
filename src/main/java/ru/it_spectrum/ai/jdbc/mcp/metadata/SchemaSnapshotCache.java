@@ -136,6 +136,22 @@ public class SchemaSnapshotCache {
         lists.keySet().removeIf(listKey -> Objects.equals(norm, listKey.schema));
     }
 
+    /**
+     * Bulk-populate the table-description cache from a pre-loaded schema map.
+     * Each entry is stored with the current timestamp so subsequent {@link #describeTable}
+     * lookups hit the cache.
+     */
+    public void putAll(Map<String, TableDescription> descriptions) {
+        if (!enabled()) return;
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, TableDescription> entry : descriptions.entrySet()) {
+            TableDescription td = entry.getValue();
+            TableKey key = TableKey.of(td.schema(), td.name());
+            if (maxEntries > 0 && describes.size() >= maxEntries) describes.clear();
+            describes.put(key, new Entry<>(td, now));
+        }
+    }
+
     public SchemaSnapshot snapshotInfo(String schema) {
         String norm = normalize(schema);
 

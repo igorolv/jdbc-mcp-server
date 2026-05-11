@@ -343,6 +343,14 @@ public class MetadataService {
         return cols;
     }
 
+    private static Map<String, Object> readRow(ResultSet rs, List<String> columns) throws SQLException {
+        Map<String, Object> row = new LinkedHashMap<>(columns.size() * 2);
+        for (int i = 0; i < columns.size(); i++) {
+            row.put(columns.get(i), rs.getObject(i + 1));
+        }
+        return row;
+    }
+
     private PrimaryKey fetchPrimaryKey(DatabaseMetaData md, String schema, String table)
             throws SQLException {
         List<String> cols = new ArrayList<>();
@@ -536,6 +544,426 @@ public class MetadataService {
                     p.fromSchema()[0], p.fromTable()[0], p.fromColumns(), p.toColumns()));
         }
         return out;
+    }
+
+    // ---------- describeSchema (bulk: entire schema in ~10 RS instead of N×10) ----------
+
+    /**
+     * Bulk-load structural metadata for every table in a schema using schema-level metadata
+     * calls and SQL queries. Returns a map keyed by {@code "schema.table"}.
+     * <p>Instead of {@code N × 10} database roundtrips (one per table), this makes roughly 10
+     * roundtrips total — one for each metadata aspect — regardless of the number of tables.
+     * <p>The result is also pushed into the per-table snapshot cache so subsequent
+     * {@link #describeTable} calls hit the cache.
+     */
+    public Map<String, TableDescription> describeSchema(String schema) throws SQLException {
+        String effectiveSchema = resolveSchema(schema);
+        List<TableEntry> tables = listTables(effectiveSchema, "%",
+                new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
+
+        Set<String> tableNames = new LinkedHashSet<>();
+        Map<String, TableEntry> tableEntryByName = new LinkedHashMap<>();
+        for (TableEntry t : tables) {
+            if (t.name() != null && !t.name().isBlank()) {
+                tableNames.add(t.name());
+                tableEntryByName.put(t.name(), t);
+            }
+        }
+
+        if (tableNames.isEmpty()) return Map.of();
+
+        Map<String, TableDescription> result = executor.withConnection(conn -> {
+            DatabaseMetaData md = conn.getMetaData();
+
+            Map<String, List<Column>> columnsMap = fetchAllColumns(md, effectiveSchema);
+            mergeAllColumnMetadata(conn, columnsMap, effectiveSchema);
+
+            Map<String, List<Index>> indexesMap = new LinkedHashMap<>();
+            Map<String, List<UniqueConstraint>> uniqueMap = new LinkedHashMap<>();
+            fetchAllIndexesBulk(conn, effectiveSchema, indexesMap, uniqueMap);
+
+            Map<String, List<Constraint>> constraintsMap = fetchAllConstraintsBulk(conn, effectiveSchema);
+            Map<String, PrimaryKey> pkMap = primaryKeysFromConstraints(constraintsMap);
+            Map<String, List<ForeignKey>> fkMap = foreignKeysFromConstraints(effectiveSchema, constraintsMap);
+            Map<String, List<IncomingForeignKey>> exportedMap = incomingForeignKeysFromConstraints(
+                    effectiveSchema, constraintsMap);
+            Map<String, List<Trigger>> triggersMap = fetchAllTriggersBulk(conn, effectiveSchema);
+
+            Map<String, TableDescription> descMap = new LinkedHashMap<>();
+            for (String t : tableNames) {
+                TableEntry te = tableEntryByName.get(t);
+                List<Column> cols = columnsMap.getOrDefault(t, List.of());
+                PrimaryKey pk = pkMap.get(t);
+                List<UniqueConstraint> unique = uniqueMap.getOrDefault(t, List.of());
+                List<Index> indexes = indexesMap.getOrDefault(t, List.of());
+                List<ForeignKey> fks = fkMap.getOrDefault(t, List.of());
+                List<IncomingForeignKey> refs = exportedMap.getOrDefault(t, List.of());
+                List<Constraint> cons = constraintsMap.getOrDefault(t, List.of());
+                Map<String, List<String>> allowedValues = extractAllowedValues(cons);
+                List<Trigger> triggers = triggersMap.getOrDefault(t, List.of());
+
+                descMap.put(key(te.schema(), t), new TableDescription(
+                        te.schema(), t, te.type(), te.remarks(),
+                        cols, pk, unique, indexes, fks, refs,
+                        cons, allowedValues, triggers));
+            }
+            return descMap;
+        });
+
+        cache.putAll(result);
+        return result;
+    }
+
+    private Map<String, List<Column>> fetchAllColumns(DatabaseMetaData md, String schema)
+            throws SQLException {
+        Map<String, List<Column>> byTable = new LinkedHashMap<>();
+        try (ResultSet rs = md.getColumns(null, schema, "%", "%")) {
+            while (rs.next()) {
+                String table = rs.getString("TABLE_NAME");
+                String name = rs.getString("COLUMN_NAME");
+                int ordinal = rs.getInt("ORDINAL_POSITION");
+                String typeName = rs.getString("TYPE_NAME");
+                int size = rs.getInt("COLUMN_SIZE");
+                int decimals = rs.getInt("DECIMAL_DIGITS");
+                Integer decimalDigits = rs.wasNull() ? null : decimals;
+                boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
+                String autoInc = null;
+                try {
+                    autoInc = rs.getString("IS_AUTOINCREMENT");
+                } catch (SQLException ignore) {
+                }
+                Boolean autoIncrement = "YES".equalsIgnoreCase(autoInc) ? Boolean.TRUE : null;
+                byTable.computeIfAbsent(table, k -> new ArrayList<>())
+                        .add(new Column(name, ordinal, typeName, size, decimalDigits,
+                                nullable, null, null, autoIncrement));
+            }
+        }
+        for (List<Column> cols : byTable.values()) {
+            cols.sort(Comparator.comparingInt(Column::ordinalPosition));
+        }
+        return byTable;
+    }
+
+    private void mergeAllColumnMetadata(Connection conn, Map<String, List<Column>> columnsMap,
+                                         String schema) throws SQLException {
+        String sql = dialect.schemaColumnMetadataQuery();
+        if (sql == null) {
+            // fallback: merge per-table
+            for (Map.Entry<String, List<Column>> entry : columnsMap.entrySet()) {
+                String table = entry.getKey();
+                List<Column> merged = fetchColumnMetadataSupplement(conn, entry.getValue(), schema, table);
+                entry.setValue(merged);
+            }
+            return;
+        }
+        Map<String, Map<String, String>> commentsByTable = new LinkedHashMap<>();
+        Map<String, Map<String, String>> defaultsByTable = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            ps.setString(1, schema);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<String> colsList = readColumns(rs);
+                if (colsList.size() >= 4) {
+                    String tableCol = colsList.get(0);
+                    String nameCol = colsList.get(1);
+                    String commentCol = colsList.get(2);
+                    String defaultCol = colsList.get(3);
+                    while (rs.next()) {
+                        Object tableVal = rs.getObject(tableCol);
+                        if (tableVal == null) continue;
+                        String tn = String.valueOf(tableVal).toUpperCase();
+                        Object nameVal = rs.getObject(nameCol);
+                        if (nameVal == null) continue;
+                        String cn = String.valueOf(nameVal).toUpperCase();
+                        Object commentVal = rs.getObject(commentCol);
+                        if (commentVal != null && !String.valueOf(commentVal).isBlank()) {
+                            commentsByTable.computeIfAbsent(tn, k -> new LinkedHashMap<>())
+                                    .put(cn, String.valueOf(commentVal));
+                        }
+                        Object defVal = rs.getObject(defaultCol);
+                        if (defVal != null && !String.valueOf(defVal).isBlank()) {
+                            defaultsByTable.computeIfAbsent(tn, k -> new LinkedHashMap<>())
+                                    .put(cn, String.valueOf(defVal));
+                        }
+                    }
+                }
+            } catch (SQLException e) {
+                // fallback per-table
+                for (Map.Entry<String, List<Column>> entry : columnsMap.entrySet()) {
+                    String table = entry.getKey();
+                    List<Column> merged = fetchColumnMetadataSupplement(conn, entry.getValue(), schema, table);
+                    entry.setValue(merged);
+                }
+                return;
+            }
+        }
+        for (Map.Entry<String, List<Column>> entry : columnsMap.entrySet()) {
+            String tn = entry.getKey().toUpperCase();
+            Map<String, String> comments = commentsByTable.getOrDefault(tn, Map.of());
+            Map<String, String> defaults = defaultsByTable.getOrDefault(tn, Map.of());
+            entry.setValue(mergeColumnMetadata(entry.getValue(), comments, defaults));
+        }
+    }
+
+    private void fetchAllIndexesBulk(Connection conn, String schema,
+                                     Map<String, List<Index>> indexesMap,
+                                     Map<String, List<UniqueConstraint>> uniqueMap) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(dialect.indexStatsQuery(),
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            ps.setString(1, schema == null ? "" : schema);
+            ps.setObject(2, null);
+            ps.setObject(3, null);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String table = rs.getString("table_name");
+                    String idxName = rs.getString("index_name");
+                    if (table == null || idxName == null) continue;
+                    boolean unique = toBool(rs.getObject("is_unique"));
+                    List<String> columns = splitCsv(rs.getObject("columns"));
+                    indexesMap.computeIfAbsent(table, k -> new ArrayList<>())
+                            .add(new Index(idxName, unique, columns));
+                    if (unique) {
+                        uniqueMap.computeIfAbsent(table, k -> new ArrayList<>())
+                                .add(new UniqueConstraint(idxName, columns));
+                    }
+                }
+            }
+            return;
+        } catch (SQLException ignored) {
+            // Fall back below. Some drivers are stricter about catalog views under low privileges.
+        }
+
+        DatabaseMetaData md = conn.getMetaData();
+        List<TableEntry> tables = new ArrayList<>();
+        try (ResultSet rs = md.getTables(null, schema, "%", new String[]{"TABLE"})) {
+            while (rs.next()) {
+                tables.add(new TableEntry(
+                        rs.getString("TABLE_SCHEM"),
+                        rs.getString("TABLE_NAME"),
+                        rs.getString("TABLE_TYPE"),
+                        rs.getString("REMARKS")));
+            }
+        }
+        for (TableEntry table : tables) {
+            List<Index> indexes = fetchIndexes(md, table.schema(), table.name());
+            indexesMap.put(table.name(), indexes);
+            List<UniqueConstraint> unique = new ArrayList<>();
+            for (Index index : indexes) {
+                if (index.unique()) {
+                    unique.add(new UniqueConstraint(index.name(), index.columns()));
+                }
+            }
+            uniqueMap.put(table.name(), unique);
+        }
+    }
+
+    private Map<String, PrimaryKey> primaryKeysFromConstraints(
+            Map<String, List<Constraint>> constraintsMap) {
+        Map<String, PrimaryKey> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Constraint>> entry : constraintsMap.entrySet()) {
+            for (Constraint constraint : entry.getValue()) {
+                if ("PRIMARY_KEY".equalsIgnoreCase(constraint.type())) {
+                    out.put(entry.getKey(), new PrimaryKey(constraint.name(), constraint.columns()));
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    private Map<String, List<ForeignKey>> foreignKeysFromConstraints(
+            String schema, Map<String, List<Constraint>> constraintsMap) {
+        Map<String, List<ForeignKey>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Constraint>> entry : constraintsMap.entrySet()) {
+            for (Constraint constraint : entry.getValue()) {
+                if (!"FOREIGN_KEY".equalsIgnoreCase(constraint.type())) continue;
+                if (constraint.referencedTable() == null || constraint.referencedColumns() == null) continue;
+                out.computeIfAbsent(entry.getKey(), k -> new ArrayList<>())
+                        .add(new ForeignKey(constraint.name(), constraint.columns(),
+                                constraint.referencedSchema() == null ? schema : constraint.referencedSchema(),
+                                constraint.referencedTable(), constraint.referencedColumns()));
+            }
+        }
+        return out;
+    }
+
+    private Map<String, List<IncomingForeignKey>> incomingForeignKeysFromConstraints(
+            String schema, Map<String, List<Constraint>> constraintsMap) {
+        Map<String, List<IncomingForeignKey>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Constraint>> entry : constraintsMap.entrySet()) {
+            String childTable = entry.getKey();
+            for (Constraint constraint : entry.getValue()) {
+                if (!"FOREIGN_KEY".equalsIgnoreCase(constraint.type())) continue;
+                if (constraint.referencedTable() == null || constraint.referencedColumns() == null) continue;
+                out.computeIfAbsent(constraint.referencedTable(), k -> new ArrayList<>())
+                        .add(new IncomingForeignKey(constraint.name(), schema, childTable,
+                                constraint.columns(), constraint.referencedColumns()));
+            }
+        }
+        return out;
+    }
+
+    private Map<String, List<Constraint>> fetchAllConstraintsBulk(Connection conn, String schema) throws SQLException {
+        String sql = dialect.schemaConstraintsQuery();
+        if (sql == null) {
+            Map<String, List<Constraint>> out = new LinkedHashMap<>();
+            String tableSql = dialect.tableConstraintsQuery();
+            if (tableSql == null) return out;
+            DatabaseMetaData md = conn.getMetaData();
+            try (ResultSet rs = md.getTables(null, schema, "%",
+                    new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"})) {
+                while (rs.next()) {
+                    String table = rs.getString("TABLE_NAME");
+                    List<Constraint> cons = fetchConstraints(conn, tableSql, schema, table);
+                    if (!cons.isEmpty()) out.put(table, cons);
+                }
+            }
+            return out;
+        }
+        Map<String, List<Constraint>> out = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            ps.setString(1, schema == null ? "" : schema);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<String> columns = readColumns(rs);
+                while (rs.next()) {
+                    Map<String, Object> row = readRow(rs, columns);
+                    String table = asString(getCI(row, "table_name"));
+                    if (table == null || table.isBlank()) continue;
+                    out.computeIfAbsent(table, k -> new ArrayList<>()).add(constraintFromRow(row));
+                }
+            }
+        }
+        return out;
+    }
+
+    private List<Constraint> fetchConstraints(Connection conn, String sql, String schema, String table)
+            throws SQLException {
+        List<Constraint> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            ps.setString(1, schema == null ? "" : schema);
+            ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<String> columns = readColumns(rs);
+                while (rs.next()) {
+                    out.add(constraintFromRow(readRow(rs, columns)));
+                }
+            }
+        }
+        return out;
+    }
+
+    private Constraint constraintFromRow(Map<String, Object> row) {
+        String name = asString(getCI(row, "name"));
+        String type = asString(getCI(row, "type"));
+        List<String> columns = splitCsv(getCI(row, "columns"));
+        Object definitionRaw = getCI(row, "definition");
+        String definition = null;
+        String allowedValuesColumn = null;
+        List<String> allowedValuesList = null;
+        if (definitionRaw != null && !String.valueOf(definitionRaw).isBlank()) {
+            definition = String.valueOf(definitionRaw);
+            Map.Entry<String, List<String>> allowed = parseAllowedValues(definition);
+            if (allowed != null) {
+                allowedValuesColumn = allowed.getKey();
+                allowedValuesList = allowed.getValue();
+            }
+        }
+        String referencedSchema = null;
+        String referencedTable = null;
+        List<String> referencedColumns = null;
+        Object referencedTableRaw = getCI(row, "referenced_table");
+        if (referencedTableRaw != null && !String.valueOf(referencedTableRaw).isBlank()) {
+            referencedSchema = asString(getCI(row, "referenced_schema"));
+            referencedTable = String.valueOf(referencedTableRaw);
+            referencedColumns = splitCsv(getCI(row, "referenced_columns"));
+        }
+        return new Constraint(name, type, columns, definition,
+                allowedValuesColumn, allowedValuesList,
+                referencedSchema, referencedTable, referencedColumns);
+    }
+
+    private Map<String, List<Trigger>> fetchAllTriggersBulk(Connection conn, String schema) throws SQLException {
+        List<Trigger> allTriggers = fetchSchemaTriggers(conn, schema, false);
+        Map<String, List<Trigger>> out = new LinkedHashMap<>();
+        for (Trigger t : allTriggers) {
+            out.computeIfAbsent(t.table(), k -> new ArrayList<>()).add(t);
+        }
+        return out;
+    }
+
+    private List<Trigger> fetchSchemaTriggers(Connection conn, String schema, boolean includeDefinition)
+            throws SQLException {
+        String bulkSql = dialect.schemaTriggersQuery();
+        if (bulkSql != null) {
+            List<Trigger> out = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(bulkSql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+                ps.setString(1, schema == null ? "" : schema);
+                try (ResultSet rs = ps.executeQuery()) {
+                    List<String> columns = readColumns(rs);
+                    while (rs.next()) {
+                        out.add(triggerFromRow(readRow(rs, columns), includeDefinition));
+                    }
+                }
+            }
+            return out;
+        }
+
+        String tableSql = dialect.tableTriggersQuery();
+        if (tableSql == null) return List.of();
+        DatabaseMetaData md = conn.getMetaData();
+        List<Trigger> out = new ArrayList<>();
+        try (ResultSet rs = md.getTables(null, schema, "%", new String[]{"TABLE"})) {
+            while (rs.next()) {
+                String table = rs.getString("TABLE_NAME");
+                try (PreparedStatement ps = conn.prepareStatement(tableSql,
+                        ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                    ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                    ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+                    ps.setString(1, schema == null ? "" : schema);
+                    ps.setString(2, table);
+                    try (ResultSet triggerRs = ps.executeQuery()) {
+                        List<String> columns = readColumns(triggerRs);
+                        while (triggerRs.next()) {
+                            out.add(triggerFromRow(readRow(triggerRs, columns), includeDefinition));
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private Trigger triggerFromRow(Map<String, Object> row, boolean includeDefinition) {
+        Object definitionRaw = getCI(row, "definition");
+        String definition = (includeDefinition && definitionRaw != null
+                && !String.valueOf(definitionRaw).isBlank())
+                ? String.valueOf(definitionRaw) : null;
+        return new Trigger(
+                asString(getCI(row, "schema")),
+                asString(getCI(row, "table_name")),
+                asString(getCI(row, "name")),
+                asString(getCI(row, "timing")),
+                splitEvents(getCI(row, "events")),
+                toBool(getCI(row, "enabled")),
+                definition);
+    }
+
+    private String key(String schema, String table) {
+        return (schema == null ? "" : schema.toLowerCase(Locale.ROOT)) + "."
+                + (table == null ? "" : table.toLowerCase(Locale.ROOT));
     }
 
     // ---------- Views / routines / sequences / search ----------
