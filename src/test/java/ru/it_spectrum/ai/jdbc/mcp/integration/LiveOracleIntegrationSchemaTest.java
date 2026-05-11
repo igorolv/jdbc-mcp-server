@@ -126,6 +126,30 @@ class LiveOracleIntegrationSchemaTest {
     }
 
     @Test
+    void measureSchemaOverviewLightweightPhases() throws Exception {
+        long t0 = System.currentTimeMillis();
+        List<TableEntry> listed = metadata.listTables(schema, "%",
+                new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
+        long t1 = System.currentTimeMillis();
+        List<TableEntry> selected = listed.subList(0, Math.min(50, listed.size()));
+        System.out.printf("[TIMING] listTables: %d ms, %d tables%n", (t1 - t0), listed.size());
+
+        long t2 = System.currentTimeMillis();
+        var described = metadata.describeTables(schema, selected);
+        long t3 = System.currentTimeMillis();
+        System.out.printf("[TIMING] describeTables selected: %d ms, %d tables%n",
+                (t3 - t2), described.size());
+
+        long t4 = System.currentTimeMillis();
+        SchemaOverview overview = schemaContext.schemaOverview(schema, "%", true, false, false, 50);
+        long t5 = System.currentTimeMillis();
+        System.out.printf("[TIMING] schemaOverview service: %d ms, %d tables, %d relationships%n",
+                (t5 - t4), overview.tables().size(), overview.relationships().size());
+
+        assertThat(overview.tables()).hasSize(selected.size());
+    }
+
+    @Test
     void measureDescribeTableEachOperation() throws Exception {
         List<TableEntry> tables = metadata.listTables(schema, "%", null);
         Assumptions.assumeFalse(tables.isEmpty(), "no tables found");

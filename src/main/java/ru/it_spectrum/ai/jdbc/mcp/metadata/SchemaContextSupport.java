@@ -64,17 +64,9 @@ abstract class SchemaContextSupport {
     }
 
     protected Map<String, TableDescription> loadSchemaTables(String schema, int limit) throws SQLException {
-        Map<String, TableDescription> all = metadata.describeSchema(schema);
-        Map<String, TableDescription> out = new LinkedHashMap<>();
-        int count = 0;
-        for (Map.Entry<String, TableDescription> entry : all.entrySet()) {
-            if (count >= limit) break;
-            TableDescription td = entry.getValue();
-            if (td.type() != null && !"TABLE".equalsIgnoreCase(td.type())) continue;
-            out.put(entry.getKey(), td);
-            count++;
-        }
-        return out;
+        List<TableEntry> listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
+        List<TableEntry> selected = listed.subList(0, Math.min(limit, listed.size()));
+        return metadata.describeTables(schema, selected);
     }
 
     protected Map<String, TableDescription> loadBriefTables(String schema, String terms, int limit)
@@ -84,22 +76,8 @@ abstract class SchemaContextSupport {
         if (listed.isEmpty() && terms != null && !terms.isBlank()) {
             listed = metadata.listTables(schema, "%", parseTypes("TABLE"));
         }
-        Map<String, TableDescription> all = metadata.describeSchema(schema);
-        Map<String, TableDescription> out = new LinkedHashMap<>();
-        int count = 0;
-        for (TableEntry row : listed) {
-            if (count >= limit) break;
-            String tableSchema = row.schema();
-            String tableName = row.name();
-            if (tableName == null || tableName.isBlank()) continue;
-            String k = key(tableSchema, tableName);
-            TableDescription td = all.get(k);
-            if (td != null) {
-                out.put(k, td);
-                count++;
-            }
-        }
-        return out;
+        List<TableEntry> selected = listed.subList(0, Math.min(limit, listed.size()));
+        return metadata.describeTables(schema, selected);
     }
 
     protected Map<String, TableDescription> loadSingleTable(String schema, String table) throws SQLException {

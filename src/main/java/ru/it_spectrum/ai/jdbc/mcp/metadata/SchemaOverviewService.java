@@ -36,11 +36,9 @@ class SchemaOverviewService extends SchemaContextSupport {
         String types = views ? "TABLE,VIEW,MATERIALIZED VIEW" : "TABLE";
 
         List<TableEntry> listed = metadata.listTables(schema, namePattern, parseTypes(types));
-        // Bulk-load all described tables in one pass (populates the cache too)
-        Map<String, TableDescription> described = metadata.describeSchema(schema);
-
         boolean truncated = listed.size() > limit;
         List<TableEntry> selected = listed.subList(0, Math.min(limit, listed.size()));
+        Map<String, TableDescription> described = metadata.describeTables(schema, selected);
 
         List<ContextTable> tables = new ArrayList<>(selected.size());
         List<RelationshipEdge> relationships = new ArrayList<>();

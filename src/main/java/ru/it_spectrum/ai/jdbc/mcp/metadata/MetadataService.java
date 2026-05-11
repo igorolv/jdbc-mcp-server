@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
@@ -560,7 +561,27 @@ public class MetadataService {
         String effectiveSchema = resolveSchema(schema);
         List<TableEntry> tables = listTables(effectiveSchema, "%",
                 new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
+        Map<String, TableDescription> result = describeListedTables(effectiveSchema, tables, true);
+        cache.putAll(result);
+        return result;
+    }
 
+    /**
+     * Bulk-load structural metadata for an already selected table list. This intentionally skips
+     * column defaults and column comments because high-level context responses do not expose them,
+     * and Oracle has to read DATA_DEFAULT through expensive LONG workarounds. The result is not
+     * written to the full describeTable cache, because it is a lightweight projection.
+     */
+    public Map<String, TableDescription> describeTables(String schema, List<TableEntry> tables)
+            throws SQLException {
+        String effectiveSchema = resolveSchema(schema);
+        return describeListedTables(effectiveSchema, tables, false);
+    }
+
+    private Map<String, TableDescription> describeListedTables(
+            String effectiveSchema,
+            List<TableEntry> tables,
+            boolean includeColumnMetadata) throws SQLException {
         Set<String> tableNames = new LinkedHashSet<>();
         Map<String, TableEntry> tableEntryByName = new LinkedHashMap<>();
         for (TableEntry t : tables) {
@@ -575,19 +596,40 @@ public class MetadataService {
         Map<String, TableDescription> result = executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
 
-            Map<String, List<Column>> columnsMap = fetchAllColumns(md, effectiveSchema);
-            mergeAllColumnMetadata(conn, columnsMap, effectiveSchema);
+            Map<String, List<Column>> columnsMap = fetchColumnsForTables(md, effectiveSchema, tableNames);
+            if (includeColumnMetadata) {
+                mergeAllColumnMetadata(conn, columnsMap, effectiveSchema);
+            }
 
             Map<String, List<Index>> indexesMap = new LinkedHashMap<>();
             Map<String, List<UniqueConstraint>> uniqueMap = new LinkedHashMap<>();
-            fetchAllIndexesBulk(conn, effectiveSchema, indexesMap, uniqueMap);
+            if (includeColumnMetadata) {
+                fetchAllIndexesBulk(conn, effectiveSchema, indexesMap, uniqueMap);
+            } else {
+                fetchIndexesForTablesBulk(conn, md, effectiveSchema, tableNames, indexesMap, uniqueMap);
+            }
 
-            Map<String, List<Constraint>> constraintsMap = fetchAllConstraintsBulk(conn, effectiveSchema);
-            Map<String, PrimaryKey> pkMap = primaryKeysFromConstraints(constraintsMap);
-            Map<String, List<ForeignKey>> fkMap = foreignKeysFromConstraints(effectiveSchema, constraintsMap);
-            Map<String, List<IncomingForeignKey>> exportedMap = incomingForeignKeysFromConstraints(
-                    effectiveSchema, constraintsMap);
-            Map<String, List<Trigger>> triggersMap = fetchAllTriggersBulk(conn, effectiveSchema);
+            Map<String, List<Constraint>> constraintsMap;
+            Map<String, PrimaryKey> pkMap;
+            Map<String, List<ForeignKey>> fkMap;
+            Map<String, List<IncomingForeignKey>> exportedMap;
+            if (!includeColumnMetadata && useOracleSelectedBulk(tableNames)) {
+                KeyMetadata keyMetadata = fetchOracleKeyMetadataForTables(conn, effectiveSchema, tableNames);
+                constraintsMap = keyMetadata.constraints();
+                pkMap = keyMetadata.primaryKeys();
+                fkMap = keyMetadata.foreignKeys();
+                exportedMap = incomingForeignKeysFromForeignKeys(effectiveSchema, fkMap);
+            } else {
+                constraintsMap = includeColumnMetadata
+                        ? fetchAllConstraintsBulk(conn, effectiveSchema)
+                        : fetchConstraintsForTablesBulk(conn, effectiveSchema, tableNames);
+                pkMap = primaryKeysFromConstraints(constraintsMap);
+                fkMap = foreignKeysFromConstraints(effectiveSchema, constraintsMap);
+                exportedMap = incomingForeignKeysFromConstraints(effectiveSchema, constraintsMap);
+            }
+            Map<String, List<Trigger>> triggersMap = includeColumnMetadata
+                    ? fetchAllTriggersBulk(conn, effectiveSchema)
+                    : fetchTriggersForTablesBulk(conn, effectiveSchema, tableNames);
 
             Map<String, TableDescription> descMap = new LinkedHashMap<>();
             for (String t : tableNames) {
@@ -609,9 +651,106 @@ public class MetadataService {
             }
             return descMap;
         });
-
-        cache.putAll(result);
         return result;
+    }
+
+    private Map<String, List<Column>> fetchColumnsForTables(DatabaseMetaData md, String schema,
+                                                            Set<String> tableNames)
+            throws SQLException {
+        if (useOracleSelectedBulk(tableNames)) {
+            return fetchOracleColumnsForTables(md.getConnection(), schema, tableNames);
+        }
+        if (tableNames.size() > 100) {
+            Map<String, List<Column>> all = fetchAllColumns(md, schema);
+            all.keySet().removeIf(table -> !containsTableName(tableNames, table));
+            return all;
+        }
+
+        Map<String, List<Column>> byTable = new LinkedHashMap<>();
+        for (String table : tableNames) {
+            List<Column> cols = fetchColumns(md, schema, table);
+            if (!cols.isEmpty()) {
+                byTable.put(table, cols);
+            }
+        }
+        return byTable;
+    }
+
+    private Map<String, List<Column>> fetchOracleColumnsForTables(Connection conn, String schema,
+                                                                  Set<String> tableNames)
+            throws SQLException {
+        Map<String, List<Column>> byTable = new LinkedHashMap<>();
+        String sql = """
+                SELECT table_name,
+                       column_name,
+                       column_id AS ordinal_position,
+                       data_type AS type_name,
+                       COALESCE(data_precision, char_length, data_length) AS column_size,
+                       data_scale AS decimal_digits,
+                       nullable AS is_nullable
+                FROM all_tab_columns
+                WHERE owner = UPPER(?)
+                  AND table_name IN (%s)
+                ORDER BY table_name, column_id
+                """.formatted(upperPlaceholders(tableNames.size()));
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            bindSchemaAndTables(ps, schema, tableNames);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String table = rs.getString("table_name");
+                    String name = rs.getString("column_name");
+                    int ordinal = rs.getInt("ordinal_position");
+                    String typeName = rs.getString("type_name");
+                    int size = rs.getInt("column_size");
+                    int decimals = rs.getInt("decimal_digits");
+                    Integer decimalDigits = rs.wasNull() ? null : decimals;
+                    boolean nullable = "Y".equalsIgnoreCase(rs.getString("is_nullable"));
+                    byTable.computeIfAbsent(table, ignored -> new ArrayList<>())
+                            .add(new Column(name, ordinal, typeName, size, decimalDigits,
+                                    nullable, null, null, null));
+                }
+            }
+        }
+        return byTable;
+    }
+
+    private static boolean containsTableName(Set<String> tableNames, String table) {
+        if (tableNames.contains(table)) return true;
+        for (String name : tableNames) {
+            if (name != null && name.equalsIgnoreCase(table)) return true;
+        }
+        return false;
+    }
+
+    private boolean useOracleSelectedBulk(Set<String> tableNames) {
+        return dialect.kind() == DatabaseKind.ORACLE && !tableNames.isEmpty() && tableNames.size() <= 1_000;
+    }
+
+    private static String upperPlaceholders(int count) {
+        return String.join(", ", Collections.nCopies(count, "UPPER(?)"));
+    }
+
+    private static void bindSchemaAndTables(PreparedStatement ps, String schema, Set<String> tableNames)
+            throws SQLException {
+        ps.setString(1, schema == null ? "" : schema);
+        bindTables(ps, tableNames, 2);
+    }
+
+    private static void bindTables(PreparedStatement ps, Set<String> tableNames, int startIndex)
+            throws SQLException {
+        int index = startIndex;
+        for (String table : tableNames) {
+            ps.setString(index++, table);
+        }
+    }
+
+    private boolean isCurrentOracleUserSchema(Connection conn, String schema) throws SQLException {
+        if (dialect.kind() != DatabaseKind.ORACLE || schema == null || schema.isBlank()) return false;
+        String user = conn.getMetaData().getUserName();
+        return user != null && schema.equalsIgnoreCase(user);
     }
 
     private Map<String, List<Column>> fetchAllColumns(DatabaseMetaData md, String schema)
@@ -761,6 +900,105 @@ public class MetadataService {
         }
     }
 
+    private void fetchIndexesForTablesBulk(Connection conn,
+                                           DatabaseMetaData md,
+                                           String schema,
+                                           Set<String> tableNames,
+                                           Map<String, List<Index>> indexesMap,
+                                           Map<String, List<UniqueConstraint>> uniqueMap)
+            throws SQLException {
+        if (useOracleSelectedBulk(tableNames)) {
+            fetchOracleIndexesForTables(conn, schema, tableNames, indexesMap, uniqueMap);
+            return;
+        }
+        if (tableNames.size() > 100) {
+            fetchAllIndexesBulk(conn, schema, indexesMap, uniqueMap);
+            indexesMap.keySet().removeIf(table -> !containsTableName(tableNames, table));
+            uniqueMap.keySet().removeIf(table -> !containsTableName(tableNames, table));
+            return;
+        }
+
+        String sql = dialect.indexStatsQuery();
+        for (String table : tableNames) {
+            try (PreparedStatement ps = conn.prepareStatement(sql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+                ps.setString(1, schema == null ? "" : schema);
+                ps.setString(2, table);
+                ps.setString(3, table);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String rowTable = rs.getString("table_name");
+                        String idxName = rs.getString("index_name");
+                        if (rowTable == null || idxName == null) continue;
+                        boolean unique = toBool(rs.getObject("is_unique"));
+                        List<String> columns = splitCsv(rs.getObject("columns"));
+                        indexesMap.computeIfAbsent(rowTable, ignored -> new ArrayList<>())
+                                .add(new Index(idxName, unique, columns));
+                        if (unique) {
+                            uniqueMap.computeIfAbsent(rowTable, ignored -> new ArrayList<>())
+                                    .add(new UniqueConstraint(idxName, columns));
+                        }
+                    }
+                }
+            } catch (SQLException ignored) {
+                List<Index> indexes = fetchIndexes(md, schema, table);
+                indexesMap.put(table, indexes);
+                List<UniqueConstraint> unique = new ArrayList<>();
+                for (Index index : indexes) {
+                    if (index.unique()) {
+                        unique.add(new UniqueConstraint(index.name(), index.columns()));
+                    }
+                }
+                uniqueMap.put(table, unique);
+            }
+        }
+    }
+
+    private void fetchOracleIndexesForTables(Connection conn,
+                                             String schema,
+                                             Set<String> tableNames,
+                                             Map<String, List<Index>> indexesMap,
+                                             Map<String, List<UniqueConstraint>> uniqueMap)
+            throws SQLException {
+        String sql = """
+                SELECT i.table_name AS table_name,
+                       i.index_name AS index_name,
+                       CASE WHEN i.uniqueness = 'UNIQUE' THEN 'Y' ELSE 'N' END AS is_unique,
+                       LISTAGG(c.column_name, ',') WITHIN GROUP (ORDER BY c.column_position) AS columns
+                FROM all_indexes i
+                LEFT JOIN all_ind_columns c
+                  ON c.index_owner = i.owner
+                 AND c.index_name = i.index_name
+                WHERE i.owner = UPPER(?)
+                  AND i.table_name IN (%s)
+                GROUP BY i.table_name, i.index_name, i.uniqueness
+                ORDER BY i.table_name, i.index_name
+                """.formatted(upperPlaceholders(tableNames.size()));
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            bindSchemaAndTables(ps, schema, tableNames);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String table = rs.getString("table_name");
+                    String idxName = rs.getString("index_name");
+                    if (table == null || idxName == null) continue;
+                    boolean unique = toBool(rs.getObject("is_unique"));
+                    List<String> columns = splitCsv(rs.getObject("columns"));
+                    indexesMap.computeIfAbsent(table, ignored -> new ArrayList<>())
+                            .add(new Index(idxName, unique, columns));
+                    if (unique) {
+                        uniqueMap.computeIfAbsent(table, ignored -> new ArrayList<>())
+                                .add(new UniqueConstraint(idxName, columns));
+                    }
+                }
+            }
+        }
+    }
+
     private Map<String, PrimaryKey> primaryKeysFromConstraints(
             Map<String, List<Constraint>> constraintsMap) {
         Map<String, PrimaryKey> out = new LinkedHashMap<>();
@@ -807,6 +1045,27 @@ public class MetadataService {
         return out;
     }
 
+    private Map<String, List<IncomingForeignKey>> incomingForeignKeysFromForeignKeys(
+            String schema, Map<String, List<ForeignKey>> foreignKeysMap) {
+        Map<String, List<IncomingForeignKey>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<ForeignKey>> entry : foreignKeysMap.entrySet()) {
+            String childTable = entry.getKey();
+            for (ForeignKey foreignKey : entry.getValue()) {
+                if (foreignKey.referencedTable() == null) continue;
+                out.computeIfAbsent(foreignKey.referencedTable(), ignored -> new ArrayList<>())
+                        .add(new IncomingForeignKey(foreignKey.name(), schema, childTable,
+                                foreignKey.columns(), foreignKey.referencedColumns()));
+            }
+        }
+        return out;
+    }
+
+    private record KeyMetadata(
+            Map<String, PrimaryKey> primaryKeys,
+            Map<String, List<ForeignKey>> foreignKeys,
+            Map<String, List<Constraint>> constraints
+    ) {}
+
     private Map<String, List<Constraint>> fetchAllConstraintsBulk(Connection conn, String schema) throws SQLException {
         String sql = dialect.schemaConstraintsQuery();
         if (sql == null) {
@@ -839,6 +1098,305 @@ public class MetadataService {
                     out.computeIfAbsent(table, k -> new ArrayList<>()).add(constraintFromRow(row));
                 }
             }
+        }
+        return out;
+    }
+
+    private Map<String, List<Constraint>> fetchConstraintsForTablesBulk(
+            Connection conn,
+            String schema,
+            Set<String> tableNames) throws SQLException {
+        if (tableNames.size() > 100 || dialect.tableConstraintsQuery() == null) {
+            Map<String, List<Constraint>> all = fetchAllConstraintsBulk(conn, schema);
+            all.keySet().removeIf(table -> !containsTableName(tableNames, table));
+            return all;
+        }
+
+        Map<String, List<Constraint>> out = new LinkedHashMap<>();
+        String tableSql = dialect.tableConstraintsQuery();
+        for (String table : tableNames) {
+            List<Constraint> cons = fetchConstraints(conn, tableSql, schema, table);
+            if (!cons.isEmpty()) {
+                out.put(table, cons);
+            }
+        }
+        return out;
+    }
+
+    private KeyMetadata fetchOracleKeyMetadataForTables(Connection conn, String schema,
+                                                        Set<String> tableNames)
+            throws SQLException {
+        if (!isCurrentOracleUserSchema(conn, schema)) {
+            return fetchOracleKeyMetadataPerTable(conn, schema, tableNames);
+        }
+        Map<String, PrimaryKey> primaryKeys = fetchOraclePrimaryKeysForTables(conn, schema, tableNames);
+        Map<String, List<ForeignKey>> foreignKeys = fetchOracleForeignKeysForTables(conn, schema, tableNames);
+        Map<String, List<Constraint>> constraints = new LinkedHashMap<>();
+        for (Map.Entry<String, PrimaryKey> entry : primaryKeys.entrySet()) {
+            PrimaryKey pk = entry.getValue();
+            constraints.computeIfAbsent(entry.getKey(), ignored -> new ArrayList<>())
+                    .add(new Constraint(pk.name(), "PRIMARY_KEY", pk.columns(),
+                            null, null, null, null, null, null));
+        }
+        for (Map.Entry<String, List<ForeignKey>> entry : foreignKeys.entrySet()) {
+            for (ForeignKey fk : entry.getValue()) {
+                constraints.computeIfAbsent(entry.getKey(), ignored -> new ArrayList<>())
+                        .add(new Constraint(fk.name(), "FOREIGN_KEY", fk.columns(),
+                                null, null, null,
+                                fk.referencedSchema(), fk.referencedTable(), fk.referencedColumns()));
+            }
+        }
+        return new KeyMetadata(primaryKeys, foreignKeys, constraints);
+    }
+
+    private KeyMetadata fetchOracleKeyMetadataPerTable(Connection conn, String schema, Set<String> tableNames)
+            throws SQLException {
+        DatabaseMetaData md = conn.getMetaData();
+        Map<String, PrimaryKey> primaryKeys = new LinkedHashMap<>();
+        Map<String, List<ForeignKey>> foreignKeys = new LinkedHashMap<>();
+        Map<String, List<Constraint>> constraints = new LinkedHashMap<>();
+        String importedKeysSql = dialect.importedKeysQuery();
+
+        for (String table : tableNames) {
+            PrimaryKey pk = fetchPrimaryKey(md, schema, table);
+            if (pk != null) {
+                primaryKeys.put(table, pk);
+                constraints.computeIfAbsent(table, ignored -> new ArrayList<>())
+                        .add(new Constraint(pk.name(), "PRIMARY_KEY", pk.columns(),
+                                null, null, null, null, null, null));
+            }
+            List<ForeignKey> fks = importedKeysSql == null
+                    ? fetchImportedKeysJdbc(md, schema, table)
+                    : fetchImportedKeysSql(conn, importedKeysSql, schema, table);
+            if (!fks.isEmpty()) {
+                foreignKeys.put(table, fks);
+                for (ForeignKey fk : fks) {
+                    constraints.computeIfAbsent(table, ignored -> new ArrayList<>())
+                            .add(new Constraint(fk.name(), "FOREIGN_KEY", fk.columns(),
+                                    null, null, null,
+                                    fk.referencedSchema(), fk.referencedTable(), fk.referencedColumns()));
+                }
+            }
+        }
+        return new KeyMetadata(primaryKeys, foreignKeys, constraints);
+    }
+
+    private Map<String, PrimaryKey> fetchOraclePrimaryKeysForTables(Connection conn, String schema,
+                                                                    Set<String> tableNames)
+            throws SQLException {
+        if (isCurrentOracleUserSchema(conn, schema)) {
+            return fetchOracleUserPrimaryKeysForTables(conn, tableNames);
+        }
+        record Pending(String name, List<String> columns) {}
+        Map<String, Pending> byTable = new LinkedHashMap<>();
+        String sql = """
+                SELECT c.table_name,
+                       c.constraint_name,
+                       cc.column_name
+                FROM all_constraints c
+                JOIN all_cons_columns cc
+                  ON cc.owner = c.owner
+                 AND cc.table_name = c.table_name
+                 AND cc.constraint_name = c.constraint_name
+                WHERE c.owner = UPPER(?)
+                  AND c.table_name IN (%s)
+                  AND c.constraint_type = 'P'
+                ORDER BY c.table_name, cc.position
+                """.formatted(upperPlaceholders(tableNames.size()));
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            bindSchemaAndTables(ps, schema, tableNames);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String table = rs.getString("table_name");
+                    String name = rs.getString("constraint_name");
+                    String column = rs.getString("column_name");
+                    if (table == null || column == null) continue;
+                    byTable.computeIfAbsent(table, ignored -> new Pending(name, new ArrayList<>()))
+                            .columns().add(column);
+                }
+            }
+        }
+        Map<String, PrimaryKey> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Pending> entry : byTable.entrySet()) {
+            out.put(entry.getKey(), new PrimaryKey(entry.getValue().name(), entry.getValue().columns()));
+        }
+        return out;
+    }
+
+    private Map<String, PrimaryKey> fetchOracleUserPrimaryKeysForTables(Connection conn,
+                                                                        Set<String> tableNames)
+            throws SQLException {
+        record Pending(String name, List<String> columns) {}
+        Map<String, Pending> byTable = new LinkedHashMap<>();
+        String sql = """
+                SELECT c.table_name,
+                       c.constraint_name,
+                       cc.column_name
+                FROM user_constraints c
+                JOIN user_cons_columns cc
+                  ON cc.table_name = c.table_name
+                 AND cc.constraint_name = c.constraint_name
+                WHERE c.table_name IN (%s)
+                  AND c.constraint_type = 'P'
+                ORDER BY c.table_name, cc.position
+                """.formatted(upperPlaceholders(tableNames.size()));
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            bindTables(ps, tableNames, 1);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String table = rs.getString("table_name");
+                    String name = rs.getString("constraint_name");
+                    String column = rs.getString("column_name");
+                    if (table == null || column == null) continue;
+                    byTable.computeIfAbsent(table, ignored -> new Pending(name, new ArrayList<>()))
+                            .columns().add(column);
+                }
+            }
+        }
+        Map<String, PrimaryKey> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Pending> entry : byTable.entrySet()) {
+            out.put(entry.getKey(), new PrimaryKey(entry.getValue().name(), entry.getValue().columns()));
+        }
+        return out;
+    }
+
+    private Map<String, List<ForeignKey>> fetchOracleForeignKeysForTables(Connection conn, String schema,
+                                                                          Set<String> tableNames)
+            throws SQLException {
+        if (isCurrentOracleUserSchema(conn, schema)) {
+            return fetchOracleUserForeignKeysForTables(conn, schema, tableNames);
+        }
+        record Pending(String name, String[] referencedSchema, String[] referencedTable,
+                       List<String> columns, List<String> referencedColumns) {}
+        Map<String, Map<String, Pending>> byTable = new LinkedHashMap<>();
+        String sql = """
+                SELECT c.table_name,
+                       c.constraint_name,
+                       acc.column_name AS fk_column_name,
+                       rc.owner AS referenced_schema,
+                       rc.table_name AS referenced_table,
+                       rcc.column_name AS referenced_column_name
+                FROM all_constraints c
+                JOIN all_cons_columns acc
+                  ON acc.owner = c.owner
+                 AND acc.table_name = c.table_name
+                 AND acc.constraint_name = c.constraint_name
+                JOIN all_constraints rc
+                  ON rc.owner = c.r_owner
+                 AND rc.constraint_name = c.r_constraint_name
+                JOIN all_cons_columns rcc
+                  ON rcc.owner = rc.owner
+                 AND rcc.table_name = rc.table_name
+                 AND rcc.constraint_name = rc.constraint_name
+                 AND rcc.position = acc.position
+                WHERE c.owner = UPPER(?)
+                  AND c.table_name IN (%s)
+                  AND c.constraint_type = 'R'
+                ORDER BY c.table_name, c.constraint_name, acc.position
+                """.formatted(upperPlaceholders(tableNames.size()));
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            bindSchemaAndTables(ps, schema, tableNames);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String table = rs.getString("table_name");
+                    String name = rs.getString("constraint_name");
+                    String fkColumn = rs.getString("fk_column_name");
+                    String refSchema = rs.getString("referenced_schema");
+                    String refTable = rs.getString("referenced_table");
+                    String refColumn = rs.getString("referenced_column_name");
+                    if (table == null || name == null || fkColumn == null || refTable == null) continue;
+                    Pending pending = byTable.computeIfAbsent(table, ignored -> new LinkedHashMap<>())
+                            .computeIfAbsent(name, ignored -> new Pending(
+                                    name, new String[]{refSchema}, new String[]{refTable},
+                                    new ArrayList<>(), new ArrayList<>()));
+                    pending.columns().add(fkColumn);
+                    if (refColumn != null) pending.referencedColumns().add(refColumn);
+                }
+            }
+        }
+        Map<String, List<ForeignKey>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Pending>> tableEntry : byTable.entrySet()) {
+            List<ForeignKey> tableFks = new ArrayList<>();
+            for (Pending pending : tableEntry.getValue().values()) {
+                tableFks.add(new ForeignKey(pending.name(), pending.columns(),
+                        pending.referencedSchema()[0] == null ? schema : pending.referencedSchema()[0],
+                        pending.referencedTable()[0], pending.referencedColumns()));
+            }
+            out.put(tableEntry.getKey(), tableFks);
+        }
+        return out;
+    }
+
+    private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connection conn, String schema,
+                                                                              Set<String> tableNames)
+            throws SQLException {
+        record Pending(String name, String[] referencedSchema, String[] referencedTable,
+                       List<String> columns, List<String> referencedColumns) {}
+        Map<String, Map<String, Pending>> byTable = new LinkedHashMap<>();
+        String sql = """
+                SELECT c.table_name,
+                       c.constraint_name,
+                       acc.column_name AS fk_column_name,
+                       rc.owner AS referenced_schema,
+                       rc.table_name AS referenced_table,
+                       rcc.column_name AS referenced_column_name
+                FROM user_constraints c
+                JOIN user_cons_columns acc
+                  ON acc.table_name = c.table_name
+                 AND acc.constraint_name = c.constraint_name
+                JOIN all_constraints rc
+                  ON rc.owner = c.r_owner
+                 AND rc.constraint_name = c.r_constraint_name
+                JOIN all_cons_columns rcc
+                  ON rcc.owner = rc.owner
+                 AND rcc.table_name = rc.table_name
+                 AND rcc.constraint_name = rc.constraint_name
+                 AND rcc.position = acc.position
+                WHERE c.table_name IN (%s)
+                  AND c.constraint_type = 'R'
+                ORDER BY c.table_name, c.constraint_name, acc.position
+                """.formatted(upperPlaceholders(tableNames.size()));
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            bindTables(ps, tableNames, 1);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String table = rs.getString("table_name");
+                    String name = rs.getString("constraint_name");
+                    String fkColumn = rs.getString("fk_column_name");
+                    String refSchema = rs.getString("referenced_schema");
+                    String refTable = rs.getString("referenced_table");
+                    String refColumn = rs.getString("referenced_column_name");
+                    if (table == null || name == null || fkColumn == null || refTable == null) continue;
+                    Pending pending = byTable.computeIfAbsent(table, ignored -> new LinkedHashMap<>())
+                            .computeIfAbsent(name, ignored -> new Pending(
+                                    name, new String[]{refSchema}, new String[]{refTable},
+                                    new ArrayList<>(), new ArrayList<>()));
+                    pending.columns().add(fkColumn);
+                    if (refColumn != null) pending.referencedColumns().add(refColumn);
+                }
+            }
+        }
+        Map<String, List<ForeignKey>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Pending>> tableEntry : byTable.entrySet()) {
+            List<ForeignKey> tableFks = new ArrayList<>();
+            for (Pending pending : tableEntry.getValue().values()) {
+                tableFks.add(new ForeignKey(pending.name(), pending.columns(),
+                        pending.referencedSchema()[0] == null ? schema : pending.referencedSchema()[0],
+                        pending.referencedTable()[0], pending.referencedColumns()));
+            }
+            out.put(tableEntry.getKey(), tableFks);
         }
         return out;
     }
@@ -901,6 +1459,69 @@ public class MetadataService {
         return out;
     }
 
+    private Map<String, List<Trigger>> fetchTriggersForTablesBulk(
+            Connection conn,
+            String schema,
+            Set<String> tableNames) throws SQLException {
+        if (useOracleSelectedBulk(tableNames)) {
+            return fetchOracleTriggersForTables(conn, schema, tableNames);
+        }
+        if (tableNames.size() > 100 || dialect.tableTriggersQuery() == null) {
+            Map<String, List<Trigger>> all = fetchAllTriggersBulk(conn, schema);
+            all.keySet().removeIf(table -> !containsTableName(tableNames, table));
+            return all;
+        }
+
+        Map<String, List<Trigger>> out = new LinkedHashMap<>();
+        String tableSql = dialect.tableTriggersQuery();
+        for (String table : tableNames) {
+            List<Trigger> triggers = fetchTriggers(conn, tableSql, schema, table, false);
+            if (!triggers.isEmpty()) {
+                out.put(table, triggers);
+            }
+        }
+        return out;
+    }
+
+    private Map<String, List<Trigger>> fetchOracleTriggersForTables(
+            Connection conn,
+            String schema,
+            Set<String> tableNames) throws SQLException {
+        Map<String, List<Trigger>> out = new LinkedHashMap<>();
+        String sql = """
+                SELECT owner AS schema,
+                       table_name AS table_name,
+                       trigger_name AS name,
+                       CASE
+                           WHEN trigger_type LIKE 'BEFORE%%' THEN 'BEFORE'
+                           WHEN trigger_type LIKE 'AFTER%%' THEN 'AFTER'
+                           WHEN trigger_type LIKE 'INSTEAD OF%%' THEN 'INSTEAD OF'
+                           ELSE trigger_type
+                       END AS timing,
+                       triggering_event AS events,
+                       CASE WHEN status = 'ENABLED' THEN 'true' ELSE 'false' END AS enabled,
+                       description AS definition
+                FROM all_triggers
+                WHERE owner = UPPER(?)
+                  AND table_name IN (%s)
+                ORDER BY table_name, trigger_name
+                """.formatted(upperPlaceholders(tableNames.size()));
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            bindSchemaAndTables(ps, schema, tableNames);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<String> columns = readColumns(rs);
+                while (rs.next()) {
+                    Trigger trigger = triggerFromRow(readRow(rs, columns), false);
+                    out.computeIfAbsent(trigger.table(), ignored -> new ArrayList<>()).add(trigger);
+                }
+            }
+        }
+        return out;
+    }
+
     private List<Trigger> fetchSchemaTriggers(Connection conn, String schema, boolean includeDefinition)
             throws SQLException {
         String bulkSql = dialect.schemaTriggersQuery();
@@ -940,6 +1561,25 @@ public class MetadataService {
                             out.add(triggerFromRow(readRow(triggerRs, columns), includeDefinition));
                         }
                     }
+                }
+            }
+        }
+        return out;
+    }
+
+    private List<Trigger> fetchTriggers(Connection conn, String sql, String schema, String table,
+                                        boolean includeDefinition) throws SQLException {
+        List<Trigger> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql,
+                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+            ps.setString(1, schema == null ? "" : schema);
+            ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<String> columns = readColumns(rs);
+                while (rs.next()) {
+                    out.add(triggerFromRow(readRow(rs, columns), includeDefinition));
                 }
             }
         }
