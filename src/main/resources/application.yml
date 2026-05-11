@@ -8,7 +8,7 @@ spring:
         name: jdbc-mcp-server
         version: 0.1.0
         stdio: true
-  # Disable Spring Boot's default DataSource auto-configuration — we build
+  # Disable Spring Boot's default DataSource autoconfiguration — we build
   # the DataSource ourselves in DataSourceConfig so we can apply dialect-aware
   # read-only settings and auto-detect the driver from the JDBC URL.
   autoconfigure:
@@ -44,6 +44,5 @@ usage:
   native-schemas: ${JDBC_USAGE_NATIVE_SCHEMAS:}
   native-include-views: ${JDBC_USAGE_NATIVE_INCLUDE_VIEWS:true}
   native-include-routines: ${JDBC_USAGE_NATIVE_INCLUDE_ROUTINES:true}
-  # Generally, triggers do not run additional queries, therefore, it is false by default
   native-include-triggers: ${JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS:true}
   native-max-objects: ${JDBC_USAGE_NATIVE_MAX_OBJECTS:10000}

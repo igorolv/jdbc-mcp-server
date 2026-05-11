@@ -73,10 +73,6 @@ abstract class AbstractToolsIntegrationTest {
         return (ArrayNode) node;
     }
 
-    protected final ArrayNode rows(String json) {
-        return rows(object(json));
-    }
-
     protected final ArrayNode rows(ObjectNode json) {
         JsonNode rows = json.get("rows");
         assertThat(rows).isNotNull();

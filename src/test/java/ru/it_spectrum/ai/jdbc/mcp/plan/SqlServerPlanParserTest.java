@@ -57,7 +57,7 @@ class SqlServerPlanParserTest {
         assertThat(parsed.root().estimatedRows()).isEqualTo(100L);
         assertThat(parsed.root().children()).hasSize(1);
 
-        PlanNode join = parsed.root().children().get(0);
+        PlanNode join = parsed.root().children().getFirst();
         assertThat(join.nodeType()).isEqualTo("Nested Loops");
         assertThat(join.estimatedRows()).isEqualTo(100L);
         assertThat(join.children()).hasSize(2);

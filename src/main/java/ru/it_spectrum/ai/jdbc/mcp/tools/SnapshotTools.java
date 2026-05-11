@@ -71,7 +71,7 @@ public class SnapshotTools {
                         null, null);
             } else if (schema != null && !schema.isBlank()) {
                 cache.invalidateSchema(schema);
-                int limit = maxTables == null ? 300 : Math.max(1, Math.min(maxTables, 5000));
+                int limit = maxTables == null ? 300 : Math.clamp(maxTables, 1, 5000);
                 List<TableEntry> listed = metadata.listTables(schema, "%",
                         new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
                 int count = 0;

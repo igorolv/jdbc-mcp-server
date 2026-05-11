@@ -50,7 +50,7 @@ class OraclePlanParserTest {
         PlanNode root = p.root();
         assertThat(root.nodeType()).isEqualTo("SELECT STATEMENT");
         assertThat(root.children()).hasSize(1);
-        PlanNode hashJoin = root.children().get(0);
+        PlanNode hashJoin = root.children().getFirst();
         assertThat(hashJoin.nodeType()).isEqualTo("HASH JOIN");
         assertThat(hashJoin.children()).hasSize(2);
 

@@ -20,18 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Measurement utilities on top of {@link SqlExecutor}:
- *
- * <ul>
- *     <li>{@link #benchmark(String, List, int, int, int, int) benchmark} — run the same read-only
- *         statement N times (default 1 cold + 3 warm) and report min / median / max wall-clock;</li>
- *     <li>{@link #timed(String, List, Integer, Integer) timed} — single run with wall-clock time
- *         plus, on PostgreSQL, a before/after diff from {@code pg_stat_statements}.</li>
- * </ul>
- *
- * <p>All runs go through {@link SqlExecutor#query} so the read-only guard, row limit and
- * per-query timeout are enforced on every invocation — benchmarking unbounded queries is not
- * allowed by design.
+ * Measurement utilities on top of {@link SqlExecutor}
  */
 @Service
 public class BenchmarkService {
@@ -47,35 +36,6 @@ public class BenchmarkService {
     public BenchmarkService(SqlExecutor executor, SqlDialect dialect) {
         this.executor = executor;
         this.dialect = dialect;
-    }
-
-    // ---------------- benchmark ----------------
-
-    /**
-     * Execute the same query {@code coldRuns + warmRuns} times and report wall-clock timings.
-     *
-     * <p>The first {@code coldRuns} iterations are reported separately ("cold" — no caches primed),
-     * then {@code warmRuns} iterations are aggregated into min / median / max ("warm" — caches
-     * populated by the cold run). Both {@code limit} and {@code timeoutSeconds} are required:
-     * we do not let an LLM benchmark an unbounded query.
-     *
-     * @param sql             SELECT / WITH / EXPLAIN statement
-     * @param params          positional parameters or {@code null}
-     * @param limit           max rows per run (required, must be &gt; 0)
-     * @param timeoutSeconds  per-run timeout (required, must be &gt; 0)
-     * @param coldRuns        number of cold runs (default {@code 1})
-     * @param warmRuns        number of warm runs (default {@code 3})
-     */
-    public BenchmarkResult benchmark(String sql, List<Object> params,
-                                     int limit, int timeoutSeconds,
-                                     int coldRuns, int warmRuns) throws SQLException {
-        return benchmark(sql, params, null, limit, timeoutSeconds, coldRuns, warmRuns);
-    }
-
-    public BenchmarkResult benchmark(String sql, Map<String, Object> namedParams,
-                                     int limit, int timeoutSeconds,
-                                     int coldRuns, int warmRuns) throws SQLException {
-        return benchmark(sql, null, namedParams, limit, timeoutSeconds, coldRuns, warmRuns);
     }
 
     public BenchmarkResult benchmark(String sql, List<Object> params, Map<String, Object> namedParams,
@@ -149,25 +109,6 @@ public class BenchmarkService {
                         "steady-state latency with buffers populated.");
     }
 
-    // ---------------- timed ----------------
-
-    /**
-     * Run the query once, measure wall-clock, and — on PostgreSQL with {@code pg_stat_statements}
-     * installed — attach a per-{@code queryid} diff of counters that changed between the
-     * before/after snapshots.
-     *
-     * <p>Uses {@link SqlExecutor#query} so the read-only guard, row limit and timeout apply.
-     */
-    public TimedQueryResult timed(String sql, List<Object> params,
-                                  Integer limit, Integer timeoutSeconds) throws SQLException {
-        return timed(sql, params, null, limit, timeoutSeconds);
-    }
-
-    public TimedQueryResult timed(String sql, Map<String, Object> namedParams,
-                                  Integer limit, Integer timeoutSeconds) throws SQLException {
-        return timed(sql, null, namedParams, limit, timeoutSeconds);
-    }
-
     public TimedQueryResult timed(String sql, List<Object> params, Map<String, Object> namedParams,
                                   Integer limit, Integer timeoutSeconds) throws SQLException {
         SqlParameterBindingResolver.Binding binding = SqlParameterBindingResolver.resolve(sql, params, namedParams);
@@ -214,7 +155,7 @@ public class BenchmarkService {
 
     /**
      * Returns {@code null} if pg_stat_statements is not available (non-PG engine, extension
-     * missing, or the snapshot query fails). Otherwise a map from {@code queryid} to counters.
+     * missing, or the snapshot query fails). Otherwise, a map from {@code queryid} to counters.
      */
     private Map<String, Counters> snapshotPss() {
         String availSql = dialect.pgStatStatementsAvailabilityQuery();
@@ -278,7 +219,7 @@ public class BenchmarkService {
         return out;
     }
 
-    /** Short, whitespace-normalized fingerprint so we can recognise our own probes. */
+    /** Short, whitespace-normalized fingerprint so we can recognize our own probes. */
     private static String signature(String sql) {
         if (sql == null) return "";
         String norm = sql.replaceAll("\\s+", " ").trim();
@@ -299,8 +240,8 @@ public class BenchmarkService {
         }
         List<Double> sorted = new ArrayList<>(samples);
         Collections.sort(sorted);
-        double min = sorted.get(0);
-        double max = sorted.get(sorted.size() - 1);
+        double min = sorted.getFirst();
+        double max = sorted.getLast();
         double median;
         int n = sorted.size();
         if (n % 2 == 1) {

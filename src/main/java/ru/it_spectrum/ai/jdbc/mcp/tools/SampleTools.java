@@ -42,7 +42,7 @@ public class SampleTools {
     ) {
         log.info("Tool call: sampleRows (schema={}, table={})", schema, table);
         if (table == null || table.isBlank()) return errors.argument("table must be provided");
-        int n = limit == null ? 10 : Math.max(1, Math.min(limit, 100));
+        int n = limit == null ? 10 : Math.clamp(limit, 1, 100);
         String qualified = qualify(schema, table);
         String sql = dialect.limitQuery("SELECT * FROM " + qualified, n);
         try {

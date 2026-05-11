@@ -5,7 +5,6 @@ import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -107,14 +106,5 @@ public final class OraclePlanParser implements PlanParser {
             try { return Math.round(Double.parseDouble(v.toString())); }
             catch (NumberFormatException e2) { return null; }
         }
-    }
-
-    // Expose helpers so PlanAnalyzer can pull Oracle-only fields (filter predicates etc).
-    static String filterPredicate(PlanNode node) {
-        return node.raw() == null ? null : asString(node.raw().get("filter_predicates"));
-    }
-
-    static String accessPredicate(PlanNode node) {
-        return node.raw() == null ? null : asString(node.raw().get("access_predicates"));
     }
 }

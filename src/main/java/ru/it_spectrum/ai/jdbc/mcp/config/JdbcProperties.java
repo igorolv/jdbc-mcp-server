@@ -47,8 +47,4 @@ public record JdbcProperties(
     public boolean guardEnabled() {
         return readonlyGuard == null || !"off".equalsIgnoreCase(readonlyGuard.trim());
     }
-
-    public boolean metadataCacheEnabled() {
-        return metadataCacheTtlSeconds > 0;
-    }
 }

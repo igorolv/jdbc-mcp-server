@@ -56,8 +56,7 @@ public class QueryLintService {
         }
 
         Map<String, TableInfo> tables = loadTables(model, schema);
-        List<QueryWarning> warnings = new ArrayList<>();
-        warnings.addAll(model.warnings);
+        List<QueryWarning> warnings = new ArrayList<>(model.warnings);
 
         if (model.hasSelectStar) {
             warnings.add(warning("select_star",
@@ -265,7 +264,7 @@ public class QueryLintService {
         boolean hasLeadingIndex(String column) {
             String c = norm(column);
             for (List<String> index : indexes) {
-                if (!index.isEmpty() && norm(index.get(0)).equals(c)) return true;
+                if (!index.isEmpty() && norm(index.getFirst()).equals(c)) return true;
             }
             return false;
         }

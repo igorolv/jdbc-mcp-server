@@ -54,11 +54,6 @@ public class ToolErrors {
         return json.write(ToolErrorResponse.notFound(kind, name));
     }
 
-    public String driver(String message) {
-        log.warn("Tool error [kind=driver]: {}", message);
-        return error("driver", message);
-    }
-
     public String unexpected(Throwable e) {
         String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         log.error("Tool error [kind=unexpected]: {}", msg, e);

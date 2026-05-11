@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service

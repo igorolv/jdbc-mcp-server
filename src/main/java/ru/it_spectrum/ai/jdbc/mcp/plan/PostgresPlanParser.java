@@ -26,7 +26,7 @@ public final class PostgresPlanParser implements PlanParser {
         if (result.rows().isEmpty() || result.columns().isEmpty()) {
             throw new IllegalArgumentException("Empty EXPLAIN result");
         }
-        Object raw = result.rows().get(0).get(result.columns().get(0));
+        Object raw = result.rows().getFirst().get(result.columns().getFirst());
         String json = raw == null ? "" : raw.toString();
         Object parsed;
         try {
@@ -37,7 +37,7 @@ public final class PostgresPlanParser implements PlanParser {
         if (!(parsed instanceof List<?> list) || list.isEmpty()) {
             throw new IllegalArgumentException("Unexpected EXPLAIN JSON shape: " + json);
         }
-        Object first = list.get(0);
+        Object first = list.getFirst();
         if (!(first instanceof Map<?, ?> top)) {
             throw new IllegalArgumentException("Unexpected EXPLAIN JSON top-level element");
         }

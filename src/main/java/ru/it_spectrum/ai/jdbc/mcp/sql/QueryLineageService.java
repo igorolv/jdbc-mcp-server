@@ -109,7 +109,7 @@ public class QueryLineageService {
                         resolved.candidates(), via));
                 continue;
             }
-            expandObject(resolved, defaultSchema, append(via, resolved.key()), depth, acc);
+            expandObject(resolved, append(via, resolved.key()), depth, acc);
         }
 
         if (!acc.expandRoutines) return;
@@ -129,11 +129,11 @@ public class QueryLineageService {
                         routine.schema(), routine.name(), routine.type(),
                         null, "function", routine.status()));
             }
-            expandObject(routine, defaultSchema, append(via, routine.key()), depth, acc);
+            expandObject(routine, append(via, routine.key()), depth, acc);
         }
     }
 
-    private void expandObject(ResolvedObject object, String defaultSchema,
+    private void expandObject(ResolvedObject object,
                               List<String> via, int depth, Acc acc) throws SQLException {
         if (object.isTable()) {
             acc.physicalTables.add(new LineagePhysicalTable(
@@ -151,16 +151,16 @@ public class QueryLineageService {
         }
         if (object.isView()) {
             if (!acc.expandViews) return;
-            expandView(object, defaultSchema, via, depth, acc);
+            expandView(object, via, depth, acc);
             return;
         }
         if (object.isRoutine()) {
             if (!acc.expandRoutines) return;
-            expandRoutine(object, defaultSchema, via, depth, acc);
+            expandRoutine(object, via, depth, acc);
         }
     }
 
-    private void expandView(ResolvedObject view, String defaultSchema,
+    private void expandView(ResolvedObject view,
                             List<String> via, int depth, Acc acc) throws SQLException {
         String definition = metadata.viewDefinition(view.schema(), view.name());
         if (definition == null || definition.isBlank()) {
@@ -183,7 +183,7 @@ public class QueryLineageService {
         processModel(model, view.schema(), via, depth + 1, false, acc);
     }
 
-    private void expandRoutine(ResolvedObject routine, String defaultSchema,
+    private void expandRoutine(ResolvedObject routine,
                                List<String> via, int depth, Acc acc) throws SQLException {
         String source = metadata.routineSource(routine.schema(), routine.name());
         if (source == null || source.isBlank()) {
@@ -280,7 +280,7 @@ public class QueryLineageService {
             return ResolvedObject.unresolved(cleanSchema, cleanName, null, "ambiguous",
                     candidates.stream().map(QueryLineageService::ref).toList());
         }
-        TableEntry row = candidates.get(0);
+        TableEntry row = candidates.getFirst();
         return ResolvedObject.resolved(row.schema(), row.name(), normalizeType(row.type()), "resolved");
     }
 
@@ -305,7 +305,7 @@ public class QueryLineageService {
             return ResolvedObject.unresolved(schema, parts.name(), "ROUTINE", "ambiguous",
                     candidates.stream().map(r -> new LineageObjectRef(r.schema(), r.name(), r.type())).toList());
         }
-        RoutineEntry routine = candidates.get(0);
+        RoutineEntry routine = candidates.getFirst();
         return ResolvedObject.resolved(routine.schema(), routine.name(), routine.type(), "resolved");
     }
 
@@ -365,7 +365,7 @@ public class QueryLineageService {
 
     private static int clamp(Integer maxDepth) {
         if (maxDepth == null) return DEFAULT_MAX_DEPTH;
-        return Math.max(0, Math.min(maxDepth, HARD_MAX_DEPTH));
+        return Math.clamp(maxDepth, 0, HARD_MAX_DEPTH);
     }
 
     private static LineageObjectRef ref(TableEntry row) {
@@ -408,23 +408,6 @@ public class QueryLineageService {
         int dot = value.lastIndexOf('.');
         if (dot < 0) return new NameParts(null, value);
         return new NameParts(clean(value.substring(0, dot)), clean(value.substring(dot + 1)));
-    }
-
-    private static Object getCI(Map<String, Object> row, String key) {
-        Object value = row.get(key);
-        if (value != null) return value;
-        for (Map.Entry<String, Object> entry : row.entrySet()) {
-            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(key)) {
-                return entry.getValue();
-            }
-        }
-        return null;
-    }
-
-    private static String stringValue(Object value) {
-        if (value == null) return null;
-        String s = value.toString();
-        return s.isBlank() ? null : s;
     }
 
     private static String rootMessage(Throwable e) {

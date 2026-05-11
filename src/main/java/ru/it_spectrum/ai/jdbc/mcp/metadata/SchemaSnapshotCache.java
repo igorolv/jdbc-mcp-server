@@ -12,7 +12,6 @@ import ru.it_spectrum.ai.jdbc.mcp.model.snapshot.SchemaSnapshot;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -125,10 +124,8 @@ public class SchemaSnapshotCache {
             invalidateAll();
             return;
         }
-        Iterator<TableKey> ti = describes.keySet().iterator();
-        while (ti.hasNext()) if (Objects.equals(norm, ti.next().schema)) ti.remove();
-        Iterator<ListKey> li = lists.keySet().iterator();
-        while (li.hasNext()) if (Objects.equals(norm, li.next().schema)) li.remove();
+        describes.keySet().removeIf(tableKey -> Objects.equals(norm, tableKey.schema));
+        lists.keySet().removeIf(listKey -> Objects.equals(norm, listKey.schema));
     }
 
     public void invalidateTable(String schema, String table) {
@@ -136,8 +133,7 @@ public class SchemaSnapshotCache {
         describes.remove(TableKey.of(schema, table));
         // any list result that could include this table is now suspect; drop list cache for the schema
         String norm = normalize(schema);
-        Iterator<ListKey> li = lists.keySet().iterator();
-        while (li.hasNext()) if (Objects.equals(norm, li.next().schema)) li.remove();
+        lists.keySet().removeIf(listKey -> Objects.equals(norm, listKey.schema));
     }
 
     public SchemaSnapshot snapshotInfo(String schema) {

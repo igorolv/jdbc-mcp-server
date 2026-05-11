@@ -384,15 +384,6 @@ public class QueryTools {
         }
     }
 
-    private QueryResult queryNoParams(Connection conn, String sql) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            if (properties.queryTimeoutSeconds() > 0) ps.setQueryTimeout(properties.queryTimeoutSeconds());
-            try (var rs = ps.executeQuery()) {
-                return readAll(rs);
-            }
-        }
-    }
-
     private void runUpdate(Connection conn, String sql, List<Object> params) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             if (properties.queryTimeoutSeconds() > 0) ps.setQueryTimeout(properties.queryTimeoutSeconds());
@@ -429,7 +420,7 @@ public class QueryTools {
     /** Joins all first-column values into one text block — the canonical form for query plans. */
     private String rowsAsText(QueryResult r) {
         if (r.rows().isEmpty()) return "(empty plan)";
-        String key = r.columns().isEmpty() ? null : r.columns().get(0);
+        String key = r.columns().isEmpty() ? null : r.columns().getFirst();
         StringBuilder sb = new StringBuilder();
         for (var row : r.rows()) {
             Object v = key == null ? row.values().iterator().next() : row.get(key);
@@ -569,17 +560,23 @@ public class QueryTools {
     }
 
     private String sqlLiteral(Object value) {
-        if (value == null) return "NULL";
-        if (value instanceof Number n) return n.toString();
-        if (value instanceof Boolean b) return b ? "1" : "0";
-        if (value instanceof byte[] bytes) {
-            StringBuilder hex = new StringBuilder("0x");
-            for (byte b : bytes) hex.append(String.format("%02X", b));
-            return hex.toString();
-        }
-        if (value instanceof java.sql.Date || value instanceof java.sql.Time
-                || value instanceof java.sql.Timestamp || value instanceof TemporalAccessor) {
-            return "N'" + escapeSqlLiteral(value.toString()) + "'";
+        switch (value) {
+            case null -> {
+                return "NULL";
+            }
+            case Number n -> {
+                return n.toString();
+            }
+            case Boolean b -> {
+                return b ? "1" : "0";
+            }
+            case byte[] bytes -> {
+                StringBuilder hex = new StringBuilder("0x");
+                for (byte b : bytes) hex.append(String.format("%02X", b));
+                return hex.toString();
+            }
+            default -> {
+            }
         }
         return "N'" + escapeSqlLiteral(value.toString()) + "'";
     }

@@ -14,7 +14,6 @@ import java.util.Locale;
 import java.util.Map;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service
@@ -145,7 +144,7 @@ class SchemaBriefService extends SchemaContextSupport {
         String column = before.contains(" ") ? before.substring(before.lastIndexOf(' ') + 1) : before;
         if (column.isBlank()) {
             List<String> cols = constraint.columns();
-            column = cols.isEmpty() ? null : cols.get(0);
+            column = cols.isEmpty() ? null : cols.getFirst();
         }
         if (column == null || column.isBlank() || columnByName(table, column) == null) return null;
         String valuesRaw = def.substring(open + 1, close);

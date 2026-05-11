@@ -249,12 +249,4 @@ public interface SqlDialect {
     default String fallbackSchema(Connection connection) throws SQLException {
         return connection.getSchema();
     }
-
-    /**
-     * Post-process a row from metadata queries to provide a unified shape if needed.
-     * Default implementation is a no-op.
-     */
-    default Map<String, Object> normalizeMetadataRow(Map<String, Object> row) {
-        return row;
-    }
 }

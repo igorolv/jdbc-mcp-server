@@ -7,6 +7,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.RelationshipEdge;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticEdgeEvidence;
+import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -24,7 +25,6 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageTransformationKind;
 import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,7 +51,7 @@ class EdgeDecorationTest {
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
 
-        RelationshipEvidence evidence = evidence(edges.get(0));
+        RelationshipEvidence evidence = evidence(edges.getFirst());
         assertThat(evidence.declaredSchema()).isNotNull();
         assertThat(evidence.observedQuery()).isNull();
         assertThat(evidence.semanticUsage()).isNull();
@@ -73,7 +73,7 @@ class EdgeDecorationTest {
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
 
-        RelationshipEvidence evidence = evidence(edges.get(0));
+        RelationshipEvidence evidence = evidence(edges.getFirst());
         assertThat(evidence.declaredSchema()).isNotNull();
         assertThat(evidence.observedQuery()).isNotNull();
         assertThat(evidence.observedQuery().joinSupport()).isEqualTo(3);
@@ -96,7 +96,7 @@ class EdgeDecorationTest {
 
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), true);
 
-        RelationshipEvidence evidence = evidence(edges.get(0));
+        RelationshipEvidence evidence = evidence(edges.getFirst());
         assertThat(evidence.declaredSchema()).isNotNull();
         assertThat(evidence.observedQuery()).isNotNull();
         SemanticEdgeEvidence semantic = evidence.semanticUsage();
@@ -133,7 +133,7 @@ class EdgeDecorationTest {
                 "SELECT * FROM events e JOIN sessions s ON e.session_id = s.id")));
 
         List<RelationshipEdge> edges = new ArrayList<>();
-        probe.run(edges, Set.of("EVENTS"), true); // sessions is not in described scope
+        probe.run(edges, Set.of("EVENTS"), true); // sessions are not in described scope
 
         assertThat(edges).isEmpty();
     }
@@ -152,7 +152,7 @@ class EdgeDecorationTest {
         probe.run(edges, Set.of("ORDERS", "CUSTOMERS"), false);
 
         assertThat(edges).hasSize(1);
-        RelationshipEvidence evidence = evidence(edges.get(0));
+        RelationshipEvidence evidence = evidence(edges.getFirst());
         assertThat(evidence.declaredSchema()).isNotNull();
         assertThat(evidence.observedQuery()).isNull();
         assertThat(evidence.semanticUsage()).isNull();
@@ -190,7 +190,7 @@ class EdgeDecorationTest {
             case "sharedOutputLabels" -> semantic.sharedOutputLabels();
             default -> List.<ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence>of();
         }).stream()
-                .map(term -> term.value())
+                .map(SemanticTermEvidence::value)
                 .toList();
     }
 

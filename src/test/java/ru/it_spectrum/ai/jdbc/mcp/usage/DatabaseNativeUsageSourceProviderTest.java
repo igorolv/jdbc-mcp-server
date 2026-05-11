@@ -4,15 +4,12 @@ import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -20,7 +17,7 @@ class DatabaseNativeUsageSourceProviderTest {
 
     @Test
     void loadsViewDefinitionsAsNativeUsageRecords() throws Exception {
-        UsageProperties properties = properties(true, true, false, false);
+        UsageProperties properties = properties(true, false, false);
         MetadataService metadata = mock(MetadataService.class);
         when(metadata.defaultSchema()).thenReturn("public");
         when(metadata.schemaViewDefinitions("public")).thenReturn(List.of(Map.of(
@@ -48,7 +45,7 @@ class DatabaseNativeUsageSourceProviderTest {
 
     @Test
     void extractsSelectLikeRoutineFragments() throws Exception {
-        UsageProperties properties = properties(true, false, true, false);
+        UsageProperties properties = properties(false, true, false);
         MetadataService metadata = mock(MetadataService.class);
         when(metadata.defaultSchema()).thenReturn("public");
         when(metadata.listRoutines("public", "%")).thenReturn(List.of(
@@ -80,7 +77,7 @@ class DatabaseNativeUsageSourceProviderTest {
 
     @Test
     void extractsOraclePackageBodySubprogramsAsSeparateNativeUsageUnits() throws Exception {
-        UsageProperties properties = properties(true, false, true, false);
+        UsageProperties properties = properties(false, true, false);
         MetadataService metadata = mock(MetadataService.class);
         when(metadata.defaultSchema()).thenReturn("APP");
         when(metadata.listRoutines("APP", "%")).thenReturn(List.of(
@@ -126,7 +123,7 @@ class DatabaseNativeUsageSourceProviderTest {
                 .containsExactly("active_customer_ids", "touch_customer");
     }
 
-    private static UsageProperties properties(boolean nativeEnabled, boolean views,
+    private static UsageProperties properties(boolean views,
                                               boolean routines, boolean triggers) {
         return new UsageProperties(
                 true,

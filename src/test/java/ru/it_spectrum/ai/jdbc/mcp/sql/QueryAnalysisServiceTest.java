@@ -2,6 +2,9 @@ package ru.it_spectrum.ai.jdbc.mcp.sql;
 
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryInspection;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryParameter;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryTableRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryWarning;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,16 +26,16 @@ class QueryAnalysisServiceTest {
         assertThat(result.parseable()).isEqualTo(true);
         assertThat(result.statementType()).isEqualTo("PlainSelect");
         assertThat(result.tables())
-                .extracting(row -> row.name())
+                .extracting(QueryTableRef::name)
                 .contains("customers", "orders");
         assertThat(result.aliases()).containsEntry("c", "customers").containsEntry("o", "orders");
         assertThat(result.joins()).hasSize(1);
         assertThat(result.predicates()).hasSize(2);
         assertThat(result.parameters())
-                .extracting(row -> row.name())
+                .extracting(QueryParameter::name)
                 .contains("status");
         assertThat(result.warnings())
-                .extracting(row -> row.code())
+                .extracting(QueryWarning::code)
                 .contains("leading_wildcard_like");
     }
 

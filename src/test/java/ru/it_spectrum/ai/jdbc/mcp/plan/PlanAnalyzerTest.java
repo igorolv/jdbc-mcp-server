@@ -27,7 +27,7 @@ class PlanAnalyzerTest {
         assertThat(summary.nodeCount()).isEqualTo(1);
         List<PlanNodeSummary> scans = summary.fullScans();
         assertThat(scans).hasSize(1);
-        assertThat(scans.get(0).relation()).isEqualTo("big_table");
+        assertThat(scans.getFirst().relation()).isEqualTo("big_table");
     }
 
     @Test
@@ -48,8 +48,8 @@ class PlanAnalyzerTest {
 
         List<PlanNodeSummary> errs = summary.estimationErrors();
         assertThat(errs).hasSize(1);
-        assertThat(errs.get(0).ratio()).isGreaterThan(100.0);
-        assertThat(errs.get(0).reason()).contains("underestimated");
+        assertThat(errs.getFirst().ratio()).isGreaterThan(100.0);
+        assertThat(errs.getFirst().reason()).contains("underestimated");
     }
 
     @Test
@@ -70,7 +70,7 @@ class PlanAnalyzerTest {
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
         List<PlanNodeSummary> nls = summary.riskyNestedLoops();
         assertThat(nls).hasSize(1);
-        assertThat(nls.get(0).outerRows()).isEqualTo(50_000L);
+        assertThat(nls.getFirst().outerRows()).isEqualTo(50_000L);
     }
 
     @Test
@@ -84,7 +84,7 @@ class PlanAnalyzerTest {
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
         List<PlanNodeSummary> spills = summary.diskSpills();
         assertThat(spills).hasSize(1);
-        assertThat(spills.get(0).sortMethod()).contains("external");
+        assertThat(spills.getFirst().sortMethod()).contains("external");
     }
 
     @Test
@@ -97,8 +97,8 @@ class PlanAnalyzerTest {
         PlanAnalysisSummary summary = PlanAnalyzer.summarize(p);
         List<PlanNodeSummary> top = summary.topExpensiveNodes();
         assertThat(top).isNotEmpty();
-        assertThat(top.get(0).rankedBy()).isEqualTo("actual_total_time_ms");
+        assertThat(top.getFirst().rankedBy()).isEqualTo("actual_total_time_ms");
         // The Append root aggregates children's time and wins.
-        assertThat(top.get(0).nodeType()).isEqualTo("Append");
+        assertThat(top.getFirst().nodeType()).isEqualTo("Append");
     }
 }

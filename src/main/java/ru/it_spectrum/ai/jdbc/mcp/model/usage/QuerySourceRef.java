@@ -13,8 +13,4 @@ public record QuerySourceRef(
             throw new IllegalArgumentException("sourcePath is required");
         }
     }
-
-    public String sourceUnitNormalized() {
-        return sourceUnit == null ? "" : sourceUnit;
-    }
 }

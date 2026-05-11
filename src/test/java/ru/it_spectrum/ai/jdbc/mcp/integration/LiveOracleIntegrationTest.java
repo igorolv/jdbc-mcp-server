@@ -29,12 +29,6 @@ import javax.sql.DataSource;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -61,22 +55,18 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LiveOracleIntegrationTest {
 
-    private String url;
-    private String username;
-    private String password;
     private String schema;
 
     private SqlExecutor executor;
     private MetadataService metadata;
     private StatsService stats;
-    private SqlDialect dialect;
     private QueryTools queryTools;
 
     @BeforeAll
     void setup() {
-        url = System.getenv("LIVE_ORACLE_URL");
-        username = System.getenv("LIVE_ORACLE_USERNAME");
-        password = System.getenv("LIVE_ORACLE_PASSWORD");
+        String url = System.getenv("LIVE_ORACLE_URL");
+        String username = System.getenv("LIVE_ORACLE_USERNAME");
+        String password = System.getenv("LIVE_ORACLE_PASSWORD");
         Assumptions.assumeTrue(
                 url != null && !url.isBlank()
                         && username != null && !username.isBlank()
@@ -93,7 +83,7 @@ class LiveOracleIntegrationTest {
                 url, username, password,
                 schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000, 300, 2000);
         DataSource ds = buildPool(props);
-        dialect = new OracleDialect();
+        SqlDialect dialect = new OracleDialect();
         ReadOnlyGuard guard = new ReadOnlyGuard(props);
         executor = new SqlExecutor(ds, dialect, props, guard);
         metadata = new MetadataService(executor, dialect, props);
@@ -120,8 +110,8 @@ class LiveOracleIntegrationTest {
     void pingViaDual() throws Exception {
         QueryResult r = executor.query("SELECT 1 AS v FROM dual", null, null, null);
         assertThat(r.rows()).hasSize(1);
-        Object v = r.rows().get(0).get("V");
-        if (v == null) v = r.rows().get(0).get("v");
+        Object v = r.rows().getFirst().get("V");
+        if (v == null) v = r.rows().getFirst().get("v");
         assertThat(((Number) v).intValue()).isEqualTo(1);
     }
 
@@ -131,8 +121,8 @@ class LiveOracleIntegrationTest {
                 "SELECT COUNT(*) AS c FROM all_tables WHERE owner = ?",
                 List.of(schema), null, null);
         assertThat(r.rows()).hasSize(1);
-        Object c = r.rows().get(0).get("C");
-        if (c == null) c = r.rows().get(0).get("c");
+        Object c = r.rows().getFirst().get("C");
+        if (c == null) c = r.rows().getFirst().get("c");
         assertThat(((Number) c).longValue()).isGreaterThanOrEqualTo(0L);
     }
 
@@ -167,7 +157,7 @@ class LiveOracleIntegrationTest {
         List<TableEntry> tables = metadata.listTables(schema, null, new String[]{"TABLE"});
         Assumptions.assumeTrue(tables != null && !tables.isEmpty(),
                 "no tables in schema " + schema + " — skipping describeTable check");
-        String tableName = tables.get(0).name();
+        String tableName = tables.getFirst().name();
         TableDescription info = metadata.describeTable(schema, tableName);
         List<Column> cols = info.columns();
         assertThat(cols).isNotEmpty();
@@ -178,7 +168,7 @@ class LiveOracleIntegrationTest {
         List<TableEntry> tables = metadata.listTables(schema, null, new String[]{"TABLE"});
         Assumptions.assumeTrue(tables != null && !tables.isEmpty(),
                 "no tables in schema " + schema + " — skipping tableStats check");
-        String tableName = tables.get(0).name();
+        String tableName = tables.getFirst().name();
         TableStats s = stats.tableStats(schema, tableName);
         // 'found' may be false if the user can't see DBA_*/ALL_TAB_STATISTICS for this table —
         // that's still a valid result (MCP tool would report it as-is).

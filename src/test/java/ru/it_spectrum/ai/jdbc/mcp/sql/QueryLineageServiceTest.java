@@ -2,6 +2,9 @@ package ru.it_spectrum.ai.jdbc.mcp.sql;
 
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.model.lineage.LineageDirectObject;
+import ru.it_spectrum.ai.jdbc.mcp.model.lineage.LineageObjectRef;
+import ru.it_spectrum.ai.jdbc.mcp.model.lineage.LineagePhysicalTable;
 import ru.it_spectrum.ai.jdbc.mcp.model.lineage.QueryLineageResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
@@ -39,17 +42,17 @@ class QueryLineageServiceTest {
                 "SELECT * FROM customer_orders_v v", "public", true, false, 5);
 
         assertThat(result.directObjects())
-                .extracting(row -> row.name())
+                .extracting(LineageDirectObject::name)
                 .containsExactly("customer_orders_v");
         assertThat(result.expandedPhysicalTables())
-                .extracting(row -> row.name())
+                .extracting(LineagePhysicalTable::name)
                 .containsExactlyInAnyOrder("customers", "orders");
         assertThat(result.expandedPhysicalTables())
                 .allSatisfy(row -> assertThat(row.via()).containsExactly("PUBLIC.CUSTOMER_ORDERS_V"));
         assertThat(result.expandedObjects())
                 .singleElement()
                 .satisfies(view -> assertThat(view.dependsOn())
-                        .extracting(dep -> dep.name())
+                        .extracting(LineageObjectRef::name)
                         .containsExactlyInAnyOrder("customers", "orders"));
     }
 
@@ -109,10 +112,10 @@ class QueryLineageServiceTest {
                 "SELECT customer_segment(c.id) FROM customers c", "public", true, true, 5);
 
         assertThat(result.directObjects())
-                .extracting(row -> row.name())
+                .extracting(LineageDirectObject::name)
                 .contains("customers", "customer_segment");
         assertThat(result.expandedPhysicalTables())
-                .extracting(row -> row.name())
+                .extracting(LineagePhysicalTable::name)
                 .contains("customers", "customer_segments");
         assertThat(result.expandedPhysicalTables().stream()
                 .filter(row -> row.name().equals("customer_segments"))

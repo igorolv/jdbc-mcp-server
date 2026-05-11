@@ -26,17 +26,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
 /**
- * Column-level selectivity and distribution analyses that the optimiser-flavoured
+ * Column-level selectivity and distribution analyses that the optimizer-flavoured
  * {@link StatsService} deliberately stays out of.
  *
  * <p>Answers "is this predicate going to filter anything?" / "how skewed is this column?" /
@@ -107,7 +102,7 @@ public class DistributionService {
         if (r.rows().isEmpty()) {
             return new ColumnStats(effectiveSchema, table, column, 0L, 0L, 0L, null, null);
         }
-        Map<String, Object> row = r.rows().get(0);
+        Map<String, Object> row = r.rows().getFirst();
         return new ColumnStats(effectiveSchema, table, column,
                 toLong(getCI(row, "total_rows")),
                 toLong(getCI(row, "non_null_rows")),
@@ -197,7 +192,7 @@ public class DistributionService {
                     type.typeName, pct, 0L, 0L, 0L, 0.0,
                     null, null, null, null, null, null, null, null);
         }
-        Map<String, Object> row = r.rows().get(0);
+        Map<String, Object> row = r.rows().getFirst();
         long total   = toLong(getCI(row, "total_rows"));
         long nonNull = toLong(getCI(row, "non_null_rows"));
         long nulls   = total - nonNull;
@@ -275,11 +270,11 @@ public class DistributionService {
 
         long total = 0L;
         if (!r.rows().isEmpty()) {
-            total = toLong(getCI(r.rows().get(0), "total_rows"));
+            total = toLong(getCI(r.rows().getFirst(), "total_rows"));
         }
         List<NullRatio.ColumnEntry> cols = new ArrayList<>(columnNames.size());
         if (!r.rows().isEmpty()) {
-            Map<String, Object> row = r.rows().get(0);
+            Map<String, Object> row = r.rows().getFirst();
             for (int i = 0; i < columnNames.size(); i++) {
                 long nn = toLong(getCI(row, "nn_" + i));
                 long nulls = total - nn;
@@ -486,7 +481,7 @@ public class DistributionService {
         QueryResult r = executor.queryInternal("SELECT COUNT(*) AS total FROM " + qualifiedTable,
                 Collections.emptyList(), 1);
         if (r.rows().isEmpty()) return 0L;
-        return toLong(getCI(r.rows().get(0), "total"));
+        return toLong(getCI(r.rows().getFirst(), "total"));
     }
 
     private List<String> fetchColumnNames(String schema, String table) throws SQLException {
@@ -498,7 +493,7 @@ public class DistributionService {
                 while (rs.next()) {
                     ordered.add(new Object[]{rs.getInt("ORDINAL_POSITION"), rs.getString("COLUMN_NAME")});
                 }
-                ordered.sort((a, b) -> Integer.compare((int) a[0], (int) b[0]));
+                ordered.sort(Comparator.comparingInt(a -> (int) a[0]));
                 for (Object[] r : ordered) out.add((String) r[1]);
             }
             return out;

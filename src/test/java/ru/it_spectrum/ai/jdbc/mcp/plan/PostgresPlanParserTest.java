@@ -80,12 +80,12 @@ class PostgresPlanParserTest {
         assertThat(root.actualRows()).isEqualTo(1250);
         assertThat(root.children()).hasSize(2);
 
-        PlanNode seqScan = root.children().get(0);
+        PlanNode seqScan = root.children().getFirst();
         assertThat(seqScan.nodeType()).isEqualTo("Seq Scan");
         assertThat(seqScan.relation()).isEqualTo("customers");
 
         // Index Scan is the grandchild (wrapped in Hash).
-        PlanNode idxScan = root.children().get(1).children().get(0);
+        PlanNode idxScan = root.children().get(1).children().getFirst();
         assertThat(idxScan.relation()).isEqualTo("orders");
     }
 

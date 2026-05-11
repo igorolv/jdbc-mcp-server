@@ -25,12 +25,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeSet;
+import java.util.*;
 
 /**
  * Collects schema / table / column / index / FK / view / routine / sequence metadata.
@@ -67,10 +62,6 @@ public class MetadataService {
         this.properties = properties;
         this.cache = cache;
         this.schemaResolver = schemaResolver;
-    }
-
-    public SchemaSnapshotCache cache() {
-        return cache;
     }
 
     public String defaultSchema() throws SQLException {
@@ -227,7 +218,7 @@ public class MetadataService {
                         null, null, autoIncrement));
             }
         }
-        cols.sort((a, b) -> Integer.compare(a.ordinalPosition(), b.ordinalPosition()));
+        cols.sort(Comparator.comparingInt(Column::ordinalPosition));
         return cols;
     }
 
@@ -324,7 +315,7 @@ public class MetadataService {
             while (rs.next()) {
                 rows.add(new Object[]{rs.getShort("KEY_SEQ"), rs.getString("COLUMN_NAME"), rs.getString("PK_NAME")});
             }
-            rows.sort((a, b) -> Short.compare((Short) a[0], (Short) b[0]));
+            rows.sort(Comparator.comparingInt(a -> (Short) a[0]));
             for (Object[] r : rows) {
                 cols.add((String) r[1]);
                 if (name == null) name = (String) r[2];
@@ -436,7 +427,7 @@ public class MetadataService {
         if (r.rows().isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
         for (Map<String, Object> row : r.rows()) {
-            Object def = row.get(r.columns().get(0));
+            Object def = row.get(r.columns().getFirst());
             if (def != null) sb.append(def);
         }
         return sb.toString();
@@ -479,7 +470,7 @@ public class MetadataService {
                 List.of(effectiveSchema == null ? "" : effectiveSchema, name), 10_000);
         if (r.rows().isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
-        String key = r.columns().get(0);
+        String key = r.columns().getFirst();
         for (Map<String, Object> row : r.rows()) {
             Object v = row.get(key);
             if (v != null) sb.append(v);
@@ -542,20 +533,12 @@ public class MetadataService {
         QueryResult r = executor.queryInternal(sql, List.of(resolveSchema(schema), table, trigger), 10_000);
         if (r.rows().isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
-        String key = r.columns().get(0);
+        String key = r.columns().getFirst();
         for (Map<String, Object> row : r.rows()) {
             Object value = row.get(key);
             if (value != null) sb.append(value);
         }
         return sb.toString();
-    }
-
-    public List<Trigger> tableTriggers(String schema, String table, boolean includeDefinition)
-            throws SQLException {
-        if (table == null || table.isBlank()) {
-            throw new IllegalArgumentException("table must be provided");
-        }
-        return fetchTriggers(resolveSchema(schema), table, includeDefinition);
     }
 
     /**
@@ -765,7 +748,7 @@ public class MetadataService {
 
     private boolean isSystemSchema(String schema) {
         if (schema == null) return false;
-        var set = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
+        var set = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         set.addAll(dialect.systemSchemas());
         return set.contains(schema);
     }

@@ -110,11 +110,6 @@ public class SqlExecutor {
         }
     }
 
-    public QueryResult queryInternalNamed(String sql, Map<String, ?> namedParams, int limit) throws SQLException {
-        NamedParameterRewriter.PreparedSql prepared = rewriteNamed(sql, namedParams);
-        return queryInternal(prepared.sql(), prepared.params(), limit);
-    }
-
     private QueryResult queryGuarded(String sql, List<Object> params, Integer limit, Integer timeoutSeconds)
             throws SQLException {
         int effectiveLimit = limit != null && limit > 0 ? limit : properties.maxRows();
@@ -208,17 +203,23 @@ public class SqlExecutor {
 
     private Object convertValue(ResultSet rs, int i) throws SQLException {
         Object v = rs.getObject(i);
-        if (v == null) return null;
-        // Normalize a few types that are awkward for JSON / text output:
-        if (v instanceof java.sql.Clob clob) {
-            long len = clob.length();
-            return clob.getSubString(1, (int) Math.min(len, 1_000_000L));
-        }
-        if (v instanceof java.sql.Blob blob) {
-            return "<BLOB " + blob.length() + " bytes>";
-        }
-        if (v instanceof java.sql.SQLXML xml) {
-            return xml.getString();
+        switch (v) {
+            case null -> {
+                return null;
+            }
+            // Normalize a few types that are awkward for JSON / text output:
+            case java.sql.Clob clob -> {
+                long len = clob.length();
+                return clob.getSubString(1, (int) Math.min(len, 1_000_000L));
+            }
+            case java.sql.Blob blob -> {
+                return "<BLOB " + blob.length() + " bytes>";
+            }
+            case java.sql.SQLXML xml -> {
+                return xml.getString();
+            }
+            default -> {
+            }
         }
         return v;
     }

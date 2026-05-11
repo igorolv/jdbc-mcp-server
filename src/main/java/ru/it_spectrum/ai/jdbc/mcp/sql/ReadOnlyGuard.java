@@ -111,7 +111,7 @@ public class ReadOnlyGuard {
             throw new SqlNotAllowedException(
                     "Multiple SQL statements are not allowed — send a single SELECT/WITH/EXPLAIN");
         }
-        Statement statement = statements.get(0);
+        Statement statement = statements.getFirst();
         if (statement instanceof ExplainStatement explain) {
             if (explain.getStatement() == null) {
                 throw new SqlNotAllowedException("Read-only guard: EXPLAIN must wrap a SELECT/WITH statement");
@@ -142,28 +142,32 @@ public class ReadOnlyGuard {
                 checkWithItem(item);
             }
         }
-        if (select instanceof PlainSelect plain) {
-            if ((plain.getIntoTables() != null && !plain.getIntoTables().isEmpty())
-                    || plain.getIntoTempTable() != null) {
-                throw new SqlNotAllowedException(
-                        "Read-only guard: SELECT INTO is not allowed in read-only mode. " +
-                                "(Set jdbc.readonly-guard=off to disable this client-side check.)");
-            }
-            return;
-        }
-        if (select instanceof ParenthesedSelect parenthesed) {
-            if (parenthesed.getSelect() != null) {
-                checkSelect(parenthesed.getSelect());
-            }
-            return;
-        }
-        if (select instanceof SetOperationList set) {
-            if (set.getSelects() != null) {
-                for (Select nested : set.getSelects()) {
-                    checkSelect(nested);
+        switch (select) {
+            case PlainSelect plain -> {
+                if ((plain.getIntoTables() != null && !plain.getIntoTables().isEmpty())
+                        || plain.getIntoTempTable() != null) {
+                    throw new SqlNotAllowedException(
+                            "Read-only guard: SELECT INTO is not allowed in read-only mode. " +
+                                    "(Set jdbc.readonly-guard=off to disable this client-side check.)");
                 }
+                return;
             }
-            return;
+            case ParenthesedSelect parenthesed -> {
+                if (parenthesed.getSelect() != null) {
+                    checkSelect(parenthesed.getSelect());
+                }
+                return;
+            }
+            case SetOperationList set -> {
+                if (set.getSelects() != null) {
+                    for (Select nested : set.getSelects()) {
+                        checkSelect(nested);
+                    }
+                }
+                return;
+            }
+            default -> {
+            }
         }
         throw new SqlNotAllowedException(
                 "Read-only guard: unsupported SELECT form '" + select.getClass().getSimpleName() + "'. " +

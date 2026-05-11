@@ -20,7 +20,6 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.UniqueConstraint;
 

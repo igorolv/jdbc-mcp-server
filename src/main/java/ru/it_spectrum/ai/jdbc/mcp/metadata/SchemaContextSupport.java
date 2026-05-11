@@ -18,10 +18,8 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.IncomingForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
@@ -270,7 +268,7 @@ abstract class SchemaContextSupport {
                     ignored -> new ArrayList<>()).add(GraphEdge.reverse(edge));
         }
         List<List<JoinPathStep>> paths = searchPaths(fromKey, toKey, byFrom, maxDepth, 1);
-        return new ShortestPath(fromKey, toKey, !paths.isEmpty(), paths.isEmpty() ? List.of() : paths.get(0));
+        return new ShortestPath(fromKey, toKey, !paths.isEmpty(), paths.isEmpty() ? List.of() : paths.getFirst());
     }
 
     protected String resolveTableKey(Map<String, TableDescription> tables, String schema, String table) {
@@ -304,7 +302,7 @@ abstract class SchemaContextSupport {
         if (fkCount >= 2 && columnCount <= 6) return "junction/detail";
         if (degree.in >= 2) return "hub";
         if (degree.out >= 1 && degree.in == 0) return "fact/detail";
-        if (columnCount <= 5 && degree.in >= 1) return "lookup/reference";
+        if (columnCount <= 5 && degree.in == 1) return "lookup/reference";
         if (name.endsWith("_type") || name.endsWith("_status") || name.contains("lookup")) {
             return "lookup/reference";
         }
@@ -508,8 +506,8 @@ abstract class SchemaContextSupport {
             List<String> toCols = edge.toColumns() == null ? List.of() : edge.toColumns();
             if (fromCols.size() != 1 || toCols.size() != 1) continue;
             String key = undirectedPairKey(
-                    edge.fromTable(), fromCols.get(0),
-                    edge.toTable(), toCols.get(0));
+                    edge.fromTable(), fromCols.getFirst(),
+                    edge.toTable(), toCols.getFirst());
             UsageCatalogService.ObservedEdge oe = byPair.get(key);
             if (oe == null) continue;
             builderFor(edge, builders).observedQuery = new ObservedQueryEdgeEvidence(
@@ -617,7 +615,7 @@ abstract class SchemaContextSupport {
 
     protected String referenceNameFromColumn(String columnName) {
         String normalized = normalizeIdentifier(columnName);
-        if (!normalized.endsWith("_id") || normalized.length() <= 3) return null;
+        if (!normalized.endsWith("_id") || normalized.length() == 3) return null;
         return normalized.substring(0, normalized.length() - 3);
     }
 
@@ -701,7 +699,7 @@ abstract class SchemaContextSupport {
 
     protected int clamp(Integer value, int defaultValue, int min, int max) {
         if (value == null) return defaultValue;
-        return Math.max(min, Math.min(max, value));
+        return Math.clamp(max, min, value);
     }
 
     protected String key(String schema, String table) {
@@ -713,17 +711,6 @@ abstract class SchemaContextSupport {
         return value == null ? null : String.valueOf(value);
     }
 
-    @SuppressWarnings("unchecked")
-    protected List<Map<String, Object>> mapList(Object value) {
-        if (!(value instanceof List<?> list)) return List.of();
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Object item : list) {
-            if (item instanceof Map<?, ?> map) {
-                out.add((Map<String, Object>) map);
-            }
-        }
-        return out;
-    }
 
     @SuppressWarnings("unchecked")
     protected Map<String, Object> mapValue(Object value) {

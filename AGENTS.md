@@ -10,13 +10,13 @@
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
 It exposes 51 read-only tools across nine groups:
 
-- **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarised plans.
+- **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarized plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
 - **Metadata** — schemas, tables, columns, indexes, FKs, constraints, triggers, views, routines, sequences, object search.
 - **Data exploration** — sample rows, basic column stats.
 - **Selectivity / distribution** — top-N, percentiles, null ratios, planner-only predicate and join estimates.
 - **Object statistics** — table/index size and activity, unused/redundant indexes, FK index coverage.
-- **Schema context** — high-level snapshots, table neighbourhoods, FK join paths, schema lint, ERD/DOT export.
+- **Schema context** — high-level snapshots, table neighborhoods, FK join paths, schema lint, ERD/DOT export.
 - **Usage catalog** — indexed known SQL queries with business context, observed joins, and semantic evidence.
 - **Snapshot / cache** — in-memory metadata snapshot with TTL plus refresh / inspect / invalidate tools.
 
@@ -204,7 +204,7 @@ add a partial index, or rewrite a join.
 | `estimateSelectivity` | Planner's row estimate for `SELECT 1 FROM t WHERE <predicate>` — **without running the query**. Uses `EXPLAIN (FORMAT JSON)` (PostgreSQL), `EXPLAIN PLAN` (Oracle), or `SHOWPLAN_XML` (SQL Server). Returns `estimated_rows`, a `baseline_rows` count (no predicate) and the `selectivity` ratio. Reject `;` in the predicate. Params: `schema`, `table`, `predicate` (raw SQL, no `WHERE` keyword) |
 | `joinCardinality` | Planner's row estimate for an equi-join between two tables, without executing it. Returns `estimated_rows`, per-side row estimates and `selectivity_vs_cartesian`. Join types: `INNER` (default), `LEFT`, `RIGHT`, `FULL`. Parameter order encodes JOIN direction (matters for `LEFT` / `RIGHT`). Params: `fromSchema`, `fromTable`, `leftColumn`, `toSchema`, `toTable`, `rightColumn`, `joinType` |
 
-### Object statistics tools (query optimisation)
+### Object statistics tools (query optimization)
 
 | Tool | Description |
 |---|---|
@@ -323,7 +323,7 @@ Recommended flow when the user asks a data question:
 8. Call `executeQuery`. Use `limit` to keep the response small.
 9. If the response has `"truncated": true`, either narrow the query or raise `limit`.
 
-Recommended flow when the user asks to optimise / audit queries or schema:
+Recommended flow when the user asks to optimize / audit queries or schema:
 
 1. Call `tableStats` for each large table involved — gives the row-count magnitude,
    on-disk size and dead-tuple ratio. Without this the agent cannot tell a 1 K-row
@@ -368,7 +368,7 @@ Notes on the metadata snapshot cache:
   `sqlcmd -S host,1433 -d database -U user -P password` for SQL Server).
 - **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** — guard
   triggered. This is expected for any write statement. For edge cases where a read-only
-  operation is wrapped in something the guard does not recognise, set `JDBC_READONLY_GUARD=off`.
+  operation is wrapped in something the guard does not recognize, set `JDBC_READONLY_GUARD=off`.
   Connection-level read-only flags stay on; Oracle and SQL Server treat them as best-effort.
 - **Oracle: empty `describeTable` / `listTables`** — Oracle stores unquoted identifiers in upper
   case. Pass `CUSTOMERS` rather than `customers`.

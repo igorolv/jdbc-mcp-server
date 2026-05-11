@@ -261,7 +261,7 @@ public class QueryAnalysisService {
 
     /**
      * Walks the AND-conjuncts of a JOIN ON-expression and records each {@code Column = Column}
-     * pair as a structured {@link JoinPair}. Non-equality conjuncts (BETWEEN, function calls,
+     * pair as a structured JoinPair. Non-equality conjuncts (BETWEEN, function calls,
      * literal comparisons) are intentionally ignored — they remain visible as predicates but
      * do not contribute to the "observed equi-join" evidence used by the usage catalog.
      */
@@ -285,7 +285,7 @@ public class QueryAnalysisService {
             List<QueryColumnRef> cols = collectColumns(part, model, scope);
             if (part instanceof LikeExpression like && like.getRightExpression() != null) {
                 String rhs = like.getRightExpression().toString();
-                if (rhs.length() >= 2 && rhs.startsWith("'%")) {
+                if (rhs.startsWith("'%")) {
                     model.warnings.add(warning("leading_wildcard_like",
                         "LIKE predicate starts with a wildcard and usually cannot use a normal B-tree index: " + part));
                 }

@@ -227,7 +227,7 @@ class UsageCatalogServiceTest {
                 .extracting(QuerySourceRef::sourcePath)
                 .contains("InvoiceReport.json");
         assertThat(cust.matchedTerms())
-                .extracting(term -> term.value())
+                .extracting(SemanticTermEvidence::value)
                 .contains("business_tag:payer", "query_label:Invoice payer header",
                         "output_label:Payer name", "business_object:Invoice payer");
     }
@@ -317,8 +317,8 @@ class UsageCatalogServiceTest {
 
         ObservedRelationshipsResult popular = service.observedRelationships(null, null, 2);
         assertThat(popular.relationships()).hasSize(1);
-        assertThat(popular.relationships().get(0).support()).isEqualTo(2);
-        assertThat(popular.relationships().get(0).left().table()).isEqualTo("ORDERS");
+        assertThat(popular.relationships().getFirst().support()).isEqualTo(2);
+        assertThat(popular.relationships().getFirst().left().table()).isEqualTo("ORDERS");
     }
 
     @Test
@@ -371,7 +371,7 @@ class UsageCatalogServiceTest {
         java.util.List<UsageCatalogService.ObservedEdge> ordersOnly =
                 service.observedEdges(java.util.Set.of("ORDERS"), 1);
         assertThat(ordersOnly).hasSize(1);
-        UsageCatalogService.ObservedEdge edge = ordersOnly.get(0);
+        UsageCatalogService.ObservedEdge edge = ordersOnly.getFirst();
         assertThat(edge.support()).isEqualTo(2);
         assertThat(edge.sourceRefs()).hasSize(2);
         assertThat(edge.leftTable()).isEqualTo("ORDERS");

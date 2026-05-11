@@ -57,8 +57,6 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -856,7 +854,7 @@ public class UsageCatalogService {
         List<QueryDetail.Output> outputs = queryList(
                 "SELECT * FROM query_output WHERE query_id = ? ORDER BY id",
                 ps -> ps.setLong(1, queryId),
-                rs -> outputRow(rs));
+                this::outputRow);
         List<QueryDetail.FieldUsage> fieldUsages = queryList(
                 "SELECT * FROM query_field_usage WHERE query_id = ? ORDER BY id",
                 ps -> ps.setLong(1, queryId),
@@ -1160,7 +1158,7 @@ public class UsageCatalogService {
                         applyResolution(conn, name, null, "unresolved");
                         unresolved++;
                     } else if (matches.size() == 1) {
-                        applyResolution(conn, name, matches.get(0)[0].toUpperCase(Locale.ROOT), "resolved");
+                        applyResolution(conn, name, matches.getFirst()[0].toUpperCase(Locale.ROOT), "resolved");
                         resolved++;
                     } else {
                         applyResolution(conn, name, null, "ambiguous");
@@ -1366,7 +1364,7 @@ public class UsageCatalogService {
         ensureIndexed();
         List<String> tokens = semanticTokens(terms);
         if (tokens.isEmpty()) return List.of();
-        int safeLimit = Math.max(1, Math.min(limit, 50));
+        int safeLimit = Math.clamp(limit, 1, 50);
         String schemaUpper = schema == null || schema.isBlank() ? null : schema.toUpperCase(Locale.ROOT);
         String tokenClause = String.join(" OR ", Collections.nCopies(tokens.size(), "LOWER(term_value) LIKE ?"));
         String sql = """
@@ -1738,7 +1736,7 @@ public class UsageCatalogService {
         if (qualifier == null || qualifier.isBlank() || resolved.table == null) return null;
         Long byAlias = null;
         for (TableInsertResult t : tables) {
-            boolean schemaMatch = (resolved.schema == null || "".equals(resolved.schema))
+            boolean schemaMatch = (resolved.schema == null || resolved.schema.isEmpty())
                     ? t.schemaResolved == null
                     : resolved.schema.equals(t.schemaResolved);
             if (!schemaMatch) continue;
@@ -1774,7 +1772,7 @@ public class UsageCatalogService {
         if (ids == null || ids.isBlank()) return List.of();
         Set<Long> idSet = new LinkedHashSet<>();
         for (String part : ids.split("\\|")) {
-            if (part == null || part.isBlank()) continue;
+            if (part.isBlank()) continue;
             try {
                 idSet.add(Long.parseLong(part));
             } catch (NumberFormatException ignored) {
@@ -1948,9 +1946,5 @@ public class UsageCatalogService {
             this.schema = schema;
             this.table = table;
         }
-    }
-
-    private record SemanticTermRowList(String schema, String table, String sourceKind,
-                                        String termValue, int support, List<QuerySourceRef> sourceRefs) {
     }
 }

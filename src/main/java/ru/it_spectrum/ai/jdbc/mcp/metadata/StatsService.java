@@ -15,18 +15,10 @@ import ru.it_spectrum.ai.jdbc.mcp.model.stats.UnusedIndexes;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
-import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * Object-level statistics aggregation. Wraps dialect-specific queries and does Java-side
@@ -44,7 +36,6 @@ public class StatsService {
 
     private final SqlExecutor executor;
     private final SqlDialect dialect;
-    private final JdbcProperties properties;
     private final SchemaResolver schemaResolver;
 
     public StatsService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties) {
@@ -56,7 +47,6 @@ public class StatsService {
                         SchemaResolver schemaResolver) {
         this.executor = executor;
         this.dialect = dialect;
-        this.properties = properties;
         this.schemaResolver = schemaResolver;
     }
 
@@ -72,7 +62,7 @@ public class StatsService {
         if (r.rows().isEmpty()) {
             return TableStats.notFound(effectiveSchema, table);
         }
-        Map<String, Object> row = r.rows().get(0);
+        Map<String, Object> row = r.rows().getFirst();
         Object segmentBytes = null;
         String segmentBytesError = null;
 
@@ -83,7 +73,7 @@ public class StatsService {
                 QueryResult seg = executor.queryInternal(segQuery,
                         List.of(effectiveSchema == null ? "" : effectiveSchema, table), 1);
                 if (!seg.rows().isEmpty()) {
-                    segmentBytes = seg.rows().get(0).get(seg.columns().get(0));
+                    segmentBytes = seg.rows().getFirst().get(seg.columns().getFirst());
                 }
             } catch (SQLException e) {
                 log.debug("segmentSizeQuery failed (likely missing DBA_SEGMENTS privilege): {}",
@@ -355,7 +345,7 @@ public class StatsService {
         }
         List<List<String>> prefixes = new ArrayList<>(byIndex.size());
         for (List<OrderedCol> cols : byIndex.values()) {
-            cols.sort((a, b) -> Short.compare(a.pos, b.pos));
+            cols.sort(Comparator.comparingInt(a -> a.pos));
             List<String> names = new ArrayList<>(cols.size());
             for (OrderedCol c : cols) names.add(c.name);
             prefixes.add(names);
@@ -412,9 +402,19 @@ public class StatsService {
     }
 
     private static boolean toBool(Object v) {
-        if (v == null) return false;
-        if (v instanceof Boolean b) return b;
-        if (v instanceof Number n) return n.longValue() != 0L;
+        switch (v) {
+            case null -> {
+                return false;
+            }
+            case Boolean b -> {
+                return b;
+            }
+            case Number n -> {
+                return n.longValue() != 0L;
+            }
+            default -> {
+            }
+        }
         String s = v.toString().trim();
         return "t".equalsIgnoreCase(s) || "true".equalsIgnoreCase(s)
                 || "y".equalsIgnoreCase(s) || "yes".equalsIgnoreCase(s)
@@ -470,8 +470,8 @@ public class StatsService {
         FkInfo(String name) { this.name = name; }
 
         void sortColumns() {
-            columnsRaw.sort((a, b) -> Short.compare(a.pos, b.pos));
-            referencedColumnsRaw.sort((a, b) -> Short.compare(a.pos, b.pos));
+            columnsRaw.sort(Comparator.comparingInt(a -> a.pos));
+            referencedColumnsRaw.sort(Comparator.comparingInt(a -> a.pos));
             for (OrderedCol c : columnsRaw) columns.add(c.name);
             for (OrderedCol c : referencedColumnsRaw) referencedColumns.add(c.name);
         }

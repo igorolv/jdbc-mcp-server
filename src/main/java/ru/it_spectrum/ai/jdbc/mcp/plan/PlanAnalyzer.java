@@ -122,7 +122,7 @@ public final class PlanAnalyzer {
                     && !"NESTED LOOPS".equalsIgnoreCase(p.nodeType())
                     && !"Nested Loops".equalsIgnoreCase(p.nodeType())) continue;
             if (p.children().isEmpty()) continue;
-            PlanNode outer = p.children().get(0);
+            PlanNode outer = p.children().getFirst();
             long outerRows = orZero(outer.actualRowsTotal() != null
                     ? outer.actualRowsTotal() : outer.estimatedRows()).longValue();
             if (outerRows < NESTED_LOOP_BIG_OUTER_ROWS) continue;

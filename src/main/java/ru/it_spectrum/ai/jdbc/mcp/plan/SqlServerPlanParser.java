@@ -46,7 +46,7 @@ public final class SqlServerPlanParser implements PlanParser {
         if (statementNodes.isEmpty()) {
             root = null;
         } else if (statementNodes.size() == 1) {
-            root = statementNodes.get(0);
+            root = statementNodes.getFirst();
         } else {
             Map<String, Object> raw = new LinkedHashMap<>();
             raw.put("statement_count", statementNodes.size());
@@ -212,7 +212,7 @@ public final class SqlServerPlanParser implements PlanParser {
         String local = node.getLocalName();
         if (local != null) return local;
         String name = node.getNodeName();
-        int colon = name == null ? -1 : name.indexOf(':');
+        int colon = name.indexOf(':');
         return colon >= 0 ? name.substring(colon + 1) : name;
     }
 

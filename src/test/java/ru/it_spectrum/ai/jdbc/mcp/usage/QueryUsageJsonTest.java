@@ -53,7 +53,7 @@ class QueryUsageJsonTest {
                 }
                 """;
         QueryUsage req = mapper.readValue(json, QueryUsage.class);
-        QueryUsageFieldUsage fu = req.fieldUsages().get(0);
+        QueryUsageFieldUsage fu = req.fieldUsages().getFirst();
         assertThat(fu.transformation().kind()).isEqualTo(QueryUsageTransformationKind.IDENTITY);
         assertThat(fu.confidence()).isEqualTo(QueryUsageConfidence.HIGH);
     }

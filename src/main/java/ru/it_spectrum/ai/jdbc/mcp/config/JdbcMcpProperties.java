@@ -29,8 +29,4 @@ public record JdbcMcpProperties(String dataDir) {
     public Path usageCatalogDir() {
         return resolvedDataDir().resolve("usage-catalog");
     }
-
-    public Path logsDir() {
-        return resolvedDataDir().resolve("logs");
-    }
 }
