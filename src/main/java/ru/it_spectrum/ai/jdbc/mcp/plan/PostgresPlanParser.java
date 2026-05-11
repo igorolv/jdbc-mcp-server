@@ -114,7 +114,7 @@ public final class PostgresPlanParser implements PlanParser {
         } catch (NumberFormatException e) {
             // Some fields (e.g. very small rows estimates) come back as doubles; round.
             try {
-                return (long) Math.round(Double.parseDouble(v.toString()));
+                return Math.round(Double.parseDouble(v.toString()));
             } catch (NumberFormatException e2) {
                 return null;
             }

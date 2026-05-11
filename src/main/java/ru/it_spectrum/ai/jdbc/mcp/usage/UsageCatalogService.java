@@ -565,7 +565,7 @@ public class UsageCatalogService {
                     name != null ? name : (payload != null ? payload.name() : null),
                     payload != null ? payload.dataType() : null,
                     payload != null ? payload.defaultValue() : null,
-                    payload == null || payload.required() == null ? true : payload.required(),
+                    payload == null || payload.required() == null || payload.required(),
                     payload != null ? payload.businessLabel() : null,
                     payload != null ? payload.businessDescription() : null
             ));
@@ -581,7 +581,7 @@ public class UsageCatalogService {
                         payload.name(),
                         payload.dataType(),
                         payload.defaultValue(),
-                        payload.required() == null ? true : payload.required(),
+                        payload.required() == null || payload.required(),
                         payload.businessLabel(),
                         payload.businessDescription()
                 ));

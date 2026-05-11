@@ -406,12 +406,12 @@ public class QueryAnalysisService {
     }
 
     private static List<QueryTableRef> dedupeTables(Collection<QueryTableRef> rows) {
-        return dedupeItems(rows, row -> String.valueOf(row.fullName()) + "|" + row.alias());
+        return dedupeItems(rows, row -> row.fullName() + "|" + row.alias());
     }
 
     private static List<QueryColumnRef> dedupeColumns(Collection<QueryColumnRef> rows) {
-        return dedupeItems(rows, row -> String.valueOf(row.context()) + "|"
-                + String.valueOf(row.qualifier()) + "." + row.name());
+        return dedupeItems(rows, row -> row.context() + "|"
+                + row.qualifier() + "." + row.name());
     }
 
     private static <T> List<T> dedupeItems(Collection<T> rows,

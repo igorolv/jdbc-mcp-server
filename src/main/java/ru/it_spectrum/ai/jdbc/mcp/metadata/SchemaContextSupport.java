@@ -347,7 +347,7 @@ abstract class SchemaContextSupport {
         String schema = info.schema();
         String table = info.name();
         Set<String> pkColumns = info.primaryKey() != null
-                ? new HashSet<>(info.primaryKey().columns()) : Set.<String>of();
+                ? new HashSet<>(info.primaryKey().columns()) : Set.of();
         Set<String> fkColumns = new HashSet<>();
         for (ForeignKey fk : info.foreignKeys()) {
             fkColumns.addAll(fk.columns());

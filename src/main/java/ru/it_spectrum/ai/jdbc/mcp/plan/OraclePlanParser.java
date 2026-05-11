@@ -104,7 +104,7 @@ public final class OraclePlanParser implements PlanParser {
         if (v == null) return null;
         if (v instanceof Number n) return n.longValue();
         try { return Long.parseLong(v.toString()); } catch (NumberFormatException e) {
-            try { return (long) Math.round(Double.parseDouble(v.toString())); }
+            try { return Math.round(Double.parseDouble(v.toString())); }
             catch (NumberFormatException e2) { return null; }
         }
     }

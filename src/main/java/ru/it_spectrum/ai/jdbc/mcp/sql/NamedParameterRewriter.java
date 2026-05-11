@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterUtils;
 import org.springframework.jdbc.core.namedparam.ParsedSql;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -23,9 +24,7 @@ public final class NamedParameterRewriter {
         Object[] values = NamedParameterUtils.buildValueArray(parsedSql, paramSource, null);
 
         List<Object> orderedParams = new ArrayList<>(values.length);
-        for (Object value : values) {
-            orderedParams.add(value);
-        }
+        Collections.addAll(orderedParams, values);
         return new PreparedSql(rewrittenSql, orderedParams);
     }
 

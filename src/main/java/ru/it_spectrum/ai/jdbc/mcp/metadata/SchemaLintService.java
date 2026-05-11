@@ -99,7 +99,7 @@ class SchemaLintService extends SchemaContextSupport {
         for (UniqueConstraint unique : info.uniqueConstraints()) {
             for (String columnName : unique.columns()) {
                 Column column = columnByName(info, columnName);
-                if (column != null && Boolean.TRUE.equals(column.nullable())) {
+                if (column != null && column.nullable()) {
                     addFinding(findings, limit, "MEDIUM", "nullableUniqueColumn", schema, table, columnName,
                             "Unique constraint includes a nullable column",
                             "Check database NULL semantics before relying on this for uniqueness.");

@@ -14,18 +14,9 @@ import java.util.Map;
  * <p>Fields that do not apply to the engine — for instance, Oracle and SQL Server estimated
  * plans have no {@code actualRows}/{@code actualTotalTime} — are left as {@code null}.
  */
-public final class PlanNode {
-
-    private final String nodeType;
-    private final String relation;
-    private final Double totalCost;
-    private final Double startupCost;
-    private final Long estimatedRows;
-    private final Long actualRows;
-    private final Long actualLoops;
-    private final Double actualTotalTimeMs;
-    private final Map<String, Object> raw;
-    private final List<PlanNode> children;
+public record PlanNode(String nodeType, String relation, Double totalCost, Double startupCost, Long estimatedRows,
+                       Long actualRows, Long actualLoops, Double actualTotalTimeMs, Map<String, Object> raw,
+                       List<PlanNode> children) {
 
     public PlanNode(String nodeType, String relation,
                     Double totalCost, Double startupCost,
@@ -43,17 +34,6 @@ public final class PlanNode {
         this.raw = raw;
         this.children = children == null ? new ArrayList<>() : children;
     }
-
-    public String nodeType()           { return nodeType; }
-    public String relation()           { return relation; }
-    public Double totalCost()          { return totalCost; }
-    public Double startupCost()        { return startupCost; }
-    public Long   estimatedRows()      { return estimatedRows; }
-    public Long   actualRows()         { return actualRows; }
-    public Long   actualLoops()        { return actualLoops; }
-    public Double actualTotalTimeMs()  { return actualTotalTimeMs; }
-    public Map<String, Object> raw()   { return raw; }
-    public List<PlanNode> children()   { return children; }
 
     /**
      * Effective actual rows per call across all loops. PostgreSQL reports per-loop actual rows

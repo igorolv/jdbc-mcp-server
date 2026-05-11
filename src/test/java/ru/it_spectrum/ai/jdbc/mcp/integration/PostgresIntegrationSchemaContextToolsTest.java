@@ -92,7 +92,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
         ObjectNode shortestPath = (ObjectNode) field(graph, "shortestPath");
         assertThat(field(shortestPath, "found").asBoolean()).isTrue();
-        assertThat((ArrayNode) field(shortestPath, "edges")).hasSize(2);
+        assertThat(field(shortestPath, "edges")).hasSize(2);
     }
 
     @Test

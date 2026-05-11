@@ -4,10 +4,7 @@ import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.model.plan.PlanAnalysisSummary;
 import ru.it_spectrum.ai.jdbc.mcp.model.plan.PlanNodeSummary;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,7 +13,7 @@ class PlanAnalyzerTest {
     private PlanNode node(String type, String rel, Double cost, Long est, Long act,
                           Double actTime, Map<String, Object> raw, PlanNode... children) {
         List<PlanNode> kids = new ArrayList<>();
-        for (PlanNode c : children) kids.add(c);
+        Collections.addAll(kids, children);
         return new PlanNode(type, rel, cost, null, est, act, 1L, actTime,
                 raw == null ? new LinkedHashMap<>() : raw, kids);
     }

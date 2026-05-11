@@ -9,14 +9,8 @@ import java.util.Map;
  * downstream tooling can branch on "postgresql" / "oracle" / "mssql" without importing the
  * dialect layer.
  */
-public final class ParsedPlan {
-
-    private final String engine;
-    private final PlanNode root;
-    private final boolean analyzed;
-    private final Double planningTimeMs;
-    private final Double executionTimeMs;
-    private final Map<String, Object> meta;
+public record ParsedPlan(String engine, PlanNode root, boolean analyzed, Double planningTimeMs, Double executionTimeMs,
+                         Map<String, Object> meta) {
 
     public ParsedPlan(String engine, PlanNode root, boolean analyzed,
                       Double planningTimeMs, Double executionTimeMs,
@@ -29,11 +23,11 @@ public final class ParsedPlan {
         this.meta = meta == null ? new LinkedHashMap<>() : meta;
     }
 
-    public String engine()              { return engine; }
-    public PlanNode root()              { return root; }
-    /** {@code true} iff the plan has measured (ANALYZE) rows/times attached. */
-    public boolean analyzed()           { return analyzed; }
-    public Double planningTimeMs()      { return planningTimeMs; }
-    public Double executionTimeMs()     { return executionTimeMs; }
-    public Map<String, Object> meta()   { return meta; }
+    /**
+     * {@code true} iff the plan has measured (ANALYZE) rows/times attached.
+     */
+    @Override
+    public boolean analyzed() {
+        return analyzed;
+    }
 }
