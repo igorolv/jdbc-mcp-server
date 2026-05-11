@@ -132,6 +132,21 @@ public class SchemaSnapshotCache {
     }
 
     /**
+     * Peek at the cache for a single table description without triggering a load.
+     * Returns the cached value if present and fresh, or {@code null} otherwise.
+     */
+    public TableDescription peekDescribeTable(String schema, String table) {
+        if (!enabled()) return null;
+        TableKey key = TableKey.of(schema, table);
+        long now = System.currentTimeMillis();
+        Entry<TableDescription> cached = describes.get(key);
+        if (cached != null && now - cached.loadedAtMs < ttlMs) {
+            return cached.value;
+        }
+        return null;
+    }
+
+    /**
      * Bulk-populate the table-description cache from a pre-loaded schema map.
      * Each entry is stored with the current timestamp so subsequent {@link #describeTable}
      * lookups hit the cache.

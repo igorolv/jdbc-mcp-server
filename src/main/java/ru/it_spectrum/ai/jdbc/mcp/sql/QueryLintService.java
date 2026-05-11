@@ -93,10 +93,9 @@ public class QueryLintService {
     private Map<String, TableInfo> loadTables(QueryAnalysisService.QueryModel model, String schema)
             throws SQLException {
         Map<String, TableInfo> tables = new LinkedHashMap<>();
-        for (String tableName : model.physicalTableNames()) {
-            TableDescription desc = metadata.describeTable(schema, tableName);
-            TableInfo info = new TableInfo(schema, tableName, desc);
-            tables.put(norm(tableName), info);
+        Map<String, TableDescription> descs = metadata.describeTables(schema, model.physicalTableNames());
+        for (TableDescription desc : descs.values()) {
+            tables.put(norm(desc.name()), new TableInfo(desc.schema(), desc.name(), desc));
         }
         return tables;
     }

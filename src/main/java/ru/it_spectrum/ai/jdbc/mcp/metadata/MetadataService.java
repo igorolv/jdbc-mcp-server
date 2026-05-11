@@ -567,15 +567,53 @@ public class MetadataService {
     }
 
     /**
-     * Bulk-load structural metadata for an already selected table list. This intentionally skips
-     * column defaults and column comments because high-level context responses do not expose them,
-     * and Oracle has to read DATA_DEFAULT through expensive LONG workarounds. The result is not
-     * written to the full describeTable cache, because it is a lightweight projection.
+     * Bulk-load structural metadata for a pre-selected list of table entries. Uses schema-level
+     * bulk queries (≈10 round trips total, regardless of table count) — much faster than calling
+     * {@link #describeTable} in a loop. Writes results into the metadata cache so subsequent
+     * per-table lookups hit the cache.
      */
     public Map<String, TableDescription> describeTables(String schema, List<TableEntry> tables)
             throws SQLException {
         String effectiveSchema = resolveSchema(schema);
-        return describeListedTables(effectiveSchema, tables, false);
+        Map<String, TableDescription> result = describeListedTables(effectiveSchema, tables, true);
+        cache.putAll(result);
+        return result;
+    }
+
+    /**
+     * Bulk-load structural metadata for a collection of table names (same schema). Checks the
+     * metadata cache first and only loads uncached tables via the bulk engine. All loaded tables
+     * are written to the cache for subsequent fast lookup.
+     */
+    public Map<String, TableDescription> describeTables(String schema, Collection<String> tableNames)
+            throws SQLException {
+        if (tableNames == null || tableNames.isEmpty()) return Map.of();
+        String effectiveSchema = resolveSchema(schema);
+
+        List<String> distinct = tableNames.stream()
+                .filter(n -> n != null && !n.isBlank())
+                .distinct()
+                .toList();
+        if (distinct.isEmpty()) return Map.of();
+
+        Map<String, TableDescription> result = new LinkedHashMap<>();
+        List<String> uncached = new ArrayList<>();
+        for (String tn : distinct) {
+            TableDescription cached = cache.peekDescribeTable(effectiveSchema, tn);
+            if (cached != null) {
+                result.put(key(effectiveSchema, tn), cached);
+            } else {
+                uncached.add(tn);
+            }
+        }
+
+        if (uncached.isEmpty()) return result;
+
+        List<TableEntry> entries = uncached.stream()
+                .map(n -> new TableEntry(effectiveSchema, n, null, null))
+                .toList();
+        result.putAll(describeTables(effectiveSchema, entries));
+        return result;
     }
 
     private Map<String, TableDescription> describeListedTables(

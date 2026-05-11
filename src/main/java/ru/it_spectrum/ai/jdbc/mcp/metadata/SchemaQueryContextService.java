@@ -46,9 +46,8 @@ class SchemaQueryContextService extends SchemaContextSupport {
 
         Map<String, TableDescription> selected = new LinkedHashMap<>();
         Map<String, SemanticTableCandidate> semanticMatchesByTable = new LinkedHashMap<>();
-        for (String tableName : requestedTables) {
-            TableDescription described = metadata.describeTable(schema, tableName);
-            selected.put(key(described.schema(), described.name()), described);
+        if (!requestedTables.isEmpty()) {
+            selected.putAll(metadata.describeTables(schema, requestedTables));
         }
 
         List<SemanticTableCandidate> semanticCandidates = List.of();
