@@ -281,8 +281,8 @@ def row_to_record(row: dict) -> dict:
     # Build tags
     tags = _build_tags(row, subsystem_code)
 
-    # Source path
-    source_path = f"USER_QUERY/{subsystem_code}" if subsystem_code else "USER_QUERY"
+    # Source path — use primary key as stable identifier
+    source_path = str(row.get("user_query_id"))
 
     # Business domain — prefer resolved subsystem name
     business_domain = subsystem_name or subsystem_code or None

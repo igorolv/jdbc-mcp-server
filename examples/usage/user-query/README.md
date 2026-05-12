@@ -58,7 +58,7 @@ the username (upper-cased) is used. The `--schema` CLI argument overrides both.
 | QueryUsageRecord field | Source |
 |---|---|
 | `source.kind` | Always `"user-query"` |
-| `source.path` | `USER_QUERY/<SUBSYSTEM_CODE>` |
+| `source.path` | `"<USER_QUERY_ID>"` |
 | `source.unit` | `UQ_NAME` |
 | `businessLabel` | `UQ_NAME` |
 | `businessDomain` | `SUBSYSTEM_NAME` from JOIN with SUBSYSTEM (falls back to SUBSYSTEM_CODE) |
@@ -102,7 +102,7 @@ CLI arguments override env vars.
     "schemaVersion": 1,
     "source": {
       "kind": "user-query",
-      "path": "USER_QUERY/HR",
+      "path": "100",
       "unit": "Department Employees"
     },
     "businessLabel": "Department Employees",
@@ -133,7 +133,7 @@ CLI arguments override env vars.
     "schemaVersion": 1,
     "source": {
       "kind": "user-query",
-      "path": "USER_QUERY/MGT",
+      "path": "200",
       "unit": "Manager Report"
     },
     "businessLabel": "Manager Report",
