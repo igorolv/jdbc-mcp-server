@@ -45,7 +45,7 @@ class SqlServerIntegrationQueryToolsTest extends AbstractSqlServerToolsIntegrati
 
     @Test
     void queryToolsRejectWrites() {
-        assertRejected(
+        assertRejected(() ->
                 queryTools().executeQuery("DELETE FROM dbo.customers", null, null, null, null),
                 "Only SELECT");
     }

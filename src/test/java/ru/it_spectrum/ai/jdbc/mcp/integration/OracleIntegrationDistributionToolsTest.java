@@ -53,7 +53,7 @@ class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrat
 
     @Test
     void selectivityRejectsMultipleStatementsAtToolBoundary() {
-        assertInvalidArgument(
+        assertInvalidArgument(() ->
                 distributionTools().estimateSelectivity(schema(), "EVENTS", "status = 'OK'; DROP TABLE events"),
                 "single boolean expression");
     }

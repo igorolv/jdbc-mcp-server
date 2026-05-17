@@ -56,7 +56,7 @@ class PostgresIntegrationDistributionToolsTest extends AbstractPostgresToolsInte
 
     @Test
     void selectivityRejectsMultipleStatementsAtToolBoundary() {
-        assertInvalidArgument(
+        assertInvalidArgument(() ->
                 distributionTools().estimateSelectivity("public", "events", "status = 'OK'; DROP TABLE events"),
                 "single boolean expression");
     }

@@ -447,7 +447,8 @@ public class MetadataService {
             Map<String, List<Constraint>> constraintsMap = fetchConstraintsForTablesBulk(conn, effectiveSchema, tableNames);
             Map<String, PrimaryKey> pkMap = primaryKeysFromConstraints(constraintsMap);
             Map<String, List<ForeignKey>> fkMap = foreignKeysFromConstraints(effectiveSchema, constraintsMap);
-            Map<String, List<IncomingForeignKey>> exportedMap = incomingForeignKeysFromConstraints(effectiveSchema, constraintsMap);
+            Map<String, List<IncomingForeignKey>> exportedMap =
+                    incomingForeignKeysForReferencedTables(conn, effectiveSchema, tableNames);
             Map<String, List<Trigger>> triggersMap = fetchTriggersForTablesBulk(conn, effectiveSchema, tableNames);
 
             Map<String, TableDescription> descMap = new LinkedHashMap<>();
@@ -837,6 +838,17 @@ public class MetadataService {
             }
         }
         return out;
+    }
+
+    private Map<String, List<IncomingForeignKey>> incomingForeignKeysForReferencedTables(
+            Connection conn,
+            String schema,
+            Set<String> referencedTableNames) throws SQLException {
+        Map<String, List<Constraint>> allConstraints = fetchAllConstraintsBulk(conn, schema);
+        Map<String, List<IncomingForeignKey>> incoming =
+                incomingForeignKeysFromConstraints(schema, allConstraints);
+        incoming.keySet().removeIf(table -> !containsTableName(referencedTableNames, table));
+        return incoming;
     }
 
     private Map<String, List<IncomingForeignKey>> incomingForeignKeysFromForeignKeys(

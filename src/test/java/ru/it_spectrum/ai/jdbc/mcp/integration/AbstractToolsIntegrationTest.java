@@ -17,6 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 
 abstract class AbstractToolsIntegrationTest {
 
@@ -118,15 +120,30 @@ abstract class AbstractToolsIntegrationTest {
         assertThat(json(response)).contains(expectedFragment);
     }
 
+    protected final void assertRejected(ThrowingCallable call, String expectedFragment) {
+        assertThrownToolError(call, "rejected", expectedFragment);
+    }
+
     protected final void assertInvalidArgument(Object response, String expectedFragment) {
         assertErrorKind(response, "argument");
         assertThat(json(response)).contains(expectedFragment);
+    }
+
+    protected final void assertInvalidArgument(ThrowingCallable call, String expectedFragment) {
+        assertThrownToolError(call, "argument", expectedFragment);
     }
 
     protected final void assertErrorKind(Object response, String expectedKind) {
         ObjectNode body = object(response);
         assertThat(field(body, "kind").asText()).isEqualTo(expectedKind);
         assertThat(field(body, "error").asText()).isNotBlank();
+    }
+
+    private void assertThrownToolError(ThrowingCallable call, String expectedKind, String expectedFragment) {
+        assertThatThrownBy(call)
+                .isInstanceOf(IllegalStateException.class)
+                .satisfies(e -> assertErrorKind(e.getMessage(), expectedKind))
+                .hasMessageContaining(expectedFragment);
     }
 
     protected final String json(Object value) {
