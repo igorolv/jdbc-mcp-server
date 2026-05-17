@@ -6,6 +6,11 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.FindJoinPaths;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContext;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaGraph;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.SchemaLint;
+import ru.it_spectrum.ai.jdbc.mcp.model.context.TableContext;
 
 import java.sql.SQLException;
 
@@ -27,11 +32,15 @@ public class SchemaContextTools {
         this.errors = errors;
     }
 
-    @McpTool(description = "Return a compact context around one table: the table itself, FK parent tables, " +
+    @McpTool(
+            description = "Return a compact context around one table: the table itself, FK parent tables, " +
             "optionally child tables that reference it, and relationship edges. " +
             "Use this when a query starts from a known table and needs nearby joins. " +
-            "Depth defaults to 1 and is capped at 4.")
-    public String tableContext(
+            "Depth defaults to 1 and is capped at 4.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public TableContext tableContext(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Root table or view name") String table,
             @McpToolParam(description = "FK traversal depth. Default 1, capped at 4.", required = false) Integer depth,
@@ -45,21 +54,25 @@ public class SchemaContextTools {
             var result = schemaContext.tableContext(
                     schema, table, depth, includeIncoming, includeStats, includeObserved);
             ToolLogger.completed(log, "tableContext", start);
-            return json.write(result);
+            return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "tableContext", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "tableContext", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Find FK-based join paths between two tables. " +
+    @McpTool(
+            description = "Find FK-based join paths between two tables. " +
             "The graph is traversed in both FK directions and each edge includes a joinCondition. " +
             "Use this when you know the start and target tables but not the intermediate joins. " +
-            "maxDepth defaults to 4 and is capped at 4; maxPaths defaults to 5.")
-    public String findJoinPaths(
+            "maxDepth defaults to 4 and is capped at 4; maxPaths defaults to 5.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public FindJoinPaths findJoinPaths(
             @McpToolParam(description = "Start schema (optional — defaults to current/default schema)", required = false) String fromSchema,
             @McpToolParam(description = "Start table name") String fromTable,
             @McpToolParam(description = "Target schema (optional — defaults to current/default schema)", required = false) String toSchema,
@@ -76,22 +89,26 @@ public class SchemaContextTools {
                     fromSchema, fromTable, toSchema, toTable, maxDepth, maxPaths, scanLimit,
                     includeObserved);
             ToolLogger.completed(log, "findJoinPaths", start);
-            return json.write(result);
+            return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "findJoinPaths", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "findJoinPaths", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Run a compact schema lint audit for SQL-writing and query-optimization risks. " +
+    @McpTool(
+            description = "Run a compact schema lint audit for SQL-writing and query-optimization risks. " +
             "Checks include missing primary keys, FK columns without supporting indexes, FK type mismatch, " +
             "nullable unique columns, status/type columns without CHECK, " +
             "orphan *_id columns, missing remarks, isolated tables, and wide tables. " +
-            "The optional checks parameter is a comma-separated allow-list; omit it to run the default set.")
-    public String schemaLint(
+            "The optional checks parameter is a comma-separated allow-list; omit it to run the default set.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public SchemaLint schemaLint(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Single table to lint (optional — omit to scan the schema)", required = false) String table,
             @McpToolParam(description = "Comma-separated checks to run, e.g. 'missingPrimaryKey,fkWithoutIndex' (optional)", required = false) String checks,
@@ -104,20 +121,24 @@ public class SchemaContextTools {
             var result = schemaContext.schemaLint(
                     schema, table, checks, maxTables, maxFindings);
             ToolLogger.completed(log, "schemaLint", start);
-            return json.write(result);
+            return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "schemaLint", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "schemaLint", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Return a plain-text full-schema map for SQL authoring. " +
+    @McpTool(
+            description = "Return a plain-text full-schema map for SQL authoring. " +
             "Lists all matching tables/views with column counts, PK, relationship counts, and key-like columns; " +
             "also summarizes central/isolated tables and key FK relationships. " +
-            "Use this first when the relevant tables are not known yet, then call queryContext for detailed context.")
+            "Use this first when the relevant tables are not known yet, then call queryContext for detailed context.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
     public String schemaBrief(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Optional search terms to narrow table discovery; falls back to whole schema if no table matches.", required = false) String terms,
@@ -131,17 +152,21 @@ public class SchemaContextTools {
             return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "schemaBrief", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "schemaBrief", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Return relationship graph metrics for a schema: nodes with incoming/outgoing degree " +
+    @McpTool(
+            description = "Return relationship graph metrics for a schema: nodes with incoming/outgoing degree " +
             "and classification, edges, central tables, isolated tables, connected components, cycle hints, " +
-            "and optionally the shortest path between two tables.")
-    public String schemaGraph(
+            "and optionally the shortest path between two tables.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public SchemaGraph schemaGraph(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Maximum tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
             @McpToolParam(description = "Optional start table for shortestPath.", required = false) String fromTable,
@@ -154,20 +179,24 @@ public class SchemaContextTools {
             var result = schemaContext.schemaGraph(
                     schema, maxTables, fromTable, toTable, maxDepth);
             ToolLogger.completed(log, "schemaGraph", start);
-            return json.write(result);
+            return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "schemaGraph", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "schemaGraph", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Build a compact SQL authoring context from natural-language terms and/or known tables. " +
+    @McpTool(
+            description = "Build a compact SQL authoring context from natural-language terms and/or known tables. " +
             "The tool discovers relevant tables/columns, includes constraints and allowed values, " +
-            "adds relationships and join paths between selected tables, and can include tiny best-effort samples.")
-    public String queryContext(
+            "adds relationships and join paths between selected tables, and can include tiny best-effort samples.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public QueryContext queryContext(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Search terms from the user request, e.g. 'customers order totals'", required = false) String terms,
             @McpToolParam(description = "Comma-separated table names to force-include, e.g. 'customers,orders' (optional)", required = false) String tables,
@@ -180,20 +209,24 @@ public class SchemaContextTools {
             var result = schemaContext.queryContext(
                     schema, terms, tables, includeSamples, maxTables);
             ToolLogger.completed(log, "queryContext", start);
-            return json.write(result);
+            return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "queryContext", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "queryContext", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Return a DOT/Graphviz representation of the schema relationship graph. " +
+    @McpTool(
+            description = "Return a DOT/Graphviz representation of the schema relationship graph. " +
             "Nodes are tables with all columns and types (PK marked with 🔑, FK with →), " +
             "edges include join conditions. " +
-            "Use this to visualize the ERD in an external Graphviz tool.")
+            "Use this to visualize the ERD in an external Graphviz tool.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
     public String schemaGraphDot(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Comma-separated table names to include, e.g. 'customers,orders' (optional — all tables if omitted)", required = false) String tables
@@ -206,10 +239,10 @@ public class SchemaContextTools {
             return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "schemaGraphDot", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "schemaGraphDot", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 }

@@ -33,9 +33,13 @@ public class SampleTools {
         this.errors = errors;
     }
 
-    @McpTool(description = "Return a small sample of rows from a table or view. " +
-            "Shortcut for a dialect-limited 'SELECT * FROM <table>'. Safe and read-only.")
-    public String sampleRows(
+    @McpTool(
+            description = "Return a small sample of rows from a table or view. " +
+            "Shortcut for a dialect-limited 'SELECT * FROM <table>'. Safe and read-only.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public QueryResult sampleRows(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Number of rows to return (default 10, max 100)", required = false) Integer limit
@@ -44,7 +48,7 @@ public class SampleTools {
         long start = System.nanoTime();
         if (table == null || table.isBlank()) {
             ToolLogger.failed(log, "sampleRows", start, "table must be provided");
-            return errors.argument("table must be provided");
+            throw errors.argumentException("table must be provided");
         }
         int n = limit == null ? 10 : Math.clamp(limit, 1, 100);
         String qualified = qualify(schema, table);
@@ -52,10 +56,13 @@ public class SampleTools {
         try {
             QueryResult r = executor.queryInternal(sql, Collections.emptyList(), n);
             ToolLogger.completed(log, "sampleRows", start);
-            return json.write(r);
+            return r;
         } catch (SQLException e) {
             ToolLogger.failed(log, "sampleRows", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "sampleRows", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 

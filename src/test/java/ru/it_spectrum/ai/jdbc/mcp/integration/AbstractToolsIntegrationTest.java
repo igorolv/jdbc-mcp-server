@@ -62,10 +62,18 @@ abstract class AbstractToolsIntegrationTest {
         return (ObjectNode) node;
     }
 
+    protected final ObjectNode object(Object value) {
+        return object(json(value));
+    }
+
     protected final ArrayNode array(String json) {
         JsonNode node = parse(json);
         assertThat(node.isArray()).isTrue();
         return (ArrayNode) node;
+    }
+
+    protected final ArrayNode array(Object value) {
+        return array(json(value));
     }
 
     protected final ArrayNode rows(ObjectNode json) {
@@ -105,20 +113,31 @@ abstract class AbstractToolsIntegrationTest {
         return out;
     }
 
-    protected final void assertRejected(String response, String expectedFragment) {
+    protected final void assertRejected(Object response, String expectedFragment) {
         assertErrorKind(response, "rejected");
-        assertThat(response).contains(expectedFragment);
+        assertThat(json(response)).contains(expectedFragment);
     }
 
-    protected final void assertInvalidArgument(String response, String expectedFragment) {
+    protected final void assertInvalidArgument(Object response, String expectedFragment) {
         assertErrorKind(response, "argument");
-        assertThat(response).contains(expectedFragment);
+        assertThat(json(response)).contains(expectedFragment);
     }
 
-    protected final void assertErrorKind(String response, String expectedKind) {
+    protected final void assertErrorKind(Object response, String expectedKind) {
         ObjectNode body = object(response);
         assertThat(field(body, "kind").asText()).isEqualTo(expectedKind);
         assertThat(field(body, "error").asText()).isNotBlank();
+    }
+
+    protected final String json(Object value) {
+        if (value instanceof String s) {
+            return s;
+        }
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new AssertionError("Expected serializable response but got: " + value, e);
+        }
     }
 
     private JsonNode parse(String json) {

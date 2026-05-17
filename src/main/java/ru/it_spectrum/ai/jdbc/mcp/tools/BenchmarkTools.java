@@ -50,7 +50,8 @@ public class BenchmarkTools {
         this.errors = errors;
     }
 
-    @McpTool(description = "Benchmark a read-only SQL statement by running it repeatedly and reporting " +
+    @McpTool(
+            description = "Benchmark a read-only SQL statement by running it repeatedly and reporting " +
             "wall-clock latency: the first 'coldRuns' executions (default 1) are reported separately " +
             "as 'cold' (caches cold, plan not primed), then 'warmRuns' executions (default 3) are " +
             "aggregated into min / median / max. " +
@@ -58,8 +59,11 @@ public class BenchmarkTools {
             BINDING_EXAMPLES +
             "Both 'limit' and 'timeoutSeconds' are REQUIRED — unbounded queries are rejected. " +
             "Returns the size of the last result (row count, columns, truncation flag), not the rows. " +
-            "All runs are subject to the read-only guard; any write statement is rejected.")
-    public String benchmarkQuery(
+            "All runs are subject to the read-only guard; any write statement is rejected.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public BenchmarkResult benchmarkQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
@@ -72,39 +76,43 @@ public class BenchmarkTools {
         long start = System.nanoTime();
         if (limit == null) {
             ToolLogger.failed(log, "benchmarkQuery", start, "limit is required");
-            return errors.argument("limit is required");
+            throw errors.argumentException("limit is required");
         }
         if (timeoutSeconds == null) {
             ToolLogger.failed(log, "benchmarkQuery", start, "timeoutSeconds is required");
-            return errors.argument("timeoutSeconds is required");
+            throw errors.argumentException("timeoutSeconds is required");
         }
         int cold = coldRuns == null ? 1 : coldRuns;
         int warm = warmRuns == null ? 3 : warmRuns;
         try {
             BenchmarkResult result = benchmarks.benchmark(sql, params, namedParams, limit, timeoutSeconds, cold, warm);
             ToolLogger.completed(log, "benchmarkQuery", start);
-            return json.write(result);
+            return result;
         } catch (SqlNotAllowedException e) {
             ToolLogger.failed(log, "benchmarkQuery", start, e.getMessage());
-            return errors.rejected(e);
+            throw errors.rejectedException(e);
         } catch (SQLException e) {
             ToolLogger.failed(log, "benchmarkQuery", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "benchmarkQuery", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Run a read-only SQL statement once and return the result together with a " +
+    @McpTool(
+            description = "Run a read-only SQL statement once and return the result together with a " +
             "wall-clock elapsed_ms measurement. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
             "On PostgreSQL, if the pg_stat_statements extension is installed, also attaches a " +
             "per-queryid diff of counters that changed during the run (calls, total_exec_time_ms, rows, " +
             "shared_blks_hit, shared_blks_read) so you can see what the server actually did. " +
-            "Subject to the read-only guard, row limit and per-query timeout — same safety as executeQuery.")
-    public String timedQuery(
+            "Subject to the read-only guard, row limit and per-query timeout — same safety as executeQuery.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public TimedQueryResult timedQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
@@ -116,16 +124,16 @@ public class BenchmarkTools {
         try {
             TimedQueryResult result = benchmarks.timed(sql, params, namedParams, limit, timeoutSeconds);
             ToolLogger.completed(log, "timedQuery", start);
-            return json.write(result);
+            return result;
         } catch (SqlNotAllowedException e) {
             ToolLogger.failed(log, "timedQuery", start, e.getMessage());
-            return errors.rejected(e);
+            throw errors.rejectedException(e);
         } catch (SQLException e) {
             ToolLogger.failed(log, "timedQuery", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "timedQuery", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 }

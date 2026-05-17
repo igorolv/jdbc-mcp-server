@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.sql;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import java.util.Map;
 
@@ -13,11 +14,17 @@ import java.util.Map;
  * @param truncated  {@code true} if the server-side result contained more rows than {@code maxRows}
  * @param rowCount   number of rows actually returned (same as {@code rows.size()}, for convenience)
  */
+@Schema(description = "QueryResult response payload.")
 public record QueryResult(
+        @Schema(description = "Columns.", nullable = true)
         List<String> columns,
+        @Schema(description = "Column Types.", nullable = true)
         List<String> columnTypes,
+        @Schema(description = "Rows.", nullable = true)
         List<Map<String, Object>> rows,
+        @Schema(description = "Truncated.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean truncated,
+        @Schema(description = "Row Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int rowCount
 ) {
 }

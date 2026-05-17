@@ -5,9 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.IndexStats;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.RedundantIndexes;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
+import ru.it_spectrum.ai.jdbc.mcp.model.stats.UnusedIndexes;
 
 import java.sql.SQLException;
 
@@ -32,12 +35,16 @@ public class StatsTools {
         this.errors = errors;
     }
 
-    @McpTool(description = "Return per-table storage and activity statistics: estimated row count, " +
+    @McpTool(
+            description = "Return per-table storage and activity statistics: estimated row count, " +
             "total / heap / indexes / toast size in bytes, dead tuple ratio (PG), last vacuum / analyze " +
             "timestamps, sequential vs index scan counters. " +
             "On Oracle also attempts a DBA_SEGMENTS lookup for on-disk size (silently skipped if the user " +
-            "lacks that privilege). The exact column set depends on the database engine.")
-    public String tableStats(
+            "lacks that privilege). The exact column set depends on the database engine.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public TableStats tableStats(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Table name") String table
     ) {
@@ -46,22 +53,26 @@ public class StatsTools {
         try {
             TableStats info = stats.tableStats(schema, table);
             ToolLogger.completed(log, "tableStats", start);
-            return json.write(info);
+            return info;
         } catch (SQLException e) {
             ToolLogger.failed(log, "tableStats", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "tableStats", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Return per-index statistics for a table or whole schema: size, scan counters, " +
+    @McpTool(
+            description = "Return per-index statistics for a table or whole schema: size, scan counters, " +
             "column list, uniqueness, primary flag, and engine-specific signals " +
             "(PostgreSQL: idx_scans / idx_tup_read from pg_stat_user_indexes; " +
             "Oracle: distinct_keys, clustering_factor, blevel, leaf_blocks, last_analyzed). " +
-            "Use it before deciding whether to add/drop an index.")
-    public String indexStats(
+            "Use it before deciding whether to add/drop an index.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public IndexStats indexStats(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
@@ -70,20 +81,24 @@ public class StatsTools {
         try {
             IndexStats r = stats.indexStats(schema, table);
             ToolLogger.completed(log, "indexStats", start);
-            return json.write(r);
+            return r;
         } catch (SQLException e) {
             ToolLogger.failed(log, "indexStats", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         }
     }
 
-    @McpTool(description = "List indexes that have zero recorded scans — candidates for removal. " +
+    @McpTool(
+            description = "List indexes that have zero recorded scans — candidates for removal. " +
             "Excludes primary key / unique indexes (dropping them would break the constraint). " +
             "PostgreSQL: uses pg_stat_user_indexes.idx_scan (cumulative since the last stats reset). " +
             "Oracle: not directly supported — returns a diagnostic note pointing to DBA_INDEX_USAGE / V$OBJECT_USAGE. " +
             "Caveat: a 'never-scanned' index is only a strong hint if the database has observed a full " +
-            "business cycle of traffic since the counters were reset.")
-    public String unusedIndexes(
+            "business cycle of traffic since the counters were reset.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public UnusedIndexes unusedIndexes(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Minimum index size in bytes to report (optional — filters out tiny indexes)", required = false) Long minSizeBytes
     ) {
@@ -92,18 +107,22 @@ public class StatsTools {
         try {
             var result = stats.unusedIndexes(schema, minSizeBytes);
             ToolLogger.completed(log, "unusedIndexes", start);
-            return json.write(result);
+            return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "unusedIndexes", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         }
     }
 
-    @McpTool(description = "List indexes whose leading-column list is a strict prefix of another index on the same table — " +
+    @McpTool(
+            description = "List indexes whose leading-column list is a strict prefix of another index on the same table — " +
             "the shorter index is redundant and a candidate for removal. " +
             "Only non-unique indexes are reported (removing a UNIQUE index loses the constraint). " +
-            "Index types must match (we do not claim a GIN index shadows a BTREE).")
-    public String redundantIndexes(
+            "Index types must match (we do not claim a GIN index shadows a BTREE).",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public RedundantIndexes redundantIndexes(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
@@ -112,19 +131,23 @@ public class StatsTools {
         try {
             var result = stats.redundantIndexes(schema, table);
             ToolLogger.completed(log, "redundantIndexes", start);
-            return json.write(result);
+            return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "redundantIndexes", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         }
     }
 
-    @McpTool(description = "List foreign keys on the child side that lack a supporting index. " +
+    @McpTool(
+            description = "List foreign keys on the child side that lack a supporting index. " +
             "A FK is considered covered if some index starts with exactly the FK columns in order. " +
             "Missing FK indexes are a classic cause of slow DELETE/UPDATE cascades and slow joins. " +
             "If 'table' is omitted, every table in the schema is scanned. " +
-            "Each entry includes a suggested_index_columns list that you can feed directly into a CREATE INDEX.")
-    public String fkIndexCoverage(
+            "Each entry includes a suggested_index_columns list that you can feed directly into a CREATE INDEX.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public FkIndexCoverage fkIndexCoverage(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
     ) {
@@ -133,10 +156,10 @@ public class StatsTools {
         try {
             var result = stats.fkIndexCoverage(schema, table);
             ToolLogger.completed(log, "fkIndexCoverage", start);
-            return json.write(result);
+            return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "fkIndexCoverage", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         }
     }
 }

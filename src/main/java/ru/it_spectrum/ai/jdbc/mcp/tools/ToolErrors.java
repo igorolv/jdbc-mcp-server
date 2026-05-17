@@ -34,9 +34,17 @@ public class ToolErrors {
         return error("sql", e.getMessage());
     }
 
+    public RuntimeException sqlException(SQLException e) {
+        return toolException(sql(e), e);
+    }
+
     public String argument(IllegalArgumentException e) {
         log.warn("Tool error [kind=argument]: {}", e.getMessage());
         return error("argument", e.getMessage());
+    }
+
+    public RuntimeException argumentException(IllegalArgumentException e) {
+        return toolException(argument(e), e);
     }
 
     public String argument(String message) {
@@ -44,14 +52,26 @@ public class ToolErrors {
         return error("argument", message);
     }
 
+    public RuntimeException argumentException(String message) {
+        return toolException(argument(message), null);
+    }
+
     public String rejected(SqlNotAllowedException e) {
         log.warn("Tool error [kind=rejected]: {}", e.getMessage());
         return error("rejected", e.getMessage());
     }
 
+    public RuntimeException rejectedException(SqlNotAllowedException e) {
+        return toolException(rejected(e), e);
+    }
+
     public String notFound(String kind, String name) {
         log.warn("Tool error [kind=not_found]: {} {} not found", kind, name);
         return json.write(ToolErrorResponse.notFound(kind, name));
+    }
+
+    public RuntimeException notFoundException(String kind, String name) {
+        return toolException(notFound(kind, name), null);
     }
 
     public String unexpected(Throwable e) {
@@ -60,12 +80,24 @@ public class ToolErrors {
         return error("unexpected", msg);
     }
 
+    public RuntimeException unexpectedException(Throwable e) {
+        return toolException(unexpected(e), e);
+    }
+
     public String planParse(IllegalArgumentException e) {
         log.warn("Tool error [kind=plan_parse]: {}", e.getMessage());
         return error("plan_parse", e.getMessage());
     }
 
+    public RuntimeException planParseException(IllegalArgumentException e) {
+        return toolException(planParse(e), e);
+    }
+
     private String error(String kind, String message) {
         return json.write(ToolErrorResponse.of(kind, message));
+    }
+
+    private RuntimeException toolException(String jsonBody, Throwable cause) {
+        return cause == null ? new IllegalStateException(jsonBody) : new IllegalStateException(jsonBody, cause);
     }
 }

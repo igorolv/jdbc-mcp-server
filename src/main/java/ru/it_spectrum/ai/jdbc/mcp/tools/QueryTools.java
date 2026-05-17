@@ -8,10 +8,13 @@ import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.lineage.QueryLineageResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.plan.PlanAnalysisSummary;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryInspection;
+import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryLintResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryValidationResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
@@ -85,13 +88,17 @@ public class QueryTools {
         this.errors = errors;
     }
 
-    @McpTool(description = "Execute a read-only SQL SELECT / WITH / EXPLAIN statement and return the result. " +
+    @McpTool(
+            description = "Execute a read-only SQL SELECT / WITH / EXPLAIN statement and return the result. " +
             "Only pure read statements are allowed — write operations (INSERT, UPDATE, DELETE, DDL, etc.) " +
             "are rejected before being sent to the database. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "Returns JSON. Results are truncated to 'limit' rows (default JDBC_MAX_ROWS) with a 'truncated' marker.")
-    public String executeQuery(
+            "Results are truncated to 'limit' rows (default JDBC_MAX_ROWS) with a 'truncated' marker.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public QueryResult executeQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
@@ -104,26 +111,30 @@ public class QueryTools {
             String normalizedSql = normalizeSql(sql);
             QueryResult result = query(normalizedSql, params, namedParams, limit, timeoutSeconds);
             ToolLogger.completed(log, "executeQuery", start);
-            return json.write(result);
+            return result;
         } catch (SqlNotAllowedException e) {
             ToolLogger.failed(log, "executeQuery", start, e.getMessage());
-            return errors.rejected(e);
+            throw errors.rejectedException(e);
         } catch (SQLException e) {
             ToolLogger.failed(log, "executeQuery", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "executeQuery", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Return the execution plan for a SQL SELECT / WITH statement. " +
+    @McpTool(
+            description = "Return the execution plan for a SQL SELECT / WITH statement. " +
             "PostgreSQL: uses EXPLAIN (FORMAT TEXT); with analyze=true runs EXPLAIN ANALYZE (note: this actually executes the query!). " +
             "Oracle: uses EXPLAIN PLAN + DBMS_XPLAN.DISPLAY; analyze flag is ignored (Oracle returns a static plan). " +
             "SQL Server: uses SET SHOWPLAN_TEXT ON for an estimated plan; analyze flag is ignored. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "The statement is still read-only-validated before execution.")
+            "The statement is still read-only-validated before execution.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
     public String explainQuery(
             @McpToolParam(description = "SQL statement to explain") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
@@ -175,17 +186,18 @@ public class QueryTools {
             return result;
         } catch (SqlNotAllowedException e) {
             ToolLogger.failed(log, "explainQuery", start, e.getMessage());
-            return errors.rejected(e);
+            throw errors.rejectedException(e);
         } catch (SQLException e) {
             ToolLogger.failed(log, "explainQuery", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (Exception e) {
             ToolLogger.failed(log, "explainQuery", start, e.getMessage());
-            return errors.unexpected(e);
+            throw errors.unexpectedException(e);
         }
     }
 
-    @McpTool(description = "Run a structured EXPLAIN and return a compact, LLM-friendly summary of the " +
+    @McpTool(
+            description = "Run a structured EXPLAIN and return a compact, LLM-friendly summary of the " +
             "execution plan instead of the full dump: top expensive nodes, full table scans on large " +
             "relations, estimation errors (planner vs. reality — requires analyze=true on PG), risky " +
             "nested loops with large outer inputs, and disk-sort spills. " +
@@ -194,8 +206,11 @@ public class QueryTools {
             "SQL Server: uses SET SHOWPLAN_XML ON; analyze flag is ignored (estimated plan only). " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "Use this to decide whether to add an index, refresh statistics, or rewrite a JOIN.")
-    public String analyzePlan(
+            "Use this to decide whether to add an index, refresh statistics, or rewrite a JOIN.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public PlanAnalysisSummary analyzePlan(
             @McpToolParam(description = "SQL statement to analyze") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
@@ -210,7 +225,7 @@ public class QueryTools {
             boolean doAnalyze = analyze != null && analyze;
             if (dialect.kind() == DatabaseKind.MSSQL) {
                 ParsedPlan parsed = structuredSqlServerPlan(normalizedSql, params, namedParams);
-                String result = json.write(PlanAnalyzer.summarize(parsed));
+                PlanAnalysisSummary result = PlanAnalyzer.summarize(parsed);
                 ToolLogger.completed(log, "analyzePlan", start);
                 return result;
             }
@@ -244,30 +259,34 @@ public class QueryTools {
                 }
                 return planParser.parse(planRows, doAnalyze);
             }, displaySql == null);
-            String result = json.write(PlanAnalyzer.summarize(parsed));
+            PlanAnalysisSummary result = PlanAnalyzer.summarize(parsed);
             ToolLogger.completed(log, "analyzePlan", start);
             return result;
         } catch (SqlNotAllowedException e) {
             ToolLogger.failed(log, "analyzePlan", start, e.getMessage());
-            return errors.rejected(e);
+            throw errors.rejectedException(e);
         } catch (SQLException e) {
             ToolLogger.failed(log, "analyzePlan", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "analyzePlan", start, e.getMessage());
-            return errors.planParse(e);
+            throw errors.planParseException(e);
         } catch (Exception e) {
             ToolLogger.failed(log, "analyzePlan", start, e.getMessage());
-            return errors.unexpected(e);
+            throw errors.unexpectedException(e);
         }
     }
 
-    @McpTool(description = "Validate a SQL statement without executing it: checks the read-only guard " +
+    @McpTool(
+            description = "Validate a SQL statement without executing it: checks the read-only guard " +
             "and prepares it with the driver (which verifies syntax and referenced objects). " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "Useful to let an LLM self-correct before running a real query.")
-    public String validateQuery(
+            "Useful to let an LLM self-correct before running a real query.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public QueryValidationResult validateQuery(
             @McpToolParam(description = "SQL statement to validate") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams
@@ -293,7 +312,7 @@ public class QueryTools {
             }
             final String finalPreparedSql = preparedSql;
             final List<Object> finalPreparedParams = preparedParams;
-            String result = executor.withConnection(conn -> {
+            QueryValidationResult result = executor.withConnection(conn -> {
                 try (PreparedStatement ps = conn.prepareStatement(finalPreparedSql)) {
                     bind(ps, finalPreparedParams);
                     int paramCount = ps.getParameterMetaData().getParameterCount();
@@ -303,8 +322,7 @@ public class QueryTools {
                     } catch (SQLException ignore) {
                         // some drivers can't describe a prepared SELECT without execution
                     }
-                    return json.write(QueryValidationResult.valid(
-                            paramCount, colCount, analysis.inspect(normalizedSql)));
+                    return QueryValidationResult.valid(paramCount, colCount, analysis.inspect(normalizedSql));
                 }
             });
             ToolLogger.completed(log, "validateQuery", start);
@@ -318,48 +336,60 @@ public class QueryTools {
         }
     }
 
-    @McpTool(description = "Parse SQL with JSqlParser and return an AST-derived summary for LLM query authoring: " +
+    @McpTool(
+            description = "Parse SQL with JSqlParser and return an AST-derived summary for LLM query authoring: " +
             "tables, aliases, selected expressions, joins, predicates, order by, referenced columns, parameters, " +
             "features and parser-level warnings. This is informational only; it does not execute SQL and does not " +
-            "replace the read-only guard or driver validation.")
-    public String inspectQuery(
+            "replace the read-only guard or driver validation.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public QueryInspection inspectQuery(
             @McpToolParam(description = "SQL statement to inspect") String sql
     ) {
         log.info("Tool call: inspectQuery (sql={})", sql);
         long start = System.nanoTime();
-        String result = json.write(analysis.inspect(normalizeSql(sql)));
+        QueryInspection result = analysis.inspect(normalizeSql(sql));
         ToolLogger.completed(log, "inspectQuery", start);
         return result;
     }
 
-    @McpTool(description = "Parse SQL and run metadata-aware lint checks for LLM query authoring. " +
+    @McpTool(
+            description = "Parse SQL and run metadata-aware lint checks for LLM query authoring. " +
             "Returns advisory warnings such as unknown table/column, SELECT *, joins without conditions, " +
             "FKs without supporting indexes, and predicate/order-by columns that are not leading columns " +
-            "of any visible index. This tool does not execute SQL and never blocks execution.")
-    public String queryLint(
+            "of any visible index. This tool does not execute SQL and never blocks execution.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public QueryLintResult queryLint(
             @McpToolParam(description = "SQL statement to lint") String sql,
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema
     ) {
         log.info("Tool call: queryLint (sql={}, schema={})", sql, schema);
         long start = System.nanoTime();
         try {
-            String result = json.write(lint.lint(normalizeSql(sql), schema));
+            QueryLintResult result = lint.lint(normalizeSql(sql), schema);
             ToolLogger.completed(log, "queryLint", start);
             return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "queryLint", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "queryLint", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    @McpTool(description = "Resolve metadata-aware lineage for a SQL SELECT / WITH / EXPLAIN statement. " +
+    @McpTool(
+            description = "Resolve metadata-aware lineage for a SQL SELECT / WITH / EXPLAIN statement. " +
             "Returns direct objects named in FROM/JOIN and expands database views and routines to the " +
             "underlying physical tables when enabled. Routine expansion is best-effort: it extracts " +
-            "embedded SELECT/WITH statements from function/procedure source and may miss dynamic SQL.")
-    public String resolveQueryLineage(
+            "embedded SELECT/WITH statements from function/procedure source and may miss dynamic SQL.",
+            generateOutputSchema = true,
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
+    )
+    public QueryLineageResult resolveQueryLineage(
             @McpToolParam(description = "SQL statement to resolve") String sql,
             @McpToolParam(description = "Default schema for unqualified names (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Expand database views and materialized views recursively. Default true.", required = false) Boolean expandViews,
@@ -369,20 +399,20 @@ public class QueryTools {
         log.info("Tool call: resolveQueryLineage (sql={}, schema={}, expandViews={}, expandRoutines={}, maxDepth={})", sql, schema, expandViews, expandRoutines, maxDepth);
         long start = System.nanoTime();
         try {
-            String result = json.write(lineage.resolve(normalizeSql(sql), schema, expandViews, expandRoutines, maxDepth));
+            QueryLineageResult result = lineage.resolve(normalizeSql(sql), schema, expandViews, expandRoutines, maxDepth);
             ToolLogger.completed(log, "resolveQueryLineage", start);
             return result;
         } catch (SQLException e) {
             ToolLogger.failed(log, "resolveQueryLineage", start, e.getMessage());
-            return errors.sql(e);
+            throw errors.sqlException(e);
         } catch (IllegalArgumentException e) {
             ToolLogger.failed(log, "resolveQueryLineage", start, e.getMessage());
-            return errors.argument(e);
+            throw errors.argumentException(e);
         }
     }
 
-    private String validationFailure(String stage, String message, QueryInspection inspection) {
-        return json.write(QueryValidationResult.invalid(stage, message, inspection));
+    private QueryValidationResult validationFailure(String stage, String message, QueryInspection inspection) {
+        return QueryValidationResult.invalid(stage, message, inspection);
     }
 
     // ---------------- helpers ----------------

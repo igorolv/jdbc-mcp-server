@@ -61,6 +61,7 @@ class LiveOracleIntegrationTest {
     private MetadataService metadata;
     private StatsService stats;
     private QueryTools queryTools;
+    private JsonResponses json;
 
     @BeforeAll
     void setup() {
@@ -91,7 +92,7 @@ class LiveOracleIntegrationTest {
         QueryAnalysisService analysis = new QueryAnalysisService();
         QueryLineageService lineage = new QueryLineageService(analysis, metadata, new ProceduralSqlExtractor());
         QueryLintService lint = new QueryLintService(analysis, metadata, stats);
-        JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
+        json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
         ToolErrors errors = new ToolErrors(json);
         queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lineage, lint, json, errors);
     }
@@ -197,7 +198,7 @@ class LiveOracleIntegrationTest {
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error");
 
-        String analyzeResult = queryTools.analyzePlan(sql, null, namedParams, null);
+        String analyzeResult = json.write(queryTools.analyzePlan(sql, null, namedParams, null));
         assertThat(analyzeResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error")
@@ -206,12 +207,12 @@ class LiveOracleIntegrationTest {
 
     @Test
     void resolveQueryLineageOnDualDoesNotThrow() {
-        String result = queryTools.resolveQueryLineage(
+        String result = json.write(queryTools.resolveQueryLineage(
                 "SELECT 1 AS v FROM dual",
                 schema,
                 true,
                 true,
-                3);
+                3));
 
         assertThat(result)
                 .contains("\"directObjects\"")

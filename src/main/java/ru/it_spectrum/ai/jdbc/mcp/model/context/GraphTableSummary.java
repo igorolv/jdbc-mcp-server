@@ -1,11 +1,20 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(description = "GraphTableSummary response payload.")
 public record GraphTableSummary(
+        @Schema(description = "Schema.", nullable = true)
         String schema,
+        @Schema(description = "Table.", nullable = true)
         String table,
+        @Schema(description = "Classification.", nullable = true)
         String classification,
+        @Schema(description = "Incoming Degree.", nullable = true)
         Integer incomingDegree,
+        @Schema(description = "Outgoing Degree.", nullable = true)
         Integer outgoingDegree,
+        @Schema(description = "Total Degree.", nullable = true)
         Integer totalDegree
 ) {
     public static GraphTableSummary central(GraphNode node) {
