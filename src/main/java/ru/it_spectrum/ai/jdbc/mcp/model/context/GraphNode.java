@@ -5,13 +5,13 @@ import java.util.List;
 
 @Schema(description = "Table node in the schema relationship graph with degree and key metadata.")
 public record GraphNode(
-        @Schema(description = "Stable graph node identifier, usually schema-qualified table name.", nullable = true)
+        @Schema(description = "Stable graph node identifier, usually schema-qualified table name.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String id,
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
-        @Schema(description = "Heuristic table role in the schema graph, such as central, isolated, lookup, or regular.", nullable = true)
+        @Schema(description = "Heuristic table role in the schema graph, such as central, isolated, lookup, or regular.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String classification,
         @Schema(description = "Number of relationship edges entering this table.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int incomingDegree,
@@ -21,7 +21,7 @@ public record GraphNode(
         int totalDegree,
         @Schema(description = "Number of columns visible for the table.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int columnCount,
-        @Schema(description = "Primary-key columns for the table, in key order.", nullable = true)
+        @Schema(description = "Primary-key columns for the table, in key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> primaryKey
 ) {
 }

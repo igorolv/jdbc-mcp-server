@@ -4,17 +4,17 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Compact table ranking entry used for central and isolated table summaries.")
 public record GraphTableSummary(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
-        @Schema(description = "Heuristic table role in the schema graph, such as central, isolated, lookup, or regular.", nullable = true)
+        @Schema(description = "Heuristic table role in the schema graph, such as central, isolated, lookup, or regular.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String classification,
-        @Schema(description = "Number of relationship edges entering this table.", nullable = true)
+        @Schema(description = "Number of relationship edges entering this table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Integer incomingDegree,
-        @Schema(description = "Number of relationship edges leaving this table.", nullable = true)
+        @Schema(description = "Number of relationship edges leaving this table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Integer outgoingDegree,
-        @Schema(description = "Total number of relationship edges connected to this table.", nullable = true)
+        @Schema(description = "Total number of relationship edges connected to this table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Integer totalDegree
 ) {
     public static GraphTableSummary central(GraphNode node) {

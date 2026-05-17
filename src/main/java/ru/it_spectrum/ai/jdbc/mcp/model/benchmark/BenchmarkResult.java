@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "Wall-clock benchmark result for a read-only query, including cold and warm run timing and the size of the last result set.")
 public record BenchmarkResult(
-        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, or SQL Server.", nullable = true)
+        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, or SQL Server.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String engine,
         @Schema(description = "Number of measured runs included in these timing statistics.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int runs,
@@ -17,15 +17,15 @@ public record BenchmarkResult(
         int limit,
         @Schema(description = "Per-statement timeout applied during execution, in seconds.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int timeoutSeconds,
-        @Schema(description = "Timing statistics for cold benchmark runs in milliseconds.", nullable = true)
+        @Schema(description = "Timing statistics for cold benchmark runs in milliseconds.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         TimingStats coldMs,
-        @Schema(description = "Timing statistics for warm benchmark runs in milliseconds.", nullable = true)
+        @Schema(description = "Timing statistics for warm benchmark runs in milliseconds.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         TimingStats warmMs,
-        @Schema(description = "Individual elapsed times for all benchmark executions, in milliseconds.", nullable = true)
+        @Schema(description = "Individual elapsed times for all benchmark executions, in milliseconds.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<Double> allMs,
-        @Schema(description = "Row, column, and truncation information for the last benchmark result set.", nullable = true)
+        @Schema(description = "Row, column, and truncation information for the last benchmark result set.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         ResultSize resultSize,
-        @Schema(description = "Additional context about support, limits, interpretation, or engine-specific behavior.", nullable = true)
+        @Schema(description = "Additional context about support, limits, interpretation, or engine-specific behavior.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String note
 ) {
 }

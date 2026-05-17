@@ -5,11 +5,11 @@ import java.util.List;
 
 @Schema(description = "Evidence that a relationship comes from a declared database foreign key.")
 public record DeclaredSchemaEdgeEvidence(
-        @Schema(description = "Declared foreign-key constraint name supporting this relationship evidence.", nullable = true)
+        @Schema(description = "Declared foreign-key constraint name supporting this relationship evidence.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String foreignKeyName,
-        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true)
+        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> fromColumns,
-        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true)
+        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> toColumns
 ) {
     public DeclaredSchemaEdgeEvidence {

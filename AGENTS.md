@@ -43,6 +43,43 @@ When adding or changing code:
 - If a response shape is stable enough to document in AGENTS.md or README, it is stable enough to
   model as a `record`.
 
+### `@Schema` annotations on response records
+
+Every field of a record returned from an `@McpTool(generateOutputSchema = true)` method must
+carry `nullable = true` **and** an explicit `requiredMode` — `NOT_REQUIRED` for optional fields,
+`REQUIRED` only when the value is conceptually always present. Class-level `@Schema(description
+= ...)` annotations stay as-is.
+
+```java
+@Schema(description = "...", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+String remarks,
+@Schema(description = "...", nullable = true, requiredMode = Schema.RequiredMode.REQUIRED)
+int rowCount,
+```
+
+Why both flags are needed (this trips up everyone who skims one half of it):
+
+- Spring AI's `McpJsonSchemaGenerator` uses `AbstractSpringAiSchemaModule.checkRequired`, which
+  treats a `@Schema` without an explicit `requiredMode` as `AUTO` and emits the field into the
+  schema's `required[]` array. Setting `nullable = true` alone does **not** remove the field
+  from `required[]`.
+- The autoconfigured `mcpServerJsonMapper` bean
+  (`McpServerJsonMapperAutoConfiguration#mcpServerJsonMapper`) serialises responses with
+  `JsonInclude.Include.NON_NULL` for both values and content, so any field that is `null` at
+  runtime is **stripped from the wire JSON**.
+- Combined, an optional field with default annotations produces a schema that says "required"
+  while the actual JSON omits the key. The networknt validator running inside the MCP server
+  then rejects the response with `MCP error -32602: ... must have required property 'X'`.
+
+The fix on each axis:
+- `requiredMode = NOT_REQUIRED` keeps the field out of `required[]`, so a stripped null is fine.
+- `nullable = true` makes the JSON Schema type a union with `null`, so a backend that emits
+  `"X": null` still validates.
+
+`OutputSchemaSmokeTest` (`src/test/java/.../model/`) reproduces the failure path against a
+faithful copy of the autoconfigured server mapper and locks the convention in. When you add a
+new response record, run that test plus `ToolOutputSchemaSmokeTest`.
+
 ## Prerequisites
 
 - JDK 21+ installed (check with `java -version`)

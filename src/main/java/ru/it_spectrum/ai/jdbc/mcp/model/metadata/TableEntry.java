@@ -4,13 +4,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Table or view entry returned by metadata listing.")
 public record TableEntry(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
-        @Schema(description = "Table-like object type, such as TABLE, VIEW, or MATERIALIZED VIEW.", nullable = true)
+        @Schema(description = "Table-like object type, such as TABLE, VIEW, or MATERIALIZED VIEW.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String type,
-        @Schema(description = "Database comment or description attached to the object, when the driver exposes it.", nullable = true)
+        @Schema(description = "Database comment or description attached to the object, when the driver exposes it.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String remarks
 ) {
     public TableEntry(String schema, String name, String type) {

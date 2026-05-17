@@ -5,12 +5,12 @@ import java.util.List;
 
 @Schema(description = "Known business tags discovered in the usage catalog.")
 public record KnownTagsResult(
-        @Schema(description = "Business tags attached to the usage-catalog query.", nullable = true)
+        @Schema(description = "Business tags attached to the usage-catalog query.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<TagEntry> tags
 ) {
     @Schema(description = "Business tag and number of catalog queries tagged with it.")
     public record TagEntry(
-            @Schema(description = "Business tag value.", nullable = true)
+            @Schema(description = "Business tag value.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String tag,
             @Schema(description = "Number of catalog queries associated with this tag.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             int count

@@ -4,9 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Advisory warning produced by query inspection, validation, lint, or lineage analysis.")
 public record QueryWarning(
-        @Schema(description = "Stable warning or diagnostic code.", nullable = true)
+        @Schema(description = "Stable warning or diagnostic code.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String code,
-        @Schema(description = "Human-readable diagnostic message.", nullable = true)
+        @Schema(description = "Human-readable diagnostic message.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String message
 ) {
 }

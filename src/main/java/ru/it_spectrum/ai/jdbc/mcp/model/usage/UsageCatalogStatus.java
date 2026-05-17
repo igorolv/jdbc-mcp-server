@@ -7,11 +7,11 @@ import java.util.List;
 public record UsageCatalogStatus(
         @Schema(description = "False when the usage catalog is disabled; true when indexing and lookups are allowed.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean catalogEnabled,
-        @Schema(description = "Current usage-catalog index state, such as not_started, indexing, ready, or failed.", nullable = true)
+        @Schema(description = "Current usage-catalog index state, such as not_started, indexing, ready, or failed.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String state,
         @Schema(description = "True while the usage catalog index is being built.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean indexing,
-        @Schema(description = "Configured usage-catalog source paths and database-native sources considered for indexing.", nullable = true)
+        @Schema(description = "Configured usage-catalog source paths and database-native sources considered for indexing.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> sources
 ) {
 

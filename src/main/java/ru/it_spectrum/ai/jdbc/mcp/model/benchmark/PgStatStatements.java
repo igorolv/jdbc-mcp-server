@@ -7,11 +7,11 @@ import java.util.List;
 public record PgStatStatements(
         @Schema(description = "True when the optional database statistics source was available to the current connection.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean available,
-        @Schema(description = "Number of pg_stat_statements entries whose counters changed while the query ran.", nullable = true)
+        @Schema(description = "Number of pg_stat_statements entries whose counters changed while the query ran.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Integer changedEntries,
-        @Schema(description = "Changed pg_stat_statements entries relevant to the timed query.", nullable = true)
+        @Schema(description = "Changed pg_stat_statements entries relevant to the timed query.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<PgStatStatementEntry> entries,
-        @Schema(description = "Additional context about support, limits, interpretation, or engine-specific behavior.", nullable = true)
+        @Schema(description = "Additional context about support, limits, interpretation, or engine-specific behavior.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String note
 ) {
 }

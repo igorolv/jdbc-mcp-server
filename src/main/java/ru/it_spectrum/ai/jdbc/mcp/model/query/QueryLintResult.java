@@ -5,15 +5,15 @@ import java.util.List;
 
 @Schema(description = "Query lint result that combines SQL inspection with metadata checks.")
 public record QueryLintResult(
-        @Schema(description = "Parsed query inspection that underpins validation, lint, or lineage results.", nullable = true)
+        @Schema(description = "Parsed query inspection that underpins validation, lint, or lineage results.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         QueryInspection inspection,
         @Schema(description = "True when query lint could combine parsed SQL with metadata checks.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean lintable,
-        @Schema(description = "Tables whose metadata was checked during query lint.", nullable = true)
+        @Schema(description = "Tables whose metadata was checked during query lint.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<CheckedTableSummary> tablesChecked,
-        @Schema(description = "Number of warnings produced by inspection or lint.", nullable = true)
+        @Schema(description = "Number of warnings produced by inspection or lint.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Integer warningCount,
-        @Schema(description = "Warnings produced by SQL inspection and metadata-aware lint checks.", nullable = true)
+        @Schema(description = "Warnings produced by SQL inspection and metadata-aware lint checks.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<QueryWarning> warnings
 ) {
     public static QueryLintResult parserError(QueryInspection inspection, QueryWarning warning) {

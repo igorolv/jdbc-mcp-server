@@ -5,11 +5,11 @@ import java.util.List;
 
 @Schema(description = "Top-N frequency distribution for a column, useful for detecting skew and low-selectivity predicates.")
 public record ColumnDistribution(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
-        @Schema(description = "Column whose value frequencies were measured.", nullable = true)
+        @Schema(description = "Column whose value frequencies were measured.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String column,
         @Schema(description = "Maximum number of most-frequent values requested for the distribution.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int topN,
@@ -23,12 +23,12 @@ public record ColumnDistribution(
         long otherRows,
         @Schema(description = "Share of all rows outside the returned top-N buckets, from 0.0 to 1.0.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         double otherRatio,
-        @Schema(description = "Most frequent values and their frequencies for the column.", nullable = true)
+        @Schema(description = "Most frequent values and their frequencies for the column.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<ValueEntry> values
 ) {
     @Schema(description = "One value bucket in a column frequency distribution.")
     public record ValueEntry(
-            @Schema(description = "Column value for this distribution bucket; may be null.", nullable = true)
+            @Schema(description = "Column value for this distribution bucket; may be null.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             Object value,
             @Schema(description = "Number of rows containing this value.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             long frequency,

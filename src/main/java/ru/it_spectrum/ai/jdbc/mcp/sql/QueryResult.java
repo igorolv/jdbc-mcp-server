@@ -16,11 +16,11 @@ import java.util.Map;
  */
 @Schema(description = "QueryResult response payload.")
 public record QueryResult(
-        @Schema(description = "Columns.", nullable = true)
+        @Schema(description = "Columns.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> columns,
-        @Schema(description = "Column Types.", nullable = true)
+        @Schema(description = "Column Types.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> columnTypes,
-        @Schema(description = "Rows.", nullable = true)
+        @Schema(description = "Rows.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<Map<String, Object>> rows,
         @Schema(description = "Truncated.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean truncated,

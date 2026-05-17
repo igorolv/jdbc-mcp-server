@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "List of tables and views returned by listTables.")
 public record ListTablesResult(
-        @Schema(description = "Table and view entries.", nullable = true)
+        @Schema(description = "Table and view entries.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<TableEntry> tables
 ) {
 }

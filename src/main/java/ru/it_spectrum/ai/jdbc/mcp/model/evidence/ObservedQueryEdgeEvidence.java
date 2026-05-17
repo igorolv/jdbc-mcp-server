@@ -9,7 +9,7 @@ import java.util.List;
 public record ObservedQueryEdgeEvidence(
         @Schema(description = "Number of known SQL queries that contain this observed join pair.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int joinSupport,
-        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true)
+        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<QuerySourceRef> sourceRefs
 ) {
     public ObservedQueryEdgeEvidence {

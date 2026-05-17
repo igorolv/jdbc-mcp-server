@@ -5,12 +5,12 @@ import java.util.List;
 
 @Schema(description = "Known source-kind values discovered in the usage catalog.")
 public record KnownSourceKindsResult(
-        @Schema(description = "Known source-kind values and their usage counts.", nullable = true)
+        @Schema(description = "Known source-kind values and their usage counts.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<KindEntry> kinds
 ) {
     @Schema(description = "Source kind and number of catalog queries that use it.")
     public record KindEntry(
-            @Schema(description = "Source kind value used by catalog records, such as file, view, routine, or import.", nullable = true)
+            @Schema(description = "Source kind value used by catalog records, such as file, view, routine, or import.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String kind,
             @Schema(description = "Number of catalog queries associated with this source kind.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             int count

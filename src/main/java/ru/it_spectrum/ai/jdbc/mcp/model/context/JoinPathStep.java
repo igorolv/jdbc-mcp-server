@@ -7,27 +7,27 @@ import java.util.List;
 
 @Schema(description = "One edge in a suggested join path, including the join condition and supporting evidence.")
 public record JoinPathStep(
-        @Schema(description = "Traversal direction used by this join-path step relative to the requested route.", nullable = true)
+        @Schema(description = "Traversal direction used by this join-path step relative to the requested route.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String direction,
-        @Schema(description = "Kind of relationship edge, such as declared foreign key or observed usage join.", nullable = true)
+        @Schema(description = "Kind of relationship edge, such as declared foreign key or observed usage join.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String relationshipType,
-        @Schema(description = "Foreign-key constraint name for declared schema edges, when available.", nullable = true)
+        @Schema(description = "Foreign-key constraint name for declared schema edges, when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fkName,
-        @Schema(description = "Schema of the source or left-side table in the relationship.", nullable = true)
+        @Schema(description = "Schema of the source or left-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fromSchema,
-        @Schema(description = "Source or left-side table in the relationship.", nullable = true)
+        @Schema(description = "Source or left-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fromTable,
-        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true)
+        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> fromColumns,
-        @Schema(description = "Schema of the target or right-side table in the relationship.", nullable = true)
+        @Schema(description = "Schema of the target or right-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String toSchema,
-        @Schema(description = "Target or right-side table in the relationship.", nullable = true)
+        @Schema(description = "Target or right-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String toTable,
-        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true)
+        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> toColumns,
-        @Schema(description = "SQL equality condition that joins the two tables for this step.", nullable = true)
+        @Schema(description = "SQL equality condition that joins the two tables for this step.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String joinCondition,
-        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources.", nullable = true)
+        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         RelationshipEvidence evidence
 ) {
 }

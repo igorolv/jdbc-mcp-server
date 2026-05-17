@@ -9,9 +9,9 @@ public record ResultSize(
         int rowCount,
         @Schema(description = "True when the configured row or finding cap was reached and more data may exist.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean truncated,
-        @Schema(description = "Result column names in output order.", nullable = true)
+        @Schema(description = "Result column names in output order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> columns,
-        @Schema(description = "Database type names for the result columns, in the same order as columns.", nullable = true)
+        @Schema(description = "Database type names for the result columns, in the same order as columns.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> columnTypes
 ) {
 }

@@ -85,14 +85,18 @@ class ToolOutputSchemaSmokeTest {
 
     @Test
     void representativeDtoComponentsDeclareRequiredAndNullable() throws NoSuchFieldException {
+        // Optional fields: NOT_REQUIRED keeps them out of the schema's required[],
+        // nullable=true lets the type accept null values when a backend returns them.
         Schema schema = schemaFor(TableDescription.class, "schema");
-        assertThat(schema.requiredMode()).isEqualTo(Schema.RequiredMode.AUTO);
+        assertThat(schema.requiredMode()).isEqualTo(Schema.RequiredMode.NOT_REQUIRED);
         assertThat(schema.nullable()).isTrue();
 
         Schema rows = schemaFor(QueryResult.class, "rows");
-        assertThat(rows.requiredMode()).isEqualTo(Schema.RequiredMode.AUTO);
+        assertThat(rows.requiredMode()).isEqualTo(Schema.RequiredMode.NOT_REQUIRED);
         assertThat(rows.nullable()).isTrue();
 
+        // Conceptually-required primitives keep requiredMode=REQUIRED as an LLM hint;
+        // nullable=true still admits an absent value during validation.
         Schema truncated = schemaFor(QueryResult.class, "truncated");
         assertThat(truncated.requiredMode()).isEqualTo(Schema.RequiredMode.REQUIRED);
         assertThat(truncated.nullable()).isTrue();

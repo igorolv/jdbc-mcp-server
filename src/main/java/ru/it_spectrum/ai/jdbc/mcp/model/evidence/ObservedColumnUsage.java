@@ -7,13 +7,13 @@ import java.util.List;
 
 @Schema(description = "Usage-catalog evidence showing how often a column appears in known SQL queries.")
 public record ObservedColumnUsage(
-        @Schema(description = "Column name within the table.", nullable = true)
+        @Schema(description = "Column name within the table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String column,
         @Schema(description = "Number of known SQL queries that reference this object or term.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int queryCount,
-        @Schema(description = "Contexts in which the column appeared, such as select, where, join, order_by, or having.", nullable = true)
+        @Schema(description = "Contexts in which the column appeared, such as select, where, join, order_by, or having.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> contexts,
-        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true)
+        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<QuerySourceRef> sourceRefs
 ) {
     public ObservedColumnUsage {

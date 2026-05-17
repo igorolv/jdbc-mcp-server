@@ -7,11 +7,11 @@ import java.util.List;
 
 @Schema(description = "Term-level semantic evidence with support count and source queries.")
 public record SemanticTermEvidence(
-        @Schema(description = "Column value for this distribution bucket; may be null.", nullable = true)
+        @Schema(description = "Column value for this distribution bucket; may be null.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String value,
         @Schema(description = "Number of source records or terms supporting this semantic candidate.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int support,
-        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true)
+        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<QuerySourceRef> sourceRefs
 ) {
     public SemanticTermEvidence {

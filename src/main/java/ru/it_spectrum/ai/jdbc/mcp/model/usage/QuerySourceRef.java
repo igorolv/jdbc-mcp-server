@@ -4,11 +4,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Stable pointer to a query record in the usage catalog.")
 public record QuerySourceRef(
-        @Schema(description = "Kind of source that produced the catalog query, such as file, view, routine, or configured import.", nullable = true)
+        @Schema(description = "Kind of source that produced the catalog query, such as file, view, routine, or configured import.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String sourceKind,
-        @Schema(description = "Path or database object name where the catalog query came from.", nullable = true)
+        @Schema(description = "Path or database object name where the catalog query came from.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String sourcePath,
-        @Schema(description = "Stable unit identifier inside the source, such as query id, method name, view name, or routine name.", nullable = true)
+        @Schema(description = "Stable unit identifier inside the source, such as query id, method name, view name, or routine name.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String sourceUnit
 ) {
     public QuerySourceRef {

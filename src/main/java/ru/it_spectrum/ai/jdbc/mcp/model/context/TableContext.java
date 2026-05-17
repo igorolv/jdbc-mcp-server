@@ -5,9 +5,9 @@ import java.util.List;
 
 @Schema(description = "Neighborhood around a root table, including related tables and relationship edges.")
 public record TableContext(
-        @Schema(description = "Schema of the root table requested for table context.", nullable = true)
+        @Schema(description = "Schema of the root table requested for table context.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String rootSchema,
-        @Schema(description = "Root table requested for table context.", nullable = true)
+        @Schema(description = "Root table requested for table context.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String rootTable,
         @Schema(description = "Relationship expansion depth from the root object.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int depth,
@@ -17,8 +17,8 @@ public record TableContext(
         boolean includeStats,
         @Schema(description = "True when usage-catalog observed joins were included as relationship evidence.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean includeObserved,
-        @Schema(description = "Tables included in this context, graph, query inspection, or usage record.", nullable = true)
+        @Schema(description = "Tables included in this context, graph, query inspection, or usage record.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<ContextTable> tables,
-        @Schema(description = "Relationship edges relevant to the context, graph, or observed-relationships result.", nullable = true)
+        @Schema(description = "Relationship edges relevant to the context, graph, or observed-relationships result.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<RelationshipEdge> relationships
 ) {}

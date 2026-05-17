@@ -9,9 +9,9 @@ import java.util.List;
 public record ObservedTableUsage(
         @Schema(description = "Number of known SQL queries that reference this object or term.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int queryCount,
-        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true)
+        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<QuerySourceRef> sourceRefs,
-        @Schema(description = "Observed usage details for columns referenced by known queries.", nullable = true)
+        @Schema(description = "Observed usage details for columns referenced by known queries.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<ObservedColumnUsage> columns
 ) {
     public ObservedTableUsage {

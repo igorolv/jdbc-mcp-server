@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "Cross-object search results returned by searchObjects.")
 public record SearchObjectsResult(
-        @Schema(description = "Matching database objects across tables, views, routines, sequences, and synonyms.", nullable = true)
+        @Schema(description = "Matching database objects across tables, views, routines, sequences, and synonyms.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SearchObjectEntry> objects
 ) {
 }

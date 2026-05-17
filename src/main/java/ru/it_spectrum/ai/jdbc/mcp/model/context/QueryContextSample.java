@@ -6,13 +6,13 @@ import java.util.Map;
 
 @Schema(description = "Small sample result attached to query context when sample rows are requested.")
 public record QueryContextSample(
-        @Schema(description = "Sample column names in output order.", nullable = true)
+        @Schema(description = "Sample column names in output order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> columns,
-        @Schema(description = "Sample rows as column-name to value maps, intended only to show data shape.", nullable = true)
+        @Schema(description = "Sample rows as column-name to value maps, intended only to show data shape.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<Map<String, Object>> rows,
-        @Schema(description = "Number of rows returned or represented in this response.", nullable = true)
+        @Schema(description = "Number of rows returned or represented in this response.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Integer rowCount,
-        @Schema(description = "Error captured while trying to fetch sample rows; rows may be absent when set.", nullable = true)
+        @Schema(description = "Error captured while trying to fetch sample rows; rows may be absent when set.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String sampleError
 ) {
 }

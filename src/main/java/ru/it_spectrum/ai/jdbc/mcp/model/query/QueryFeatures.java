@@ -19,7 +19,7 @@ public record QueryFeatures(
         boolean selectInto,
         @Schema(description = "True when the inspected SQL contains FOR UPDATE or a locking clause.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean forUpdate,
-        @Schema(description = "Function calls detected in the SQL expression tree.", nullable = true)
+        @Schema(description = "Function calls detected in the SQL expression tree.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> functions
 ) {
 }

@@ -6,11 +6,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record TimingStats(
         @Schema(description = "Number of measured runs included in these timing statistics.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int runs,
-        @Schema(description = "Minimum observed elapsed time in milliseconds.", nullable = true)
+        @Schema(description = "Minimum observed elapsed time in milliseconds.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Double min,
-        @Schema(description = "Median observed elapsed time in milliseconds.", nullable = true)
+        @Schema(description = "Median observed elapsed time in milliseconds.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Double median,
-        @Schema(description = "Maximum observed elapsed time or value in this result.", nullable = true)
+        @Schema(description = "Maximum observed elapsed time or value in this result.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Double max
 ) {
 }

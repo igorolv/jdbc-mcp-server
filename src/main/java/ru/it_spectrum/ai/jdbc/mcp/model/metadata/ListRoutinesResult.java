@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "List of routines returned by listRoutines.")
 public record ListRoutinesResult(
-        @Schema(description = "Function, procedure, and package entries.", nullable = true)
+        @Schema(description = "Function, procedure, and package entries.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<RoutineEntry> routines
 ) {
 }

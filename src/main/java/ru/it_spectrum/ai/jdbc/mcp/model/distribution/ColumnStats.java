@@ -4,11 +4,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Basic one-column statistics: row counts, distinct count, and min/max values.")
 public record ColumnStats(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
-        @Schema(description = "Column whose basic statistics were measured.", nullable = true)
+        @Schema(description = "Column whose basic statistics were measured.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String column,
         @Schema(description = "Total number of rows considered for this statistic.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long totalRows,
@@ -16,9 +16,9 @@ public record ColumnStats(
         long nonNullRows,
         @Schema(description = "Estimated or exact number of distinct non-null values.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long distinctValues,
-        @Schema(description = "Minimum observed non-null value for the column.", nullable = true)
+        @Schema(description = "Minimum observed non-null value for the column.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Object minValue,
-        @Schema(description = "Maximum observed non-null value for the column.", nullable = true)
+        @Schema(description = "Maximum observed non-null value for the column.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Object maxValue
 ) {
 }

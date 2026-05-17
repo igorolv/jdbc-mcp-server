@@ -11,11 +11,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "Combined evidence for a relationship from declared schema, observed joins, and semantic usage.")
 public record RelationshipEvidence(
-        @Schema(description = "Evidence from declared database metadata, normally a foreign key.", nullable = true)
+        @Schema(description = "Evidence from declared database metadata, normally a foreign key.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         DeclaredSchemaEdgeEvidence declaredSchema,
-        @Schema(description = "Evidence from known SQL queries in the usage catalog.", nullable = true)
+        @Schema(description = "Evidence from known SQL queries in the usage catalog.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         ObservedQueryEdgeEvidence observedQuery,
-        @Schema(description = "Evidence from business labels, domains, tags, outputs, and field usage in the catalog.", nullable = true)
+        @Schema(description = "Evidence from business labels, domains, tags, outputs, and field usage in the catalog.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         SemanticEdgeEvidence semanticUsage
 ) {
     public RelationshipEvidence {

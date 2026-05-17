@@ -5,13 +5,13 @@ import java.util.List;
 
 @Schema(description = "Foreign-key and observed-usage join paths between two tables, capped for concise LLM context.")
 public record FindJoinPaths(
-        @Schema(description = "Schema of the source or left-side table in the relationship.", nullable = true)
+        @Schema(description = "Schema of the source or left-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fromSchema,
-        @Schema(description = "Source or left-side table in the relationship.", nullable = true)
+        @Schema(description = "Source or left-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fromTable,
-        @Schema(description = "Schema of the target or right-side table in the relationship.", nullable = true)
+        @Schema(description = "Schema of the target or right-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String toSchema,
-        @Schema(description = "Target or right-side table in the relationship.", nullable = true)
+        @Schema(description = "Target or right-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String toTable,
         @Schema(description = "Maximum relationship traversal depth that was applied.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int maxDepth,
@@ -21,6 +21,6 @@ public record FindJoinPaths(
         int schemaTablesScanned,
         @Schema(description = "Number of join paths returned after caps were applied.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int pathCount,
-        @Schema(description = "Join paths from the source table to the target table; each path is an ordered list of steps.", nullable = true)
+        @Schema(description = "Join paths from the source table to the target table; each path is an ordered list of steps.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<List<JoinPathStep>> paths
 ) {}

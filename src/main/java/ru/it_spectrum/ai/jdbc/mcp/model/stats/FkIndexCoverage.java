@@ -5,9 +5,9 @@ import java.util.List;
 
 @Schema(description = "Audit of child-side foreign keys that lack supporting indexes.")
 public record FkIndexCoverage(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
         @Schema(description = "Number of tables inspected by the tool before caps were applied.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int tablesScanned,
@@ -15,26 +15,26 @@ public record FkIndexCoverage(
         int foreignKeysTotal,
         @Schema(description = "Number of foreign keys without a supporting child-side index.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int uncoveredCount,
-        @Schema(description = "Foreign keys that lack a supporting child-side index.", nullable = true)
+        @Schema(description = "Foreign keys that lack a supporting child-side index.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<UncoveredEntry> uncovered
 ) {
     @Schema(description = "One foreign key without a supporting child-side index, with suggested index columns.")
     public record UncoveredEntry(
-            @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
+            @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String schema,
-            @Schema(description = "Table name for a finding or statistics row.", nullable = true)
+            @Schema(description = "Table name for a finding or statistics row.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String tableName,
-            @Schema(description = "Foreign-key constraint name for declared schema edges, when available.", nullable = true)
+            @Schema(description = "Foreign-key constraint name for declared schema edges, when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String fkName,
-            @Schema(description = "Child-side foreign-key columns that should be indexed together.", nullable = true)
+            @Schema(description = "Child-side foreign-key columns that should be indexed together.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             List<String> fkColumns,
-            @Schema(description = "Schema of the table referenced by a foreign key or constraint.", nullable = true)
+            @Schema(description = "Schema of the table referenced by a foreign key or constraint.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String referencedSchema,
-            @Schema(description = "Table referenced by a foreign key or constraint.", nullable = true)
+            @Schema(description = "Table referenced by a foreign key or constraint.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String referencedTable,
-            @Schema(description = "Columns referenced by the foreign key or constraint, in key order.", nullable = true)
+            @Schema(description = "Columns referenced by the foreign key or constraint, in key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             List<String> referencedColumns,
-            @Schema(description = "Suggested index column order to support the foreign key.", nullable = true)
+            @Schema(description = "Suggested index column order to support the foreign key.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             List<String> suggestedIndexColumns
     ) {}
 }

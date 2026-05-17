@@ -5,21 +5,21 @@ import java.util.List;
 
 @Schema(description = "Compact relationship edge between two tables in schema graph and query context responses.")
 public record GraphEdgeSummary(
-        @Schema(description = "Kind of relationship edge, such as declared foreign key or observed usage join.", nullable = true)
+        @Schema(description = "Kind of relationship edge, such as declared foreign key or observed usage join.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String relationshipType,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
-        @Schema(description = "Source node identifier for a graph edge or requested path.", nullable = true)
+        @Schema(description = "Source node identifier for a graph edge or requested path.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String from,
-        @Schema(description = "Target node identifier for a graph edge or requested path.", nullable = true)
+        @Schema(description = "Target node identifier for a graph edge or requested path.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String to,
-        @Schema(description = "Source or left-side table in the relationship.", nullable = true)
+        @Schema(description = "Source or left-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fromTable,
-        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true)
+        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> fromColumns,
-        @Schema(description = "Target or right-side table in the relationship.", nullable = true)
+        @Schema(description = "Target or right-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String toTable,
-        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true)
+        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> toColumns
 ) {
 }

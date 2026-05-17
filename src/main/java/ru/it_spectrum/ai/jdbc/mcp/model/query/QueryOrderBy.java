@@ -5,11 +5,11 @@ import java.util.List;
 
 @Schema(description = "ORDER BY expression extracted from parsed SQL.")
 public record QueryOrderBy(
-        @Schema(description = "SQL expression text for the parsed item.", nullable = true)
+        @Schema(description = "SQL expression text for the parsed item.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String expression,
-        @Schema(description = "ORDER BY source text or clause location.", nullable = true)
+        @Schema(description = "ORDER BY source text or clause location.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String source,
-        @Schema(description = "Column references used by this ORDER BY expression.", nullable = true)
+        @Schema(description = "Column references used by this ORDER BY expression.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<QueryColumnRef> columns
 ) {
 }

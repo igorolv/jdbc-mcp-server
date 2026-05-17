@@ -6,15 +6,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record QueryValidationResult(
         @Schema(description = "True when the statement passed guard, parameter, and driver validation.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean valid,
-        @Schema(description = "Number of SQL parameters expected or validated.", nullable = true)
+        @Schema(description = "Number of SQL parameters expected or validated.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Integer parameters,
-        @Schema(description = "Number of result columns reported by driver validation when available.", nullable = true)
+        @Schema(description = "Number of result columns reported by driver validation when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Integer columns,
-        @Schema(description = "Validation stage that failed, such as guard, params, or driver.", nullable = true)
+        @Schema(description = "Validation stage that failed, such as guard, params, or driver.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String stage,
-        @Schema(description = "Human-readable error message explaining why the requested operation failed.", nullable = true)
+        @Schema(description = "Human-readable error message explaining why the requested operation failed.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String error,
-        @Schema(description = "Parsed query inspection that underpins validation, lint, or lineage results.", nullable = true)
+        @Schema(description = "Parsed query inspection that underpins validation, lint, or lineage results.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         QueryInspection inspection
 ) {
     public static QueryValidationResult valid(int parameters, int columns, QueryInspection inspection) {

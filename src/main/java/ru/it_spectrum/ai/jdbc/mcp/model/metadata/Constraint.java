@@ -5,23 +5,23 @@ import java.util.List;
 
 @Schema(description = "Table constraint metadata, including check definitions, allowed values, or referenced objects for foreign keys.")
 public record Constraint(
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
-        @Schema(description = "Constraint type, such as PRIMARY KEY, UNIQUE, FOREIGN KEY, or CHECK.", nullable = true)
+        @Schema(description = "Constraint type, such as PRIMARY KEY, UNIQUE, FOREIGN KEY, or CHECK.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String type,
-        @Schema(description = "Column list in database order; for keys, indexes, and joins the order is significant.", nullable = true)
+        @Schema(description = "Column list in database order; for keys, indexes, and joins the order is significant.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> columns,
-        @Schema(description = "SQL definition or constraint expression as reported by the database.", nullable = true)
+        @Schema(description = "SQL definition or constraint expression as reported by the database.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String definition,
-        @Schema(description = "Column whose allowed values were parsed from a CHECK constraint.", nullable = true)
+        @Schema(description = "Column whose allowed values were parsed from a CHECK constraint.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String allowedValuesColumn,
-        @Schema(description = "Allowed values extracted from CHECK constraints, keyed by column name when available.", nullable = true)
+        @Schema(description = "Allowed values extracted from CHECK constraints, keyed by column name when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> allowedValues,
-        @Schema(description = "Schema of the table referenced by a foreign key or constraint.", nullable = true)
+        @Schema(description = "Schema of the table referenced by a foreign key or constraint.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String referencedSchema,
-        @Schema(description = "Table referenced by a foreign key or constraint.", nullable = true)
+        @Schema(description = "Table referenced by a foreign key or constraint.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String referencedTable,
-        @Schema(description = "Columns referenced by the foreign key or constraint, in key order.", nullable = true)
+        @Schema(description = "Columns referenced by the foreign key or constraint, in key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> referencedColumns
 ) {
 }

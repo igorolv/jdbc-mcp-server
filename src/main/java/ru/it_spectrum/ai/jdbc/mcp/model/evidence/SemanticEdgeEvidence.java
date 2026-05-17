@@ -7,15 +7,15 @@ import java.util.List;
 
 @Schema(description = "Semantic evidence that two tables are related because known queries use them in shared business contexts.")
 public record SemanticEdgeEvidence(
-        @Schema(description = "Business domains shared by known queries that use both sides of the relationship.", nullable = true)
+        @Schema(description = "Business domains shared by known queries that use both sides of the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> sharedBusinessDomains,
-        @Schema(description = "Business objects shared by known queries that use both sides of the relationship.", nullable = true)
+        @Schema(description = "Business objects shared by known queries that use both sides of the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> sharedBusinessObjects,
-        @Schema(description = "Output labels shared by known queries that use both sides of the relationship.", nullable = true)
+        @Schema(description = "Output labels shared by known queries that use both sides of the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> sharedOutputLabels,
         @Schema(description = "Number of known queries where both tables occur together.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int coOccurringQueryCount,
-        @Schema(description = "Catalog source references for queries where both tables occur together.", nullable = true)
+        @Schema(description = "Catalog source references for queries where both tables occur together.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<QuerySourceRef> coOccurringSourceRefs
 ) {
     public SemanticEdgeEvidence {

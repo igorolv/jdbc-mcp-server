@@ -5,17 +5,17 @@ import java.util.List;
 
 @Schema(description = "Semantic usage profile for a table, based on business domains, tags, labels, outputs, and business objects.")
 public record SemanticTableUsage(
-        @Schema(description = "Business domains attached to known queries that use this object.", nullable = true)
+        @Schema(description = "Business domains attached to known queries that use this object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> businessDomains,
-        @Schema(description = "Business tags attached to known queries that use this object.", nullable = true)
+        @Schema(description = "Business tags attached to known queries that use this object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> businessTags,
-        @Schema(description = "Business labels of known queries that use this object.", nullable = true)
+        @Schema(description = "Business labels of known queries that use this object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> queryLabels,
-        @Schema(description = "Business output labels associated with this table or column.", nullable = true)
+        @Schema(description = "Business output labels associated with this table or column.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> outputLabels,
-        @Schema(description = "Business object names associated with this table, column, or relationship.", nullable = true)
+        @Schema(description = "Business object names associated with this table, column, or relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticTermEvidence> businessObjects,
-        @Schema(description = "Semantic usage details for columns associated with this table.", nullable = true)
+        @Schema(description = "Semantic usage details for columns associated with this table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<SemanticColumnUsage> columns
 ) {
     public SemanticTableUsage {

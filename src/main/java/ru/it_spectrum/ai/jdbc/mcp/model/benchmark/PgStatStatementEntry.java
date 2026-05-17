@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "PostgreSQL pg_stat_statements delta for one normalized statement observed while a timed query ran.")
 public record PgStatStatementEntry(
-        @Schema(description = "Normalized SQL text as tracked by the database statistics view.", nullable = true)
+        @Schema(description = "Normalized SQL text as tracked by the database statistics view.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String query,
         @Schema(description = "Increase in pg_stat_statements call count observed during this timed query.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long deltaCalls,
