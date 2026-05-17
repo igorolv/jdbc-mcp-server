@@ -6,6 +6,11 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListSchemasResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListTablesResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListRoutinesResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListSequencesResult;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SearchObjectsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SearchObjectEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SequenceEntry;
@@ -41,7 +46,7 @@ public class MetadataTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public List<String> listSchemas(
+    public ListSchemasResult listSchemas(
             @McpToolParam(description = "Include system schemas. Default false.", required = false) Boolean includeSystem
     ) {
         log.info("Tool call: listSchemas (includeSystem={})", includeSystem);
@@ -49,7 +54,7 @@ public class MetadataTools {
         try {
             List<String> schemas = metadata.listSchemas(Boolean.TRUE.equals(includeSystem));
             ToolLogger.completed(log, "listSchemas", start);
-            return schemas;
+            return new ListSchemasResult(schemas);
         } catch (SQLException e) {
             ToolLogger.failed(log, "listSchemas", start, e.getMessage());
             throw errors.sqlException(e);
@@ -64,7 +69,7 @@ public class MetadataTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public List<TableEntry> listTables(
+    public ListTablesResult listTables(
             @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
             @McpToolParam(description = "Name pattern with JDBC wildcards, e.g. '%user%' (optional)", required = false) String namePattern,
             @McpToolParam(description = "Comma-separated list of types: TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM (optional)", required = false) String types
@@ -75,7 +80,7 @@ public class MetadataTools {
             String[] typeArr = parseTypes(types);
             List<TableEntry> entries = metadata.listTables(schema, namePattern, typeArr);
             ToolLogger.completed(log, "listTables", start);
-            return entries;
+            return new ListTablesResult(entries);
         } catch (SQLException e) {
             ToolLogger.failed(log, "listTables", start, e.getMessage());
             throw errors.sqlException(e);
@@ -166,7 +171,7 @@ public class MetadataTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public List<RoutineEntry> listRoutines(
+    public ListRoutinesResult listRoutines(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema,
             @McpToolParam(description = "Name pattern (optional, e.g. '%calculate%')", required = false) String namePattern
     ) {
@@ -175,7 +180,7 @@ public class MetadataTools {
         try {
             List<RoutineEntry> r = metadata.listRoutines(schema, namePattern);
             ToolLogger.completed(log, "listRoutines", start);
-            return r;
+            return new ListRoutinesResult(r);
         } catch (SQLException e) {
             ToolLogger.failed(log, "listRoutines", start, e.getMessage());
             throw errors.sqlException(e);
@@ -212,7 +217,7 @@ public class MetadataTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public List<SequenceEntry> listSequences(
+    public ListSequencesResult listSequences(
             @McpToolParam(description = "Schema name (optional)", required = false) String schema
     ) {
         log.info("Tool call: listSequences (schema={})", schema);
@@ -220,7 +225,7 @@ public class MetadataTools {
         try {
             List<SequenceEntry> r = metadata.listSequences(schema);
             ToolLogger.completed(log, "listSequences", start);
-            return r;
+            return new ListSequencesResult(r);
         } catch (SQLException e) {
             ToolLogger.failed(log, "listSequences", start, e.getMessage());
             throw errors.sqlException(e);
@@ -235,7 +240,7 @@ public class MetadataTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public List<SearchObjectEntry> searchObjects(
+    public SearchObjectsResult searchObjects(
             @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String namePattern
     ) {
         log.info("Tool call: searchObjects (pattern={})", namePattern);
@@ -243,7 +248,7 @@ public class MetadataTools {
         try {
             List<SearchObjectEntry> r = metadata.searchObjects(namePattern);
             ToolLogger.completed(log, "searchObjects", start);
-            return r;
+            return new SearchObjectsResult(r);
         } catch (SQLException e) {
             ToolLogger.failed(log, "searchObjects", start, e.getMessage());
             throw errors.sqlException(e);
