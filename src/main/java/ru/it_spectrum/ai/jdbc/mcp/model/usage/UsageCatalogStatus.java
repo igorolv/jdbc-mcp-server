@@ -3,15 +3,15 @@ package ru.it_spectrum.ai.jdbc.mcp.model.usage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "UsageCatalogStatus response payload.")
+@Schema(description = "Runtime status of the usage catalog index and configured sources.")
 public record UsageCatalogStatus(
-        @Schema(description = "Catalog Enabled.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "False when the usage catalog is disabled; true when indexing and lookups are allowed.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean catalogEnabled,
-        @Schema(description = "State.", nullable = true)
+        @Schema(description = "Current usage-catalog index state, such as not_started, indexing, ready, or failed.", nullable = true)
         String state,
-        @Schema(description = "Indexing.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "True while the usage catalog index is being built.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean indexing,
-        @Schema(description = "Sources.", nullable = true)
+        @Schema(description = "Configured usage-catalog source paths and database-native sources considered for indexing.", nullable = true)
         List<String> sources
 ) {
 

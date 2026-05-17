@@ -3,13 +3,13 @@ package ru.it_spectrum.ai.jdbc.mcp.model.metadata;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "Index response payload.")
+@Schema(description = "Index metadata for a table, with uniqueness and ordered column list.")
 public record Index(
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
         String name,
-        @Schema(description = "Unique.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "True when the index or constraint enforces uniqueness.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean unique,
-        @Schema(description = "Columns.", nullable = true)
+        @Schema(description = "Column list in database order; for keys, indexes, and joins the order is significant.", nullable = true)
         List<String> columns
 ) {
 }

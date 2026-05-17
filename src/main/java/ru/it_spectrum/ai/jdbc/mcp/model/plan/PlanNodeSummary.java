@@ -2,35 +2,35 @@ package ru.it_spectrum.ai.jdbc.mcp.model.plan;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "PlanNodeSummary response payload.")
+@Schema(description = "Compact execution-plan node or diagnostic entry with costs, row counts, timing, and the reason it was highlighted.")
 public record PlanNodeSummary(
-        @Schema(description = "Node Type.", nullable = true)
+        @Schema(description = "Database plan node type, such as Seq Scan, Hash Join, or Sort.", nullable = true)
         String nodeType,
-        @Schema(description = "Relation.", nullable = true)
+        @Schema(description = "Relation or index name associated with the plan node, when available.", nullable = true)
         String relation,
-        @Schema(description = "Total Cost.", nullable = true)
+        @Schema(description = "Planner total cost estimate for the node.", nullable = true)
         Double totalCost,
-        @Schema(description = "Estimated Rows.", nullable = true)
+        @Schema(description = "Planner or catalog estimate of rows for this object or operation.", nullable = true)
         Long estimatedRows,
-        @Schema(description = "Actual Rows.", nullable = true)
+        @Schema(description = "Actual number of rows produced by the node when an analyzed plan is available.", nullable = true)
         Long actualRows,
-        @Schema(description = "Actual Total Time Ms.", nullable = true)
+        @Schema(description = "Actual total node time in milliseconds when an analyzed plan is available.", nullable = true)
         Double actualTotalTimeMs,
-        @Schema(description = "Ranked By.", nullable = true)
+        @Schema(description = "Metric used to rank or select this plan node for the summary.", nullable = true)
         String rankedBy,
-        @Schema(description = "Reason.", nullable = true)
+        @Schema(description = "Reason the object was unresolved or the item was highlighted.", nullable = true)
         String reason,
-        @Schema(description = "Ratio.", nullable = true)
+        @Schema(description = "Diagnostic ratio, commonly actual rows divided by estimated rows.", nullable = true)
         Double ratio,
-        @Schema(description = "Outer Node Type.", nullable = true)
+        @Schema(description = "Node type on the outer side of a nested loop diagnostic.", nullable = true)
         String outerNodeType,
-        @Schema(description = "Outer Rows.", nullable = true)
+        @Schema(description = "Estimated or actual outer-side row count for a nested loop diagnostic.", nullable = true)
         Long outerRows,
-        @Schema(description = "Sort Method.", nullable = true)
+        @Schema(description = "Sort method reported by the database for a sort diagnostic.", nullable = true)
         String sortMethod,
-        @Schema(description = "Sort Space Kb.", nullable = true)
+        @Schema(description = "Sort memory or disk space reported by the database, in kilobytes when known.", nullable = true)
         Object sortSpaceKb,
-        @Schema(description = "Sort Space Type.", nullable = true)
+        @Schema(description = "Whether the reported sort space was memory, disk, or another engine-specific category.", nullable = true)
         String sortSpaceType
 ) {
 }

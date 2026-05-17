@@ -2,13 +2,13 @@ package ru.it_spectrum.ai.jdbc.mcp.model.lineage;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "LineageObjectRef response payload.")
+@Schema(description = "Lightweight database object reference used inside lineage responses.")
 public record LineageObjectRef(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
         String name,
-        @Schema(description = "Type.", nullable = true)
+        @Schema(description = "Database object type, SQL construct type, or engine-specific classification.", nullable = true)
         String type
 ) {
 }

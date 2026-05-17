@@ -3,15 +3,15 @@ package ru.it_spectrum.ai.jdbc.mcp.model.context;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "ShortestPath response payload.")
+@Schema(description = "Shortest relationship path between two tables in the schema graph.")
 public record ShortestPath(
-        @Schema(description = "From.", nullable = true)
+        @Schema(description = "Source node identifier for a graph edge or requested path.", nullable = true)
         String from,
-        @Schema(description = "To.", nullable = true)
+        @Schema(description = "Target node identifier for a graph edge or requested path.", nullable = true)
         String to,
-        @Schema(description = "Found.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "True when the requested object or path was found.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean found,
-        @Schema(description = "Edges.", nullable = true)
+        @Schema(description = "Ordered relationship steps that form the shortest path.", nullable = true)
         List<JoinPathStep> edges
 ) {
 }

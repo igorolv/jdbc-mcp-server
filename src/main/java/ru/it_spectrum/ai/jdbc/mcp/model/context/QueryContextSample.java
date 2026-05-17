@@ -4,15 +4,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import java.util.Map;
 
-@Schema(description = "QueryContextSample response payload.")
+@Schema(description = "Small sample result attached to query context when sample rows are requested.")
 public record QueryContextSample(
-        @Schema(description = "Columns.", nullable = true)
+        @Schema(description = "Sample column names in output order.", nullable = true)
         List<String> columns,
-        @Schema(description = "Rows.", nullable = true)
+        @Schema(description = "Sample rows as column-name to value maps, intended only to show data shape.", nullable = true)
         List<Map<String, Object>> rows,
-        @Schema(description = "Row Count.", nullable = true)
+        @Schema(description = "Number of rows returned or represented in this response.", nullable = true)
         Integer rowCount,
-        @Schema(description = "Sample Error.", nullable = true)
+        @Schema(description = "Error captured while trying to fetch sample rows; rows may be absent when set.", nullable = true)
         String sampleError
 ) {
 }

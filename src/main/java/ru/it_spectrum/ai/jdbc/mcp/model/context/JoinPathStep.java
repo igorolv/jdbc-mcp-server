@@ -5,29 +5,29 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
 
 import java.util.List;
 
-@Schema(description = "JoinPathStep response payload.")
+@Schema(description = "One edge in a suggested join path, including the join condition and supporting evidence.")
 public record JoinPathStep(
-        @Schema(description = "Direction.", nullable = true)
+        @Schema(description = "Traversal direction used by this join-path step relative to the requested route.", nullable = true)
         String direction,
-        @Schema(description = "Relationship Type.", nullable = true)
+        @Schema(description = "Kind of relationship edge, such as declared foreign key or observed usage join.", nullable = true)
         String relationshipType,
-        @Schema(description = "Fk Name.", nullable = true)
+        @Schema(description = "Foreign-key constraint name for declared schema edges, when available.", nullable = true)
         String fkName,
-        @Schema(description = "From Schema.", nullable = true)
+        @Schema(description = "Schema of the source or left-side table in the relationship.", nullable = true)
         String fromSchema,
-        @Schema(description = "From Table.", nullable = true)
+        @Schema(description = "Source or left-side table in the relationship.", nullable = true)
         String fromTable,
-        @Schema(description = "From Columns.", nullable = true)
+        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true)
         List<String> fromColumns,
-        @Schema(description = "To Schema.", nullable = true)
+        @Schema(description = "Schema of the target or right-side table in the relationship.", nullable = true)
         String toSchema,
-        @Schema(description = "To Table.", nullable = true)
+        @Schema(description = "Target or right-side table in the relationship.", nullable = true)
         String toTable,
-        @Schema(description = "To Columns.", nullable = true)
+        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true)
         List<String> toColumns,
-        @Schema(description = "Join Condition.", nullable = true)
+        @Schema(description = "SQL equality condition that joins the two tables for this step.", nullable = true)
         String joinCondition,
-        @Schema(description = "Evidence.", nullable = true)
+        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources.", nullable = true)
         RelationshipEvidence evidence
 ) {
 }

@@ -2,19 +2,19 @@ package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "GraphTableSummary response payload.")
+@Schema(description = "Compact table ranking entry used for central and isolated table summaries.")
 public record GraphTableSummary(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Table.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true)
         String table,
-        @Schema(description = "Classification.", nullable = true)
+        @Schema(description = "Heuristic table role in the schema graph, such as central, isolated, lookup, or regular.", nullable = true)
         String classification,
-        @Schema(description = "Incoming Degree.", nullable = true)
+        @Schema(description = "Number of relationship edges entering this table.", nullable = true)
         Integer incomingDegree,
-        @Schema(description = "Outgoing Degree.", nullable = true)
+        @Schema(description = "Number of relationship edges leaving this table.", nullable = true)
         Integer outgoingDegree,
-        @Schema(description = "Total Degree.", nullable = true)
+        @Schema(description = "Total number of relationship edges connected to this table.", nullable = true)
         Integer totalDegree
 ) {
     public static GraphTableSummary central(GraphNode node) {

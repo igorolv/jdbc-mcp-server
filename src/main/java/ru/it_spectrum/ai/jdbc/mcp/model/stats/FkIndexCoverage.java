@@ -3,38 +3,38 @@ package ru.it_spectrum.ai.jdbc.mcp.model.stats;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "FkIndexCoverage response payload.")
+@Schema(description = "Audit of child-side foreign keys that lack supporting indexes.")
 public record FkIndexCoverage(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Table.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true)
         String table,
-        @Schema(description = "Tables Scanned.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of tables inspected by the tool before caps were applied.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int tablesScanned,
-        @Schema(description = "Foreign Keys Total.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Total number of foreign keys inspected for index coverage.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int foreignKeysTotal,
-        @Schema(description = "Uncovered Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of foreign keys without a supporting child-side index.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int uncoveredCount,
-        @Schema(description = "Uncovered.", nullable = true)
+        @Schema(description = "Foreign keys that lack a supporting child-side index.", nullable = true)
         List<UncoveredEntry> uncovered
 ) {
-    @Schema(description = "UncoveredEntry response payload.")
+    @Schema(description = "One foreign key without a supporting child-side index, with suggested index columns.")
     public record UncoveredEntry(
-            @Schema(description = "Schema.", nullable = true)
+            @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
             String schema,
-            @Schema(description = "Table Name.", nullable = true)
+            @Schema(description = "Table name for a finding or statistics row.", nullable = true)
             String tableName,
-            @Schema(description = "Fk Name.", nullable = true)
+            @Schema(description = "Foreign-key constraint name for declared schema edges, when available.", nullable = true)
             String fkName,
-            @Schema(description = "Fk Columns.", nullable = true)
+            @Schema(description = "Child-side foreign-key columns that should be indexed together.", nullable = true)
             List<String> fkColumns,
-            @Schema(description = "Referenced Schema.", nullable = true)
+            @Schema(description = "Schema of the table referenced by a foreign key or constraint.", nullable = true)
             String referencedSchema,
-            @Schema(description = "Referenced Table.", nullable = true)
+            @Schema(description = "Table referenced by a foreign key or constraint.", nullable = true)
             String referencedTable,
-            @Schema(description = "Referenced Columns.", nullable = true)
+            @Schema(description = "Columns referenced by the foreign key or constraint, in key order.", nullable = true)
             List<String> referencedColumns,
-            @Schema(description = "Suggested Index Columns.", nullable = true)
+            @Schema(description = "Suggested index column order to support the foreign key.", nullable = true)
             List<String> suggestedIndexColumns
     ) {}
 }

@@ -5,13 +5,13 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
 
 import java.util.List;
 
-@Schema(description = "SemanticTermEvidence response payload.")
+@Schema(description = "Term-level semantic evidence with support count and source queries.")
 public record SemanticTermEvidence(
-        @Schema(description = "Value.", nullable = true)
+        @Schema(description = "Column value for this distribution bucket; may be null.", nullable = true)
         String value,
-        @Schema(description = "Support.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of source records or terms supporting this semantic candidate.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int support,
-        @Schema(description = "Source Refs.", nullable = true)
+        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true)
         List<QuerySourceRef> sourceRefs
 ) {
     public SemanticTermEvidence {

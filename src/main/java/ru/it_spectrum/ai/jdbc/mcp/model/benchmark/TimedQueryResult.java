@@ -4,23 +4,23 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import java.util.Map;
 
-@Schema(description = "TimedQueryResult response payload.")
+@Schema(description = "Query execution result with wall-clock elapsed time and optional pg_stat_statements deltas for PostgreSQL.")
 public record TimedQueryResult(
-        @Schema(description = "Engine.", nullable = true)
+        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, or SQL Server.", nullable = true)
         String engine,
-        @Schema(description = "Elapsed Ms.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Wall-clock elapsed time for the query execution, in milliseconds.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         double elapsedMs,
-        @Schema(description = "Row Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of rows returned or represented in this response.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int rowCount,
-        @Schema(description = "Truncated.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "True when the configured row or finding cap was reached and more data may exist.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean truncated,
-        @Schema(description = "Columns.", nullable = true)
+        @Schema(description = "Result column names in output order.", nullable = true)
         List<String> columns,
-        @Schema(description = "Column Types.", nullable = true)
+        @Schema(description = "Database type names for the result columns, in the same order as columns.", nullable = true)
         List<String> columnTypes,
-        @Schema(description = "Rows.", nullable = true)
+        @Schema(description = "Returned result rows as column-name to value maps, capped by the requested limit.", nullable = true)
         List<Map<String, Object>> rows,
-        @Schema(description = "Pg Stat Statements.", nullable = true)
+        @Schema(description = "PostgreSQL statement-statistics delta captured around the timed query, when available.", nullable = true)
         PgStatStatements pgStatStatements
 ) {
 }

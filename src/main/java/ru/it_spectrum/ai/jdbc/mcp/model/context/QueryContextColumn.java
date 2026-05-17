@@ -3,19 +3,19 @@ package ru.it_spectrum.ai.jdbc.mcp.model.context;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "QueryContextColumn response payload.")
+@Schema(description = "Column metadata included in query authoring context.")
 public record QueryContextColumn(
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Column name as reported by database metadata.", nullable = true)
         String name,
-        @Schema(description = "Type.", nullable = true)
+        @Schema(description = "Database type name for the column.", nullable = true)
         String type,
-        @Schema(description = "Nullable.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "True when the column accepts NULL values.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean nullable,
-        @Schema(description = "Primary Key.", nullable = true)
+        @Schema(description = "True when the column participates in the table primary key.", nullable = true)
         Boolean primaryKey,
-        @Schema(description = "Foreign Key.", nullable = true)
+        @Schema(description = "True when the column participates in an outgoing foreign key.", nullable = true)
         Boolean foreignKey,
-        @Schema(description = "Allowed Values.", nullable = true)
+        @Schema(description = "Allowed values extracted from CHECK constraints, keyed by column name when available.", nullable = true)
         List<String> allowedValues
 ) {
 }

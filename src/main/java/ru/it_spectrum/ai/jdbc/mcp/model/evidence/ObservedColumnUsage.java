@@ -5,15 +5,15 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
 
 import java.util.List;
 
-@Schema(description = "ObservedColumnUsage response payload.")
+@Schema(description = "Usage-catalog evidence showing how often a column appears in known SQL queries.")
 public record ObservedColumnUsage(
-        @Schema(description = "Column.", nullable = true)
+        @Schema(description = "Column name within the table.", nullable = true)
         String column,
-        @Schema(description = "Query Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of known SQL queries that reference this object or term.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int queryCount,
-        @Schema(description = "Contexts.", nullable = true)
+        @Schema(description = "Contexts in which the column appeared, such as select, where, join, order_by, or having.", nullable = true)
         List<SemanticTermEvidence> contexts,
-        @Schema(description = "Source Refs.", nullable = true)
+        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true)
         List<QuerySourceRef> sourceRefs
 ) {
     public ObservedColumnUsage {

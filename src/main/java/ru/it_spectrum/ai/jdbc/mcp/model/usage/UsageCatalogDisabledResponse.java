@@ -3,29 +3,29 @@ package ru.it_spectrum.ai.jdbc.mcp.model.usage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "UsageCatalogDisabledResponse response payload.")
+@Schema(description = "Standard response shape returned by usage-catalog tools when the catalog is disabled.")
 public record UsageCatalogDisabledResponse(
-        @Schema(description = "Error.", nullable = true)
+        @Schema(description = "Message explaining that the usage catalog is disabled for this server.", nullable = true)
         String error,
-        @Schema(description = "Kind.", nullable = true)
+        @Schema(description = "Error category for disabled usage-catalog responses.", nullable = true)
         String kind,
-        @Schema(description = "Tool.", nullable = true)
+        @Schema(description = "Usage-catalog tool that produced the disabled-catalog response.", nullable = true)
         String tool,
-        @Schema(description = "Catalog Enabled.", nullable = true)
+        @Schema(description = "False when the usage catalog is disabled; true when indexing and lookups are allowed.", nullable = true)
         Boolean catalogEnabled,
-        @Schema(description = "Count.", nullable = true)
+        @Schema(description = "Always zero for disabled-catalog collection responses.", nullable = true)
         Integer count,
-        @Schema(description = "Queries.", nullable = true)
+        @Schema(description = "Usage-catalog query entries returned by the current filter or disabled-catalog response.", nullable = true)
         List<?> queries,
-        @Schema(description = "Matches.", nullable = true)
+        @Schema(description = "Usage-catalog matches returned for the requested table, column, or filter.", nullable = true)
         List<?> matches,
-        @Schema(description = "Relationships.", nullable = true)
+        @Schema(description = "Relationship edges relevant to the context, graph, or observed-relationships result.", nullable = true)
         List<?> relationships,
-        @Schema(description = "Tags.", nullable = true)
+        @Schema(description = "Business tags attached to the usage-catalog query.", nullable = true)
         List<?> tags,
-        @Schema(description = "Domains.", nullable = true)
+        @Schema(description = "Known business domains and their usage counts.", nullable = true)
         List<?> domains,
-        @Schema(description = "Kinds.", nullable = true)
+        @Schema(description = "Known source-kind values and their usage counts.", nullable = true)
         List<?> kinds
 ) {
     private static final String DISABLED_ERROR =

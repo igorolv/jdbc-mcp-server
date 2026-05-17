@@ -2,15 +2,15 @@ package ru.it_spectrum.ai.jdbc.mcp.model.benchmark;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "TimingStats response payload.")
+@Schema(description = "Aggregate timing statistics for a group of benchmark runs, expressed in milliseconds.")
 public record TimingStats(
-        @Schema(description = "Runs.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of measured runs included in these timing statistics.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int runs,
-        @Schema(description = "Min.", nullable = true)
+        @Schema(description = "Minimum observed elapsed time in milliseconds.", nullable = true)
         Double min,
-        @Schema(description = "Median.", nullable = true)
+        @Schema(description = "Median observed elapsed time in milliseconds.", nullable = true)
         Double median,
-        @Schema(description = "Max.", nullable = true)
+        @Schema(description = "Maximum observed elapsed time or value in this result.", nullable = true)
         Double max
 ) {
 }

@@ -2,13 +2,13 @@ package ru.it_spectrum.ai.jdbc.mcp.model.usage;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "QuerySourceRef response payload.")
+@Schema(description = "Stable pointer to a query record in the usage catalog.")
 public record QuerySourceRef(
-        @Schema(description = "Source Kind.", nullable = true)
+        @Schema(description = "Kind of source that produced the catalog query, such as file, view, routine, or configured import.", nullable = true)
         String sourceKind,
-        @Schema(description = "Source Path.", nullable = true)
+        @Schema(description = "Path or database object name where the catalog query came from.", nullable = true)
         String sourcePath,
-        @Schema(description = "Source Unit.", nullable = true)
+        @Schema(description = "Stable unit identifier inside the source, such as query id, method name, view name, or routine name.", nullable = true)
         String sourceUnit
 ) {
     public QuerySourceRef {

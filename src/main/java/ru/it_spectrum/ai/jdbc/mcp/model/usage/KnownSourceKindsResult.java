@@ -3,16 +3,16 @@ package ru.it_spectrum.ai.jdbc.mcp.model.usage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "KnownSourceKindsResult response payload.")
+@Schema(description = "Known source-kind values discovered in the usage catalog.")
 public record KnownSourceKindsResult(
-        @Schema(description = "Kinds.", nullable = true)
+        @Schema(description = "Known source-kind values and their usage counts.", nullable = true)
         List<KindEntry> kinds
 ) {
-    @Schema(description = "KindEntry response payload.")
+    @Schema(description = "Source kind and number of catalog queries that use it.")
     public record KindEntry(
-            @Schema(description = "Kind.", nullable = true)
+            @Schema(description = "Source kind value used by catalog records, such as file, view, routine, or import.", nullable = true)
             String kind,
-            @Schema(description = "Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Number of catalog queries associated with this source kind.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             int count
     ) {
     }

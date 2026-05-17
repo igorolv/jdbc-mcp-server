@@ -3,36 +3,36 @@ package ru.it_spectrum.ai.jdbc.mcp.model.distribution;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "ColumnDistribution response payload.")
+@Schema(description = "Top-N frequency distribution for a column, useful for detecting skew and low-selectivity predicates.")
 public record ColumnDistribution(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Table.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true)
         String table,
-        @Schema(description = "Column.", nullable = true)
+        @Schema(description = "Column whose value frequencies were measured.", nullable = true)
         String column,
-        @Schema(description = "Top N.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Maximum number of most-frequent values requested for the distribution.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int topN,
-        @Schema(description = "Total Rows.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Total number of rows considered for this statistic.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long totalRows,
-        @Schema(description = "Top Rows.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Rows covered by the returned top-N value buckets.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long topRows,
-        @Schema(description = "Top Ratio.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Share of all rows covered by the returned top-N buckets, from 0.0 to 1.0.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         double topRatio,
-        @Schema(description = "Other Rows.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Rows not represented by the returned top-N value buckets.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long otherRows,
-        @Schema(description = "Other Ratio.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Share of all rows outside the returned top-N buckets, from 0.0 to 1.0.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         double otherRatio,
-        @Schema(description = "Values.", nullable = true)
+        @Schema(description = "Most frequent values and their frequencies for the column.", nullable = true)
         List<ValueEntry> values
 ) {
-    @Schema(description = "ValueEntry response payload.")
+    @Schema(description = "One value bucket in a column frequency distribution.")
     public record ValueEntry(
-            @Schema(description = "Value.", nullable = true)
+            @Schema(description = "Column value for this distribution bucket; may be null.", nullable = true)
             Object value,
-            @Schema(description = "Frequency.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Number of rows containing this value.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             long frequency,
-            @Schema(description = "Ratio.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Share of total rows represented by this value, from 0.0 to 1.0.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             double ratio
     ) {}
 }

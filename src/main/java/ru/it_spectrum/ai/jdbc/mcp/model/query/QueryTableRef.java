@@ -2,17 +2,17 @@ package ru.it_spectrum.ai.jdbc.mcp.model.query;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "QueryTableRef response payload.")
+@Schema(description = "Table-like reference extracted from parsed SQL, including aliases and CTE sources.")
 public record QueryTableRef(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
         String name,
-        @Schema(description = "Full Name.", nullable = true)
+        @Schema(description = "Schema-qualified or original full table name as it appeared in SQL.", nullable = true)
         String fullName,
-        @Schema(description = "Alias.", nullable = true)
+        @Schema(description = "SQL alias assigned to the table reference in the inspected query.", nullable = true)
         String alias,
-        @Schema(description = "Source.", nullable = true)
+        @Schema(description = "SQL construct that introduced the table reference, such as FROM, JOIN, CTE, or subquery.", nullable = true)
         String source
 ) {
 }

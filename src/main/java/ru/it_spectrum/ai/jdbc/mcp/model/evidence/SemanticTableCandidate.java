@@ -5,17 +5,17 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
 
 import java.util.List;
 
-@Schema(description = "SemanticTableCandidate response payload.")
+@Schema(description = "Table candidate selected by semantic search over usage-catalog terms and source references.")
 public record SemanticTableCandidate(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Table.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true)
         String table,
-        @Schema(description = "Support.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of source records or terms supporting this semantic candidate.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int support,
-        @Schema(description = "Matched Terms.", nullable = true)
+        @Schema(description = "Search terms or semantic terms that matched this candidate.", nullable = true)
         List<SemanticTermEvidence> matchedTerms,
-        @Schema(description = "Source Refs.", nullable = true)
+        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true)
         List<QuerySourceRef> sourceRefs
 ) {
     public SemanticTableCandidate {

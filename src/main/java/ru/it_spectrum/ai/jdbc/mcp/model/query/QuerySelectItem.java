@@ -3,15 +3,15 @@ package ru.it_spectrum.ai.jdbc.mcp.model.query;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "QuerySelectItem response payload.")
+@Schema(description = "SELECT-list expression extracted from parsed SQL.")
 public record QuerySelectItem(
-        @Schema(description = "Expression.", nullable = true)
+        @Schema(description = "SQL expression text for the parsed item.", nullable = true)
         String expression,
-        @Schema(description = "Alias.", nullable = true)
+        @Schema(description = "Alias assigned to the SELECT expression, when present.", nullable = true)
         String alias,
-        @Schema(description = "Star.", nullable = true)
+        @Schema(description = "True when the SELECT item is a wildcard projection.", nullable = true)
         Boolean star,
-        @Schema(description = "Columns.", nullable = true)
+        @Schema(description = "Column references used by this SELECT expression.", nullable = true)
         List<QueryColumnRef> columns
 ) {
 }

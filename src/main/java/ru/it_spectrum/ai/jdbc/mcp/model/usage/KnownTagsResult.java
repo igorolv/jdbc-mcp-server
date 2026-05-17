@@ -3,16 +3,16 @@ package ru.it_spectrum.ai.jdbc.mcp.model.usage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "KnownTagsResult response payload.")
+@Schema(description = "Known business tags discovered in the usage catalog.")
 public record KnownTagsResult(
-        @Schema(description = "Tags.", nullable = true)
+        @Schema(description = "Business tags attached to the usage-catalog query.", nullable = true)
         List<TagEntry> tags
 ) {
-    @Schema(description = "TagEntry response payload.")
+    @Schema(description = "Business tag and number of catalog queries tagged with it.")
     public record TagEntry(
-            @Schema(description = "Tag.", nullable = true)
+            @Schema(description = "Business tag value.", nullable = true)
             String tag,
-            @Schema(description = "Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Number of catalog queries associated with this tag.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             int count
     ) {
     }

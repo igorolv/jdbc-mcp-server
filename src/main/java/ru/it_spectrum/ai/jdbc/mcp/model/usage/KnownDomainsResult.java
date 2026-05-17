@@ -3,16 +3,16 @@ package ru.it_spectrum.ai.jdbc.mcp.model.usage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "KnownDomainsResult response payload.")
+@Schema(description = "Known business domains discovered in the usage catalog.")
 public record KnownDomainsResult(
-        @Schema(description = "Domains.", nullable = true)
+        @Schema(description = "Known business domains and their usage counts.", nullable = true)
         List<DomainEntry> domains
 ) {
-    @Schema(description = "DomainEntry response payload.")
+    @Schema(description = "Business domain and number of catalog queries tagged with it.")
     public record DomainEntry(
-            @Schema(description = "Domain.", nullable = true)
+            @Schema(description = "Business domain value.", nullable = true)
             String domain,
-            @Schema(description = "Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Number of catalog queries associated with this domain.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             int count
     ) {
     }

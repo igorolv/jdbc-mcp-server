@@ -9,13 +9,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * <p>Each layer is independently nullable. Empty semantic usage is normalized to {@code null}
  * so downstream JSON does not carry empty buckets.
  */
-@Schema(description = "RelationshipEvidence response payload.")
+@Schema(description = "Combined evidence for a relationship from declared schema, observed joins, and semantic usage.")
 public record RelationshipEvidence(
-        @Schema(description = "Declared Schema.", nullable = true)
+        @Schema(description = "Evidence from declared database metadata, normally a foreign key.", nullable = true)
         DeclaredSchemaEdgeEvidence declaredSchema,
-        @Schema(description = "Observed Query.", nullable = true)
+        @Schema(description = "Evidence from known SQL queries in the usage catalog.", nullable = true)
         ObservedQueryEdgeEvidence observedQuery,
-        @Schema(description = "Semantic Usage.", nullable = true)
+        @Schema(description = "Evidence from business labels, domains, tags, outputs, and field usage in the catalog.", nullable = true)
         SemanticEdgeEvidence semanticUsage
 ) {
     public RelationshipEvidence {

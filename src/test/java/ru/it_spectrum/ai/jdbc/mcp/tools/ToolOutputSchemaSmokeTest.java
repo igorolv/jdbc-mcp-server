@@ -73,7 +73,8 @@ class ToolOutputSchemaSmokeTest {
         String tableSchema = McpJsonSchemaGenerator.generateFromClass(TableDescription.class);
         assertThat(tableSchema).contains("\"columns\"");
         assertThat(tableSchema).contains("\"indexes\"");
-        assertThat(tableSchema).contains("Columns.");
+        assertThat(tableSchema).contains("Column list in database order");
+        assertThat(tableSchema).doesNotContain("TableDescription response payload");
         assertThat(tableSchema).contains("[ \"array\", \"null\" ]");
 
         String querySchema = McpJsonSchemaGenerator.generateFromClass(QueryResult.class);

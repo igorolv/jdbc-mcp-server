@@ -2,13 +2,13 @@ package ru.it_spectrum.ai.jdbc.mcp.model.metadata;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "RoutineEntry response payload.")
+@Schema(description = "Function, procedure, or package entry returned by routine listing.")
 public record RoutineEntry(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
         String name,
-        @Schema(description = "Type.", nullable = true)
+        @Schema(description = "Routine type reported by the database, such as FUNCTION, PROCEDURE, or PACKAGE.", nullable = true)
         String type
 ) {
 }

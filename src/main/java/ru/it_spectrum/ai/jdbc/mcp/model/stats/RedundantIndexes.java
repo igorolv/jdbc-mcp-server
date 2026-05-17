@@ -3,34 +3,34 @@ package ru.it_spectrum.ai.jdbc.mcp.model.stats;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "RedundantIndexes response payload.")
+@Schema(description = "Indexes that appear redundant because their leading columns are covered by another index on the same table.")
 public record RedundantIndexes(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Table.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true)
         String table,
-        @Schema(description = "Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of redundant-index findings returned.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int count,
-        @Schema(description = "Findings.", nullable = true)
+        @Schema(description = "Schema lint or redundant-index findings.", nullable = true)
         List<Finding> findings
 ) {
-    @Schema(description = "Finding response payload.")
+    @Schema(description = "One redundant-index finding and the larger index that covers it.")
     public record Finding(
-            @Schema(description = "Schema.", nullable = true)
+            @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
             String schema,
-            @Schema(description = "Table Name.", nullable = true)
+            @Schema(description = "Table name for a finding or statistics row.", nullable = true)
             String tableName,
-            @Schema(description = "Shadowed Index.", nullable = true)
+            @Schema(description = "Index that appears redundant because another index has the same leading columns.", nullable = true)
             String shadowedIndex,
-            @Schema(description = "Shadowed Columns.", nullable = true)
+            @Schema(description = "Column list of the potentially redundant index.", nullable = true)
             String shadowedColumns,
-            @Schema(description = "Shadowed Size Bytes.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Size in bytes of the potentially redundant index.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             long shadowedSizeBytes,
-            @Schema(description = "Covered By Index.", nullable = true)
+            @Schema(description = "Index that covers the shadowed index by leading-column prefix.", nullable = true)
             String coveredByIndex,
-            @Schema(description = "Covered By Columns.", nullable = true)
+            @Schema(description = "Column list of the covering index.", nullable = true)
             String coveredByColumns,
-            @Schema(description = "Index Type.", nullable = true)
+            @Schema(description = "Engine-specific index type or access method.", nullable = true)
             String indexType
     ) {}
 }

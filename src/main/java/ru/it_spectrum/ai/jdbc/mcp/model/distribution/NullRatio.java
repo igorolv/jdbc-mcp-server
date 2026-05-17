@@ -3,28 +3,28 @@ package ru.it_spectrum.ai.jdbc.mcp.model.distribution;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "NullRatio response payload.")
+@Schema(description = "Per-column null ratio report for a table.")
 public record NullRatio(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Table.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true)
         String table,
-        @Schema(description = "Total Rows.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Total number of rows considered for this statistic.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long totalRows,
-        @Schema(description = "Columns.", nullable = true)
+        @Schema(description = "Per-column null-ratio entries, sorted by descending null ratio.", nullable = true)
         List<ColumnEntry> columns
 ) {
-    @Schema(description = "ColumnEntry response payload.")
+    @Schema(description = "Null ratio details for one column.")
     public record ColumnEntry(
-            @Schema(description = "Column.", nullable = true)
+            @Schema(description = "Column name within the table.", nullable = true)
             String column,
-            @Schema(description = "Non Null Rows.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Number of rows where the column value is not NULL.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             long nonNullRows,
-            @Schema(description = "Null Rows.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Number of rows where the column value is NULL.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             long nullRows,
-            @Schema(description = "Null Ratio.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "Share of rows where the column value is NULL, from 0.0 to 1.0.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             double nullRatio,
-            @Schema(description = "Sparse.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            @Schema(description = "True when more than half of the column values are NULL; partial indexes may be useful.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             boolean sparse
     ) {}
 }

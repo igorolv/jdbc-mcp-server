@@ -2,25 +2,25 @@ package ru.it_spectrum.ai.jdbc.mcp.model.metadata;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Column response payload.")
+@Schema(description = "Database column metadata, including type, nullability, defaults, comments, and auto-increment status.")
 public record Column(
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
         String name,
-        @Schema(description = "Ordinal Position.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "One-based ordinal position of the column within the table.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int ordinalPosition,
-        @Schema(description = "Type Name.", nullable = true)
+        @Schema(description = "Database-specific type name reported by JDBC metadata.", nullable = true)
         String typeName,
-        @Schema(description = "Size.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of tables in the connected component or result group.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int size,
-        @Schema(description = "Decimal Digits.", nullable = true)
+        @Schema(description = "Scale for numeric columns, null when not applicable or not reported.", nullable = true)
         Integer decimalDigits,
-        @Schema(description = "Nullable.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "True when the column accepts NULL values.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean nullable,
-        @Schema(description = "Default Value.", nullable = true)
+        @Schema(description = "Default value expression for the column or documented parameter.", nullable = true)
         String defaultValue,
-        @Schema(description = "Remarks.", nullable = true)
+        @Schema(description = "Database comment or description attached to the object, when the driver exposes it.", nullable = true)
         String remarks,
-        @Schema(description = "Auto Increment.", nullable = true)
+        @Schema(description = "True when the database reports the column as auto-incrementing or identity-like.", nullable = true)
         Boolean autoIncrement
 ) {
 }

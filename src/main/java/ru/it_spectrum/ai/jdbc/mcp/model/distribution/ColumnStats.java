@@ -2,23 +2,23 @@ package ru.it_spectrum.ai.jdbc.mcp.model.distribution;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "ColumnStats response payload.")
+@Schema(description = "Basic one-column statistics: row counts, distinct count, and min/max values.")
 public record ColumnStats(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Table.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true)
         String table,
-        @Schema(description = "Column.", nullable = true)
+        @Schema(description = "Column whose basic statistics were measured.", nullable = true)
         String column,
-        @Schema(description = "Total Rows.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Total number of rows considered for this statistic.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long totalRows,
-        @Schema(description = "Non Null Rows.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of rows where the column value is not NULL.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long nonNullRows,
-        @Schema(description = "Distinct Values.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Estimated or exact number of distinct non-null values.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         long distinctValues,
-        @Schema(description = "Min Value.", nullable = true)
+        @Schema(description = "Minimum observed non-null value for the column.", nullable = true)
         Object minValue,
-        @Schema(description = "Max Value.", nullable = true)
+        @Schema(description = "Maximum observed non-null value for the column.", nullable = true)
         Object maxValue
 ) {
 }

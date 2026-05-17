@@ -3,15 +3,15 @@ package ru.it_spectrum.ai.jdbc.mcp.model.query;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "QueryPredicate response payload.")
+@Schema(description = "Predicate expression extracted from WHERE, JOIN, HAVING, or related SQL scopes.")
 public record QueryPredicate(
-        @Schema(description = "Scope.", nullable = true)
+        @Schema(description = "SQL clause or expression scope where the predicate was found.", nullable = true)
         String scope,
-        @Schema(description = "Expression.", nullable = true)
+        @Schema(description = "SQL expression text for the parsed item.", nullable = true)
         String expression,
-        @Schema(description = "Operator.", nullable = true)
+        @Schema(description = "Primary comparison or logical operator detected in the predicate.", nullable = true)
         String operator,
-        @Schema(description = "Columns.", nullable = true)
+        @Schema(description = "Column references used by this predicate expression.", nullable = true)
         List<QueryColumnRef> columns
 ) {
 }

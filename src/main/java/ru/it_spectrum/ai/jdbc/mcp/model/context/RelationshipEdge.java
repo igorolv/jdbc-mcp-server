@@ -5,27 +5,27 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
 
 import java.util.List;
 
-@Schema(description = "RelationshipEdge response payload.")
+@Schema(description = "Relationship edge in table context, backed by declared foreign keys and optional observed or semantic usage evidence.")
 public record RelationshipEdge(
-        @Schema(description = "Relationship Type.", nullable = true)
+        @Schema(description = "Kind of relationship edge, such as declared foreign key or observed usage join.", nullable = true)
         String relationshipType,
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
         String name,
-        @Schema(description = "From Schema.", nullable = true)
+        @Schema(description = "Schema of the source or left-side table in the relationship.", nullable = true)
         String fromSchema,
-        @Schema(description = "From Table.", nullable = true)
+        @Schema(description = "Source or left-side table in the relationship.", nullable = true)
         String fromTable,
-        @Schema(description = "From Columns.", nullable = true)
+        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true)
         List<String> fromColumns,
-        @Schema(description = "To Schema.", nullable = true)
+        @Schema(description = "Schema of the target or right-side table in the relationship.", nullable = true)
         String toSchema,
-        @Schema(description = "To Table.", nullable = true)
+        @Schema(description = "Target or right-side table in the relationship.", nullable = true)
         String toTable,
-        @Schema(description = "To Columns.", nullable = true)
+        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true)
         List<String> toColumns,
-        @Schema(description = "Undirected.", nullable = true)
+        @Schema(description = "True when the relationship can be traversed in either direction for graph search.", nullable = true)
         Boolean undirected,
-        @Schema(description = "Evidence.", nullable = true)
+        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources.", nullable = true)
         RelationshipEvidence evidence
 ) {
     public RelationshipEdge withEvidence(RelationshipEvidence evidence) {

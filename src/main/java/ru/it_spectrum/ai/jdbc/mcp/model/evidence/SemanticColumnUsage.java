@@ -3,13 +3,13 @@ package ru.it_spectrum.ai.jdbc.mcp.model.evidence;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "SemanticColumnUsage response payload.")
+@Schema(description = "Semantic usage labels tied to a column, derived from known query outputs and business objects.")
 public record SemanticColumnUsage(
-        @Schema(description = "Column.", nullable = true)
+        @Schema(description = "Column name within the table.", nullable = true)
         String column,
-        @Schema(description = "Output Labels.", nullable = true)
+        @Schema(description = "Business output labels associated with this table or column.", nullable = true)
         List<SemanticTermEvidence> outputLabels,
-        @Schema(description = "Business Objects.", nullable = true)
+        @Schema(description = "Business object names associated with this table, column, or relationship.", nullable = true)
         List<SemanticTermEvidence> businessObjects
 ) {
     public SemanticColumnUsage {

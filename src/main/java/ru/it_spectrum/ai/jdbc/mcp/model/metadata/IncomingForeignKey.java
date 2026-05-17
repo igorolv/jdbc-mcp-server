@@ -3,17 +3,17 @@ package ru.it_spectrum.ai.jdbc.mcp.model.metadata;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "IncomingForeignKey response payload.")
+@Schema(description = "Foreign key from another table that references the described table.")
 public record IncomingForeignKey(
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
         String name,
-        @Schema(description = "From Schema.", nullable = true)
+        @Schema(description = "Schema of the source or left-side table in the relationship.", nullable = true)
         String fromSchema,
-        @Schema(description = "From Table.", nullable = true)
+        @Schema(description = "Source or left-side table in the relationship.", nullable = true)
         String fromTable,
-        @Schema(description = "From Columns.", nullable = true)
+        @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true)
         List<String> fromColumns,
-        @Schema(description = "To Columns.", nullable = true)
+        @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true)
         List<String> toColumns
 ) {
 }

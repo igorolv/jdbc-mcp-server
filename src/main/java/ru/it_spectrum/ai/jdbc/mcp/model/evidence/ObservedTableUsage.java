@@ -5,13 +5,13 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
 
 import java.util.List;
 
-@Schema(description = "ObservedTableUsage response payload.")
+@Schema(description = "Usage-catalog evidence showing how a table and its columns are used in known SQL queries.")
 public record ObservedTableUsage(
-        @Schema(description = "Query Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of known SQL queries that reference this object or term.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int queryCount,
-        @Schema(description = "Source Refs.", nullable = true)
+        @Schema(description = "Usage-catalog source records that support this evidence item.", nullable = true)
         List<QuerySourceRef> sourceRefs,
-        @Schema(description = "Columns.", nullable = true)
+        @Schema(description = "Observed usage details for columns referenced by known queries.", nullable = true)
         List<ObservedColumnUsage> columns
 ) {
     public ObservedTableUsage {

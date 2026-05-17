@@ -3,21 +3,21 @@ package ru.it_spectrum.ai.jdbc.mcp.model.metadata;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "Trigger response payload.")
+@Schema(description = "Trigger metadata for a table; full body is present only when requested or available.")
 public record Trigger(
-        @Schema(description = "Schema.", nullable = true)
+        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true)
         String schema,
-        @Schema(description = "Table.", nullable = true)
+        @Schema(description = "Table name within the schema.", nullable = true)
         String table,
-        @Schema(description = "Name.", nullable = true)
+        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true)
         String name,
-        @Schema(description = "Timing.", nullable = true)
+        @Schema(description = "Trigger timing such as BEFORE, AFTER, or INSTEAD OF.", nullable = true)
         String timing,
-        @Schema(description = "Events.", nullable = true)
+        @Schema(description = "Data-change events that fire the trigger, such as INSERT, UPDATE, or DELETE.", nullable = true)
         List<String> events,
-        @Schema(description = "Enabled.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "True when the trigger is currently enabled.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean enabled,
-        @Schema(description = "Definition.", nullable = true)
+        @Schema(description = "Trigger body or definition text when loaded; compact listings may omit it.", nullable = true)
         String definition
 ) {
 }

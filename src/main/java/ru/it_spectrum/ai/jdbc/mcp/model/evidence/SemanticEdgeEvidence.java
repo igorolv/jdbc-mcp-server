@@ -5,17 +5,17 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.QuerySourceRef;
 
 import java.util.List;
 
-@Schema(description = "SemanticEdgeEvidence response payload.")
+@Schema(description = "Semantic evidence that two tables are related because known queries use them in shared business contexts.")
 public record SemanticEdgeEvidence(
-        @Schema(description = "Shared Business Domains.", nullable = true)
+        @Schema(description = "Business domains shared by known queries that use both sides of the relationship.", nullable = true)
         List<SemanticTermEvidence> sharedBusinessDomains,
-        @Schema(description = "Shared Business Objects.", nullable = true)
+        @Schema(description = "Business objects shared by known queries that use both sides of the relationship.", nullable = true)
         List<SemanticTermEvidence> sharedBusinessObjects,
-        @Schema(description = "Shared Output Labels.", nullable = true)
+        @Schema(description = "Output labels shared by known queries that use both sides of the relationship.", nullable = true)
         List<SemanticTermEvidence> sharedOutputLabels,
-        @Schema(description = "Co Occurring Query Count.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(description = "Number of known queries where both tables occur together.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int coOccurringQueryCount,
-        @Schema(description = "Co Occurring Source Refs.", nullable = true)
+        @Schema(description = "Catalog source references for queries where both tables occur together.", nullable = true)
         List<QuerySourceRef> coOccurringSourceRefs
 ) {
     public SemanticEdgeEvidence {
