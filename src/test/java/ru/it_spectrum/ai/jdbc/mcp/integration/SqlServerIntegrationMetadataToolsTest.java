@@ -12,9 +12,9 @@ class SqlServerIntegrationMetadataToolsTest extends AbstractSqlServerToolsIntegr
 
     @Test
     void listsSchemasAndTables() {
-        assertThat(textValues(array(metadataTools().listSchemas(false)))).contains("dbo");
+        assertThat(textValues(array(metadataTools().listSchemas(false).schemas()))).contains("dbo");
 
-        ArrayNode tables = array(metadataTools().listTables("dbo", "%", null));
+        ArrayNode tables = array(metadataTools().listTables("dbo", "%", null).tables());
         assertThat(findByField(tables, "name", "customers")).isNotNull();
         assertThat(findByField(tables, "name", "v_customer_totals")).isNotNull();
     }
@@ -54,16 +54,16 @@ class SqlServerIntegrationMetadataToolsTest extends AbstractSqlServerToolsIntegr
 
     @Test
     void listsRoutinesSequencesAndSearchResults() {
-        ArrayNode routines = array(metadataTools().listRoutines("dbo", "customer_count%"));
+        ArrayNode routines = array(metadataTools().listRoutines("dbo", "customer_count%").routines());
         assertThat(findByField(routines, "name", "customer_count_fn")).isNotNull();
 
         String source = metadataTools().getRoutineDefinition("dbo", "customer_count_fn");
         assertThat(source).contains("COUNT(*)").contains("customers");
 
-        ArrayNode sequences = array(metadataTools().listSequences("dbo"));
+        ArrayNode sequences = array(metadataTools().listSequences("dbo").sequences());
         assertThat(findByField(sequences, "name", "audit_seq")).isNotNull();
 
-        ArrayNode search = array(metadataTools().searchObjects("customer"));
+        ArrayNode search = array(metadataTools().searchObjects("customer").objects());
         assertThat(findByField(search, "name", "customers")).isNotNull();
         assertThat(findByField(search, "name", "v_customer_totals")).isNotNull();
     }

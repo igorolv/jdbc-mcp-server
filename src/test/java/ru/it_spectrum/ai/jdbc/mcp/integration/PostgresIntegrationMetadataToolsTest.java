@@ -12,9 +12,9 @@ class PostgresIntegrationMetadataToolsTest extends AbstractPostgresToolsIntegrat
 
     @Test
     void listsSchemasAndTables() {
-        assertThat(textValues(array(metadataTools().listSchemas(false)))).contains("public");
+        assertThat(textValues(array(metadataTools().listSchemas(false).schemas()))).contains("public");
 
-        ArrayNode tables = array(metadataTools().listTables("public", "%", null));
+        ArrayNode tables = array(metadataTools().listTables("public", "%", null).tables());
         assertThat(findByField(tables, "name", "customers")).isNotNull();
         assertThat(findByField(tables, "name", "v_customer_totals")).isNotNull();
     }
@@ -67,16 +67,16 @@ class PostgresIntegrationMetadataToolsTest extends AbstractPostgresToolsIntegrat
 
     @Test
     void listsRoutinesSequencesAndSearchResults() {
-        ArrayNode routines = array(metadataTools().listRoutines("public", "customer_count%"));
+        ArrayNode routines = array(metadataTools().listRoutines("public", "customer_count%").routines());
         assertThat(findByField(routines, "name", "customer_count_fn")).isNotNull();
 
         String source = metadataTools().getRoutineDefinition("public", "customer_count_fn");
         assertThat(source).contains("COUNT(*)").contains("customers");
 
-        ArrayNode sequences = array(metadataTools().listSequences("public"));
+        ArrayNode sequences = array(metadataTools().listSequences("public").sequences());
         assertThat(findByField(sequences, "name", "audit_seq")).isNotNull();
 
-        ArrayNode search = array(metadataTools().searchObjects("customer"));
+        ArrayNode search = array(metadataTools().searchObjects("customer").objects());
         assertThat(findByField(search, "name", "customers")).isNotNull();
         assertThat(findByField(search, "name", "v_customer_totals")).isNotNull();
     }
