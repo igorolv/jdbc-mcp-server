@@ -19,10 +19,10 @@ spring:
 jdbc-mcp:
   data-dir: ${JDBC_MCP_DATA_DIR:${user.home}/.jdbc-mcp-server}
   # Name of the local catalog (knowledge store) for the inspected database. It is the slot key
-  # under <data-dir>/catalogs/<name>/ for everything we compute about this DB. Leave unset to run
-  # in legacy mode (logical name "default", storage stays at <data-dir>/usage-catalog as before).
-  # Run several DBs by launching several server instances, each with its own JDBC_MCP_CATALOG.
-  catalog-name: ${JDBC_MCP_CATALOG:}
+  # under <data-dir>/<name>/ for everything we keep about this DB (usage-catalog/, logs/, and the
+  # future persisted snapshot). Defaults to "default". Run several DBs by launching several server
+  # instances, each with its own JDBC_MCP_CATALOG.
+  catalog-name: ${JDBC_MCP_CATALOG:default}
 
 jdbc:
   url: ${JDBC_URL:}

@@ -226,12 +226,13 @@ SHOP/com/example/shop/dao/OrderDao.java#findByCustomer
 Duplicate uids across input files are reported by `usageCatalogStatus`; the first record wins for
 that index build.
 
-**Where the files live.** The default catalog directory is `<data-dir>/usage-catalog` (legacy
-mode), or `<data-dir>/catalogs/<JDBC_MCP_CATALOG>/usage-catalog` when a catalog name is configured.
-Configure `JDBC_USAGE_CATALOG_PATHS` as a comma-separated list of additional directories, `.json`
-files, or `.zip` archives. Directories are scanned recursively for `*.json`; zip archives are
-scanned for JSON entries. Set `JDBC_USAGE_CATALOG_ENABLED=false` to disable the catalog: lookup
-tools return empty results with `catalog_enabled: false` so the agent can degrade gracefully.
+**Where the files live.** The default catalog directory is
+`<data-dir>/<JDBC_MCP_CATALOG>/usage-catalog` (with the catalog name defaulting to `default`, i.e.
+`<data-dir>/default/usage-catalog`). Configure `JDBC_USAGE_CATALOG_PATHS` as a comma-separated list
+of additional directories, `.json` files, or `.zip` archives. Directories are scanned recursively
+for `*.json`; zip archives are scanned for JSON entries. Set `JDBC_USAGE_CATALOG_ENABLED=false` to
+disable the catalog: lookup tools return empty results with `catalog_enabled: false` so the agent
+can degrade gracefully.
 
 **Database-native usage.** The catalog also indexes supported database objects from the default
 schema:
@@ -525,8 +526,8 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_CONNECTION_TIMEOUT_MS` | no | Hikari connection checkout timeout in milliseconds, default `10000` |
 | `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
 | `JDBC_POOL_IDLE_TIMEOUT_MS` | no | Hikari idle connection timeout in milliseconds, default `60000`; idle connections above `JDBC_POOL_MIN_IDLE` are closed after this |
-| `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Holds the usage catalog and (future) logs |
-| `JDBC_MCP_CATALOG` | no | Name of the local catalog (knowledge store) for this database — the slot key under which everything computed about it is kept. When set, local data lives under `<data-dir>/catalogs/<name>/`; when unset (legacy), it stays at `<data-dir>/usage-catalog`. Run several databases by launching one server instance per database, each with its own `JDBC_MCP_CATALOG` |
+| `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Shared across catalogs; each catalog gets its own subdirectory under it |
+| `JDBC_MCP_CATALOG` | no | Name of the local catalog (knowledge store) for this database — the slot key under which everything kept about it lives (`usage-catalog/`, `logs/`, and the future persisted snapshot), all rooted at `<data-dir>/<name>/`. Defaults to `default`. Run several databases by launching one server instance per database, each with its own `JDBC_MCP_CATALOG` |
 | `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog (see *Usage Catalog* above), default `true`. When `false`, lookup tools return empty results with `catalog_enabled: false` |
 | `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |
 | `JDBC_USAGE_NATIVE_SCHEMAS` | no | Comma-separated schemas to scan for native usage. When omitted, the resolved default schema is scanned |
@@ -594,8 +595,8 @@ Check the connection with `claude mcp list`. Restart the client after adding the
 If you use different databases for different projects, add multiple servers with different keys,
 such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment variable sets. The
 MCP client namespaces each server's tools by its key, so an agent can query several databases in
-one session. Give each instance its own `JDBC_MCP_CATALOG` so their local catalogs (the usage
-index now, persisted structure later) are stored separately under `<data-dir>/catalogs/<name>/`.
+one session. Give each instance its own `JDBC_MCP_CATALOG` so their local catalogs (usage index
+and logs now, persisted structure later) are stored separately under `<data-dir>/<name>/`.
 
 ## Project Structure
 

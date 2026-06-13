@@ -8,23 +8,24 @@ import java.nio.file.Paths;
 /**
  * Top-level server configuration for the JDBC MCP server.
  *
- * @param dataDir     root directory for server-local data (usage catalog, logs).
+ * @param dataDir     root directory for server-local data (shared across catalogs).
  *                    Defaults to {@code ~/.jdbc-mcp-server} when blank.
  * @param catalogName name of the local catalog (knowledge store) for the inspected database.
- *                    It is the slot key under which everything we compute about a DB is kept
- *                    (usage index now, persistent structure/stats snapshot later) — NOT the JDBC
- *                    connection. When blank, the server runs in <em>legacy</em> mode: the logical
- *                    name is {@code default} and paths stay byte-identical to the pre-catalog layout.
+ *                    It is the slot key under which everything we keep about a DB lives
+ *                    ({@code usage-catalog/}, {@code logs/}, and the future persisted snapshot),
+ *                    all rooted at {@code <data-dir>/<name>/}. NOT the JDBC connection. Defaults to
+ *                    {@code default} when blank. Run several databases by launching one server
+ *                    instance per database, each with its own catalog name.
  */
 @ConfigurationProperties(prefix = "jdbc-mcp")
 public record JdbcMcpProperties(String dataDir, String catalogName) {
 
-    /** Logical catalog name used when {@code catalogName} is blank (legacy mode). */
+    /** Catalog name used when {@code catalogName} is blank. */
     public static final String DEFAULT_CATALOG_NAME = "default";
 
     /**
-     * Backwards-compatible constructor that leaves the catalog unnamed (legacy mode).
-     * Used by tests and any caller that predates the catalog-name field.
+     * Backwards-compatible constructor that leaves the catalog unnamed (resolves to
+     * {@link #DEFAULT_CATALOG_NAME}). Used by tests and callers that predate the catalog-name field.
      */
     public JdbcMcpProperties(String dataDir) {
         this(dataDir, null);
@@ -42,34 +43,25 @@ public record JdbcMcpProperties(String dataDir, String catalogName) {
         return Paths.get(dir).normalize();
     }
 
-    /**
-     * {@code true} when no catalog name was configured. In this mode the logical name is
-     * {@code default} and the data-dir layout matches the pre-catalog server byte-for-byte.
-     */
-    public boolean isLegacyCatalog() {
-        return catalogName == null || catalogName.isBlank();
-    }
-
-    /** Configured catalog name, or {@code default} in legacy mode. */
+    /** Configured catalog name, or {@link #DEFAULT_CATALOG_NAME} when blank. */
     public String resolvedCatalogName() {
-        return isLegacyCatalog() ? DEFAULT_CATALOG_NAME : catalogName.trim();
+        return (catalogName == null || catalogName.isBlank())
+                ? DEFAULT_CATALOG_NAME
+                : catalogName.trim();
     }
 
-    /**
-     * Root directory for this catalog's local storage.
-     *
-     * <p>Legacy mode: the shared {@link #resolvedDataDir()} itself (so {@link #usageCatalogDir()}
-     * keeps resolving to {@code <data-dir>/usage-catalog} exactly as before). Named catalogs live
-     * under {@code <data-dir>/catalogs/<name>}.
-     */
+    /** Root directory for this catalog's local storage: {@code <data-dir>/<name>}. */
     public Path catalogDir() {
-        if (isLegacyCatalog()) {
-            return resolvedDataDir();
-        }
-        return resolvedDataDir().resolve("catalogs").resolve(resolvedCatalogName());
+        return resolvedDataDir().resolve(resolvedCatalogName());
     }
 
+    /** Usage-catalog source/index directory: {@code <data-dir>/<name>/usage-catalog}. */
     public Path usageCatalogDir() {
         return catalogDir().resolve("usage-catalog");
+    }
+
+    /** Log directory for this catalog: {@code <data-dir>/<name>/logs}. */
+    public Path logsDir() {
+        return catalogDir().resolve("logs");
     }
 }
