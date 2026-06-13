@@ -99,9 +99,15 @@ Before building, ask the user for:
 
 Optionally:
 
-- **Data directory** — `JDBC_MCP_DATA_DIR` (default `~/.jdbc-mcp-server`). All server-local data
-  lives under this root: `usage-catalog/` (catalog source files) and `logs/` (future). Each
-  subdirectory is hardcoded and not individually configurable.
+- **Data directory** — `JDBC_MCP_DATA_DIR` (default `~/.jdbc-mcp-server`). Root for all
+  server-local data.
+- **Catalog name** — `JDBC_MCP_CATALOG` (optional). Names the local catalog (knowledge store) for
+  this database — the slot key under which everything computed about it is kept. When unset
+  (legacy), local data stays directly under the root: `<data-dir>/usage-catalog/` (catalog source
+  files), `logs/` (future). When set, it moves under `<data-dir>/catalogs/<name>/` (e.g.
+  `<data-dir>/catalogs/ssv/usage-catalog/`), keeping per-database stores separate. Serve several
+  databases by launching one server instance per database, each with its own `JDBC_MCP_CATALOG`;
+  the MCP client namespaces their tools by server key.
 - **Default schema** for metadata tools (`JDBC_DEFAULT_SCHEMA`). If omitted, the server uses the
   connection's current schema. On Oracle, this defaults to the connecting user's schema (UPPER CASE).
   On SQL Server, this is normally the login user's default schema (often `dbo`).

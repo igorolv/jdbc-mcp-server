@@ -46,6 +46,9 @@ public class UsageDataSourceConfig {
 
         initialiseSchema(ds);
 
+        log.info("Active catalog: {} (legacy={}, usage dir: {})",
+                jdbcMcpProperties.resolvedCatalogName(), jdbcMcpProperties.isLegacyCatalog(),
+                jdbcMcpProperties.usageCatalogDir());
         log.info("Usage catalog runtime index ready (enabled={}, sources={})",
                 properties.catalogEnabled(), jdbcMcpProperties.usageCatalogDir());
         return ds;
