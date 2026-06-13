@@ -83,28 +83,51 @@ class SchemaQueryContextService extends SchemaContextSupport {
         }
 
         if (selected.size() < tableLimit) {
+            // Fill the remaining slots with discovery candidates. Critically, we must NOT call the
+            // heavyweight describeTable on every table in the schema here: on large schemas that
+            // fans out into hundreds of per-table metadata scans (each doing a schema-wide
+            // constraint read) and stalls the whole single-threaded stdio server past the client
+            // timeout. Instead we rank cheaply from the bulk table listing and only fully describe
+            // the shortlist we actually keep.
+            int remaining = tableLimit - selected.size();
             List<TableEntry> listed = metadata.listTables(schema, "%", parseTypes("TABLE,VIEW,MATERIALIZED VIEW"));
-            List<TableScore> scored = new ArrayList<>();
-            for (TableEntry row : listed) {
-                String tableSchema = row.schema();
-                String tableName = row.name();
-                if (tableName == null || tableName.isBlank()) continue;
-                if (selected.containsKey(key(tableSchema, tableName))) continue;
-                TableDescription described;
-                try {
-                    described = metadata.describeTable(tableSchema, tableName);
-                } catch (SQLException ignored) {
-                    continue;
+            List<String> fillNames = new ArrayList<>();
+
+            if (tokens.isEmpty()) {
+                // No search terms to rank by. Only auto-fill when the caller pinned nothing; when
+                // explicit tables were requested, honor exactly those rather than scanning the
+                // schema for arbitrary additions.
+                if (requestedTables.isEmpty()) {
+                    for (TableEntry row : listed) {
+                        if (fillNames.size() >= remaining) break;
+                        String name = row.name();
+                        if (name == null || name.isBlank()) continue;
+                        if (selected.containsKey(key(row.schema(), name))) continue;
+                        fillNames.add(name);
+                    }
                 }
-                int score = relevanceScore(described, tokens);
-                if (score > 0 || requestedTables.isEmpty() && tokens.isEmpty()) {
-                    scored.add(new TableScore(described, score));
+            } else {
+                List<TableEntry> ranked = new ArrayList<>();
+                for (TableEntry row : listed) {
+                    String name = row.name();
+                    if (name == null || name.isBlank()) continue;
+                    if (selected.containsKey(key(row.schema(), name))) continue;
+                    if (entryRelevanceScore(row, tokens) > 0) ranked.add(row);
+                }
+                ranked.sort((a, b) -> Integer.compare(
+                        entryRelevanceScore(b, tokens), entryRelevanceScore(a, tokens)));
+                for (TableEntry row : ranked) {
+                    if (fillNames.size() >= remaining) break;
+                    fillNames.add(row.name());
                 }
             }
-            scored.sort((a, b) -> Integer.compare(b.score(), a.score()));
-            for (TableScore score : scored) {
-                if (selected.size() >= tableLimit) break;
-                selected.put(key(str(score.table().schema()), str(score.table().name())), score.table());
+
+            if (!fillNames.isEmpty()) {
+                Map<String, TableDescription> filled = metadata.describeTables(schema, fillNames);
+                for (TableDescription td : filled.values()) {
+                    if (selected.size() >= tableLimit) break;
+                    selected.putIfAbsent(key(td.schema(), td.name()), td);
+                }
             }
         }
 
@@ -227,18 +250,22 @@ class SchemaQueryContextService extends SchemaContextSupport {
         return paths;
     }
 
-    private int relevanceScore(TableDescription info, List<String> tokens) {
+    /**
+     * Lightweight relevance score for discovery ranking, computed from the bulk table listing
+     * (name + remarks) only — deliberately without loading columns, so ranking the whole schema
+     * stays cheap. Column-level term matching for the tables we keep still happens later via the
+     * full describe in {@link #relevantColumns}. Keyword discovery that needs column signals is
+     * served by the usage-catalog semantic path; this brute-listing fallback ranks on the table
+     * name and comment, which are the dominant signals anyway.
+     */
+    private int entryRelevanceScore(TableEntry entry, List<String> tokens) {
         if (tokens.isEmpty()) return 1;
         int score = 0;
-        String tableName = info.name();
-        String remarks = str(info.remarks());
+        String tableName = entry.name();
+        String remarks = str(entry.remarks());
         for (String token : tokens) {
             if (containsNormalized(tableName, token)) score += 10;
             if (containsNormalized(remarks, token)) score += 5;
-            for (Column column : info.columns()) {
-                if (containsNormalized(str(column.name()), token)) score += 4;
-                if (containsNormalized(str(column.remarks()), token)) score += 2;
-            }
         }
         return score;
     }
