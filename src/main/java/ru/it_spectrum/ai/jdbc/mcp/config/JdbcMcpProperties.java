@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -22,6 +23,18 @@ public record JdbcMcpProperties(String dataDir, String catalogName) {
 
     /** Catalog name used when {@code catalogName} is blank. */
     public static final String DEFAULT_CATALOG_NAME = "default";
+
+    /**
+     * Marks the canonical constructor as the one Spring uses for property binding. Required because
+     * the extra {@link #JdbcMcpProperties(String)} constructor makes the binding constructor
+     * ambiguous; without this Spring falls back to JavaBean binding and fails (records have no
+     * no-arg constructor).
+     */
+    @ConstructorBinding
+    public JdbcMcpProperties(String dataDir, String catalogName) {
+        this.dataDir = dataDir;
+        this.catalogName = catalogName;
+    }
 
     /**
      * Backwards-compatible constructor that leaves the catalog unnamed (resolves to
