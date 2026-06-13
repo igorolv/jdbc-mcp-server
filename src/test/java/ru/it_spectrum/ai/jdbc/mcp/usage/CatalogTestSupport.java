@@ -1,17 +1,19 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
-import org.h2.jdbcx.JdbcDataSource;
+import org.sqlite.SQLiteConfig;
+import org.sqlite.SQLiteDataSource;
 import org.springframework.core.io.ClassPathResource;
 
 import javax.sql.DataSource;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.Statement;
-import java.util.UUID;
 
 /**
- * Test helper that builds an isolated in-memory H2 catalog DataSource with both the usage-catalog
+ * Test helper that builds an isolated temporary SQLite catalog with both the usage-catalog
  * and structure-snapshot schemas applied — the unit-test analogue of {@link CatalogDataSourceConfig}
  * (which is file-backed in production).
  */
@@ -20,10 +22,18 @@ public final class CatalogTestSupport {
     private CatalogTestSupport() {
     }
 
-    public static DataSource inMemoryCatalog() throws Exception {
-        JdbcDataSource ds = new JdbcDataSource();
-        ds.setURL("jdbc:h2:mem:catalog_" + UUID.randomUUID()
-                + ";MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1");
+    public static DataSource temporaryCatalog() throws Exception {
+        Path dbFile = Files.createTempFile("jdbc-mcp-catalog-", ".db");
+        dbFile.toFile().deleteOnExit();
+
+        SQLiteConfig config = new SQLiteConfig();
+        config.setJournalMode(SQLiteConfig.JournalMode.WAL);
+        config.setSynchronous(SQLiteConfig.SynchronousMode.NORMAL);
+        config.enforceForeignKeys(true);
+        config.setBusyTimeout(10_000);
+
+        SQLiteDataSource ds = new SQLiteDataSource(config);
+        ds.setUrl("jdbc:sqlite:" + dbFile.toAbsolutePath());
         apply(ds, "usage-catalog-schema.sql");
         apply(ds, "structure-snapshot-schema.sql");
         return ds;

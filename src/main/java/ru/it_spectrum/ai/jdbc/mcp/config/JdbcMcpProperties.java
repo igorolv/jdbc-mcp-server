@@ -68,16 +68,13 @@ public record JdbcMcpProperties(String dataDir, String catalogName) {
         return resolvedDataDir().resolve(resolvedCatalogName());
     }
 
-    /**
-     * Base path (no extension) of this catalog's H2 database, used to build the JDBC URL:
-     * {@code <data-dir>/<name>/<name>}. H2's MVStore engine appends {@code .mv.db}.
-     */
-    public Path catalogDbBase() {
-        return catalogDir().resolve(resolvedCatalogName());
+    /** The persistent SQLite catalog file: {@code <data-dir>/<name>/<name>.db}. */
+    public Path catalogDbFile() {
+        return catalogDir().resolve(resolvedCatalogName() + ".db");
     }
 
-    /** The persistent catalog database file on disk: {@code <data-dir>/<name>/<name>.mv.db}. */
-    public Path catalogDbFile() {
+    /** Legacy H2 catalog left in place when upgrading to SQLite. */
+    public Path legacyH2CatalogDbFile() {
         return catalogDir().resolve(resolvedCatalogName() + ".mv.db");
     }
 

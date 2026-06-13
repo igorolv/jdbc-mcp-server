@@ -23,7 +23,7 @@ dependencies {
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.ai.mcp.server)
     implementation(libs.jsqlparser)
-    implementation(libs.h2)
+    implementation(libs.sqlite.jdbc)
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation(libs.antlr4.runtime)
     antlr(libs.antlr4)
@@ -54,6 +54,9 @@ tasks.bootJar {
     archiveBaseName.set("jdbc-mcp-server")
     archiveVersion.set("")
     archiveClassifier.set("")
+    manifest {
+        attributes["Enable-Native-Access"] = "ALL-UNNAMED"
+    }
 }
 
 tasks.withType<JavaCompile> {

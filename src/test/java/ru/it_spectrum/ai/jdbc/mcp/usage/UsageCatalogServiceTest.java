@@ -47,7 +47,7 @@ class UsageCatalogServiceTest {
     @BeforeEach
     void setUp() throws Exception {
         UsageProperties properties = new UsageProperties(true, List.of(), List.of(), true, true, true, 1_000);
-        DataSource ds = CatalogTestSupport.inMemoryCatalog();
+        DataSource ds = CatalogTestSupport.temporaryCatalog();
         service = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
                 new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), null);
     }
@@ -583,7 +583,7 @@ class UsageCatalogServiceTest {
     private static UsageCatalogService newService(UsageProperties properties,
                                                   DatabaseNativeUsageSourceProvider nativeProvider)
             throws Exception {
-        DataSource ds = CatalogTestSupport.inMemoryCatalog();
+        DataSource ds = CatalogTestSupport.temporaryCatalog();
         return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
                 new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), nativeProvider);
     }

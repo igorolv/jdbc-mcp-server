@@ -6,8 +6,7 @@
 -- invalidate or file deletion.
 --
 -- 'schema' is stored non-null ('' sentinel) to mirror how MetadataService binds
--- schema == null ? "". 'KEY'/'VALUE' are reserved in H2 PostgreSQL mode, so
--- catalog_meta uses meta_key / meta_value.
+-- schema == null ? "". catalog_meta uses explicit meta_key / meta_value names.
 
 CREATE TABLE IF NOT EXISTS catalog_meta (
     meta_key   TEXT PRIMARY KEY,

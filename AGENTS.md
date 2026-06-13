@@ -117,8 +117,9 @@ Optionally:
   `JDBC_CONNECTION_TIMEOUT_MS` (default 10000), `JDBC_VALIDATION_TIMEOUT_MS` (default 5000),
   and `JDBC_POOL_IDLE_TIMEOUT_MS` (default 60000).
 - **Structure snapshot** — `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` (comma-separated; empty → default schema).
-  Persists structural metadata in the local `<catalog>.db` file ("cache forever", no TTL); live stats
-  are not cached. Build with the `rebuildCatalog` tool (structure + usage); clear by deleting `<catalog>.db`.
+  Persists structural metadata in the local SQLite `<catalog>.db` file ("cache forever", no TTL);
+  live stats are not cached. SQLite WAL permits multiple local MCP processes to share one catalog.
+  Build and checkpoint it with `rebuildCatalog`; clear it only while all processes are stopped.
 
 ## Step 2: Build
 
@@ -276,20 +277,23 @@ keep the response compact; raise the caps when needed.
 ### Structure snapshot
 
 Structural metadata (columns, keys, indexes, FKs, views, routines, triggers, sequences) is persisted
-in the local `<catalog>.db` file (the same H2 database as the usage catalog). It is authoritative —
+in the local SQLite `<catalog>.db` file (the same database as the usage catalog). It is authoritative —
 "cache forever", no TTL or staleness detection. It fills lazily (`describeTable` persists each table)
 and can be front-loaded per schema with the `rebuildCatalog` tool (scope: `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS`,
 or the default schema). Once a schema is covered, `listTables`, view/routine/trigger/sequence lookups,
 `searchObjects` and the usage re-resolver are served from the snapshot; uncovered schemas fall through
 to the live database. Live statistics are never cached. The `rebuildCatalog` tool builds the
 structure snapshot **and** the usage index into one distributable `<catalog>.db` for a known database.
+It checkpoints the SQLite WAL before returning the file path.
 
-Clear it by deleting `<catalog>.db`.
+Clear it while all server processes are stopped by deleting `<catalog>.db` and adjacent
+`<catalog>.db-wal` / `<catalog>.db-shm` files. Legacy H2 `<catalog>.mv.db` files are left untouched
+and are not migrated; run `rebuildCatalog` to populate a newly created SQLite catalog.
 
 ### Usage catalog tools
 
 The usage catalog indexes known application SQL queries (from JSON/ZIP files) and the database's
-own views/routines into a runtime H2 store. It enables the agent to discover how tables and
+own views/routines into the persistent SQLite catalog. It enables the agent to discover how tables and
 columns are used in practice — what queries reference them, what join patterns exist, and what
 business context they belong to.
 
@@ -398,7 +402,7 @@ Notes on the structure snapshot:
   `describeTable` and `searchObjects` calls are served from it for covered schemas.
 - Live counters (table/index/column stats, samples, plans) are **never** cached.
 - Front-load a schema and prebuild a distributable `<catalog>.db` (structure + usage) with
-  `rebuildCatalog`; clear by deleting `<catalog>.db`. The snapshot survives restarts.
+  `rebuildCatalog`; it checkpoints WAL before returning. The snapshot survives restarts.
 
 
 ## Troubleshooting

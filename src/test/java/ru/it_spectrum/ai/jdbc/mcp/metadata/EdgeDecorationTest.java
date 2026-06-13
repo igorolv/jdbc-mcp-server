@@ -37,7 +37,7 @@ class EdgeDecorationTest {
     @BeforeEach
     void setUp() throws Exception {
         UsageProperties properties = new UsageProperties(true, List.of(), List.of(), true, true, true, 1_000);
-        DataSource ds = CatalogTestSupport.inMemoryCatalog();
+        DataSource ds = CatalogTestSupport.temporaryCatalog();
         usageCatalog = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
                 new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), null);
         probe = new DecorationProbe(usageCatalog);

@@ -139,20 +139,20 @@ public class UsageCatalogService {
         List<QueryUsage> safeRecords = records == null ? List.of() : records;
         Counters counters = new Counters();
         long started = System.currentTimeMillis();
-        log.info("H2 index rebuild: starting transaction for {} records", safeRecords.size());
+        log.info("Catalog index rebuild: starting transaction for {} records", safeRecords.size());
         try (Connection conn = catalogDs.getConnection()) {
             conn.setAutoCommit(false);
             try {
                 clearAll(conn);
                 insertAll(conn, safeRecords, counters, true);
                 conn.commit();
-                log.info("H2 index rebuild: committed {} records ({} parseFailed, {} tables, {} joins, {} ms)",
+                log.info("Catalog index rebuild: committed {} records ({} parseFailed, {} tables, {} joins, {} ms)",
                         safeRecords.size(), counters.parseFailed, counters.tablesExtracted,
                         counters.joinPairsExtracted, System.currentTimeMillis() - started);
                 indexReady = true;
             } catch (SQLException | RuntimeException e) {
                 conn.rollback();
-                log.warn("H2 index rebuild: rolled back ({})", e.getMessage());
+                log.warn("Catalog index rebuild: rolled back ({})", e.getMessage());
                 throw e;
             }
         } catch (SQLException e) {

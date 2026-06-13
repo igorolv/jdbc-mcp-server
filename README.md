@@ -198,8 +198,8 @@ dashboard widget, etc.).
 There are two sources. File-backed usage comes from directories / JSON files / zip archives
 containing canonical QueryUsage JSON records. Database-native usage is derived automatically from
 the connected schema's views, routines and triggers. At runtime the server parses these records and
-builds an in-memory H2 index with extracted tables / columns / equi-join pairs as facts. JSON files
-remain authoritative for file-backed records; native records are refreshed from live metadata.
+builds a persistent SQLite index with extracted tables / columns / equi-join pairs as facts. JSON
+files remain authoritative for file-backed records; native records are refreshed from live metadata.
 
 **Why this exists.** The metadata tools answer "what tables and columns exist". The usage catalog
 answers "how are they actually used by applications". With both, an LLM can replace guesses about
@@ -292,8 +292,9 @@ marked `ambiguous`, and zero matches stay `unresolved`.
 ### Snapshot / Metadata Cache
 
 Structural metadata (columns, keys, indexes, FKs, views, routines, triggers, sequences) is held in a
-**persistent structure snapshot** stored in the local `<catalog>.db` file (the same H2 database file
-as the usage catalog, under `<data-dir>/<catalog>/`). This speeds up repeated calls to
+**persistent structure snapshot** stored in the local SQLite `<catalog>.db` file (the same database
+file as the usage catalog, under `<data-dir>/<catalog>/`). SQLite runs in WAL mode, so Codex,
+Claude, and other local agent processes can use the same catalog concurrently. This speeds up repeated calls to
 `tableContext`, `findJoinPaths`, `schemaLint`, `schemaGraph`, `queryContext`, `describeTable`,
 `searchObjects`, and the usage-catalog re-resolver. Statistics tools such as `tableStats`,
 `indexStats`, `columnStats`, and `sampleRows` are **not** cached; their counters are live.
@@ -301,7 +302,13 @@ as the usage catalog, under `<data-dir>/<catalog>/`). This speeds up repeated ca
 The snapshot is authoritative ("cache forever") — there is no TTL or staleness detection. It is
 filled lazily (`describeTable` persists each table it loads) and can be front-loaded for whole
 schemas with the `rebuildCatalog` tool, which builds the structure snapshot **and** the usage index
-into one distributable `<catalog>.db`. Clear it by deleting the `<catalog>.db` file.
+into one distributable `<catalog>.db`. `rebuildCatalog` checkpoints the WAL before returning.
+Clear the catalog while all server processes are stopped by deleting `<catalog>.db` and any
+adjacent `<catalog>.db-wal` / `<catalog>.db-shm` files.
+
+Existing H2 `<catalog>.mv.db` files are not converted or deleted. On first SQLite startup the
+server creates a new `<catalog>.db`, logs a warning, and leaves the legacy file untouched; run
+`rebuildCatalog` to populate the new catalog.
 
 Configuration:
 
@@ -441,7 +448,7 @@ user for the strongest guarantee.
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
 - Microsoft SQL Server JDBC 12.8.1
-- H2 file-backed local catalog (`<catalog>.db`) holding the usage-catalog index and the persistent structure snapshot
+- SQLite 3.51.3 WAL catalog (`<catalog>.db`) holding the usage index and persistent structure snapshot
 - Gradle 9.3.1 with version catalog
 
 ## License
@@ -638,7 +645,8 @@ and logs now, persisted structure later) are stored separately under `<data-dir>
 |   |   +-- JsonReader.java             - small dependency-free JSON parser
 |   +-- usage/
 |   |   +-- UsageProperties.java        - catalog enable flag and JSON/zip source paths
-|   |   +-- UsageDataSourceConfig.java  - H2 in-memory runtime index + schema init
+|   |   +-- CatalogDataSourceConfig.java - SQLite WAL datasource + schema init
+|   |   +-- CatalogStorageService.java  - WAL checkpoint for distributable catalogs
 |   |   +-- UsageUid.java               - build/parse/validate the textual query identifier
 |   |   +-- UsageCatalogService.java    - ingest, lookups, observed-relationships aggregation
 |   |   +-- format/

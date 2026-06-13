@@ -31,18 +31,18 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * H2-backed {@link StructureSnapshotStore}. Persists structure into the shared {@code <catalog>.db}
+ * SQLite-backed {@link StructureSnapshotStore}. Persists structure into the shared {@code <catalog>.db}
  * file alongside the usage catalog. See {@link StructureSnapshotStore} for the cache-forever
  * semantics and scope rules.
  */
 @Service
-public class H2StructureSnapshotStore implements StructureSnapshotStore {
+public class SqliteStructureSnapshotStore implements StructureSnapshotStore {
 
     private final DataSource dataSource;
     private final ObjectMapper mapper;
 
-    public H2StructureSnapshotStore(@Qualifier("usageDataSource") DataSource dataSource,
-                                    ObjectMapper mapper) {
+    public SqliteStructureSnapshotStore(@Qualifier("usageDataSource") DataSource dataSource,
+                                        ObjectMapper mapper) {
         this.dataSource = dataSource;
         this.mapper = mapper;
     }
@@ -188,7 +188,7 @@ public class H2StructureSnapshotStore implements StructureSnapshotStore {
         String s = norm(schema);
         if (!isCovered(s)) return loader.get();
         return scalar("SELECT source FROM snapshot_routine WHERE schema = ? AND name = ? "
-                + "ORDER BY type FETCH FIRST 1 ROWS ONLY", s, name);
+                + "ORDER BY type LIMIT 1", s, name);
     }
 
     @Override
@@ -528,7 +528,8 @@ public class H2StructureSnapshotStore implements StructureSnapshotStore {
     private void writeViews(Connection conn, List<ViewRecord> views) throws SQLException {
         if (views == null || views.isEmpty()) return;
         try (PreparedStatement ps = conn.prepareStatement(
-                "MERGE INTO snapshot_view KEY(schema, name) VALUES (?, ?, ?)")) {
+                "INSERT INTO snapshot_view(schema, name, definition) VALUES (?, ?, ?) "
+                        + "ON CONFLICT(schema, name) DO UPDATE SET definition = excluded.definition")) {
             for (ViewRecord v : views) {
                 if (v == null || v.name() == null) continue;
                 ps.setString(1, norm(v.schema()));
@@ -543,7 +544,8 @@ public class H2StructureSnapshotStore implements StructureSnapshotStore {
     private void writeRoutines(Connection conn, List<RoutineRecord> routines) throws SQLException {
         if (routines == null || routines.isEmpty()) return;
         try (PreparedStatement ps = conn.prepareStatement(
-                "MERGE INTO snapshot_routine KEY(schema, name, type) VALUES (?, ?, ?, ?)")) {
+                "INSERT INTO snapshot_routine(schema, name, type, source) VALUES (?, ?, ?, ?) "
+                        + "ON CONFLICT(schema, name, type) DO UPDATE SET source = excluded.source")) {
             for (RoutineRecord r : routines) {
                 if (r == null || r.name() == null) continue;
                 ps.setString(1, norm(r.schema()));
@@ -559,7 +561,8 @@ public class H2StructureSnapshotStore implements StructureSnapshotStore {
     private void writeSequences(Connection conn, List<SequenceEntry> sequences) throws SQLException {
         if (sequences == null || sequences.isEmpty()) return;
         try (PreparedStatement ps = conn.prepareStatement(
-                "MERGE INTO snapshot_sequence KEY(schema, name) VALUES (?, ?)")) {
+                "INSERT INTO snapshot_sequence(schema, name) VALUES (?, ?) "
+                        + "ON CONFLICT(schema, name) DO NOTHING")) {
             for (SequenceEntry seq : sequences) {
                 if (seq == null || seq.name() == null) continue;
                 ps.setString(1, norm(seq.schema()));
@@ -573,8 +576,11 @@ public class H2StructureSnapshotStore implements StructureSnapshotStore {
     private void writeTriggers(Connection conn, List<Trigger> triggers) throws SQLException {
         if (triggers == null || triggers.isEmpty()) return;
         try (PreparedStatement ps = conn.prepareStatement(
-                "MERGE INTO snapshot_trigger KEY(schema, table_name, name) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO snapshot_trigger(schema, table_name, name, timing, events, enabled, definition) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        + "ON CONFLICT(schema, table_name, name) DO UPDATE SET "
+                        + "timing = excluded.timing, events = excluded.events, "
+                        + "enabled = excluded.enabled, definition = excluded.definition")) {
             for (Trigger t : triggers) {
                 if (t == null || t.name() == null) continue;
                 ps.setString(1, norm(t.schema()));
@@ -594,7 +600,8 @@ public class H2StructureSnapshotStore implements StructureSnapshotStore {
 
     private void putMeta(Connection conn, String key, String value) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "MERGE INTO catalog_meta KEY(meta_key) VALUES (?, ?)")) {
+                "INSERT INTO catalog_meta(meta_key, meta_value) VALUES (?, ?) "
+                        + "ON CONFLICT(meta_key) DO UPDATE SET meta_value = excluded.meta_value")) {
             ps.setString(1, key);
             ps.setString(2, value);
             ps.executeUpdate();

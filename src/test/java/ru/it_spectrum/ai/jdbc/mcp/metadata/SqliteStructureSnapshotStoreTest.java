@@ -29,11 +29,11 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class H2StructureSnapshotStoreTest {
+class SqliteStructureSnapshotStoreTest {
 
     private static final ObjectMapper MAPPER = new JsonConfig().jdbcMcpObjectMapper();
 
-    private H2StructureSnapshotStore store;
+    private SqliteStructureSnapshotStore store;
 
     private static <T> SqlSupplier<T> boom() {
         return () -> {
@@ -64,8 +64,8 @@ class H2StructureSnapshotStoreTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        DataSource ds = CatalogTestSupport.inMemoryCatalog();
-        store = new H2StructureSnapshotStore(ds, MAPPER);
+        DataSource ds = CatalogTestSupport.temporaryCatalog();
+        store = new SqliteStructureSnapshotStore(ds, MAPPER);
     }
 
     @Test

@@ -9,6 +9,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.model.admin.RebuildCatalogResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.UsageCatalogStatus;
+import ru.it_spectrum.ai.jdbc.mcp.usage.CatalogStorageService;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
@@ -25,13 +26,16 @@ public class AdminTools {
 
     private final MetadataService metadata;
     private final UsageCatalogService usageCatalog;
+    private final CatalogStorageService catalogStorage;
     private final JdbcMcpProperties jdbcMcpProperties;
     private final ToolErrors errors;
 
     public AdminTools(MetadataService metadata, UsageCatalogService usageCatalog,
+                      CatalogStorageService catalogStorage,
                       JdbcMcpProperties jdbcMcpProperties, ToolErrors errors) {
         this.metadata = metadata;
         this.usageCatalog = usageCatalog;
+        this.catalogStorage = catalogStorage;
         this.jdbcMcpProperties = jdbcMcpProperties;
         this.errors = errors;
     }
@@ -56,6 +60,7 @@ public class AdminTools {
                     ? metadata.rebuildStructureSnapshot()
                     : metadata.rebuildStructureSnapshot(List.of(parsed));
             UsageCatalogStatus usage = usageCatalog.rebuildFromSources();
+            catalogStorage.checkpointForDistribution();
             String catalogFile = jdbcMcpProperties.catalogDbFile().toAbsolutePath().toString();
             ToolLogger.completed(log, "rebuildCatalog", start);
             return new RebuildCatalogResult(catalogFile, covered, usage);

@@ -12,6 +12,7 @@ This file is informational. The dependency POMs and upstream license files remai
 | Spring Boot / Spring Framework components | Apache License 2.0 |
 | Spring AI MCP Server | Apache License 2.0 |
 | HikariCP | Apache License 2.0 |
+| Xerial SQLite JDBC | Apache License 2.0 (bundles SQLite, public domain) |
 | JSqlParser | Apache License 2.0 |
 | PostgreSQL JDBC Driver | BSD 2-Clause License |
 | Oracle JDBC Driver (`ojdbc11`) | Oracle Free Use Terms and Conditions (FUTC) |

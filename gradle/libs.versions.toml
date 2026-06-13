@@ -8,6 +8,7 @@ testcontainers = "1.21.4"
 commons-lang3 = "3.14.0"
 jsqlparser = "5.3"
 antlr = "4.13.1"
+sqlite-jdbc = "3.51.3.0"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
@@ -30,4 +31,4 @@ commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "co
 jsqlparser = { module = "com.github.jsqlparser:jsqlparser", version.ref = "jsqlparser" }
 antlr4 = { module = "org.antlr:antlr4", version.ref = "antlr" }
 antlr4-runtime = { module = "org.antlr:antlr4-runtime", version.ref = "antlr" }
-h2 = { module = "com.h2database:h2" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }

@@ -18,7 +18,7 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 /**
  * MCP tools for the local usage catalog: a file-backed set of known SQL queries used by
- * applications and reports against the inspected database, indexed into a runtime H2 store
+ * applications and reports against the inspected database, indexed into a persistent SQLite store
  * together with their business context.
  */
 @Service

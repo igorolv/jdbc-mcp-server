@@ -20,6 +20,8 @@ class JdbcMcpPropertiesTest {
                     .isEqualTo(props.resolvedDataDir().resolve("default").resolve("usage-catalog"));
             assertThat(props.logsDir())
                     .isEqualTo(props.resolvedDataDir().resolve("default").resolve("logs"));
+            assertThat(props.catalogDbFile())
+                    .isEqualTo(props.resolvedDataDir().resolve("default").resolve("default.db"));
         }
     }
 
@@ -44,6 +46,10 @@ class JdbcMcpPropertiesTest {
                 .isEqualTo(props.resolvedDataDir().resolve("ssv").resolve("usage-catalog"));
         assertThat(props.logsDir())
                 .isEqualTo(props.resolvedDataDir().resolve("ssv").resolve("logs"));
+        assertThat(props.catalogDbFile())
+                .isEqualTo(props.resolvedDataDir().resolve("ssv").resolve("ssv.db"));
+        assertThat(props.legacyH2CatalogDbFile())
+                .isEqualTo(props.resolvedDataDir().resolve("ssv").resolve("ssv.mv.db"));
     }
 
     @Test
