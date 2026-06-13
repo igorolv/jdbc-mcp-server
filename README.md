@@ -8,6 +8,9 @@ views, functions, and sequences.
 PostgreSQL, Oracle, and Microsoft SQL Server JDBC drivers are bundled into the fat jar, so no
 extra driver installation is required.
 
+The server exposes 48 MCP tools. They may update the local SQLite catalog, but they never write to
+the inspected PostgreSQL, Oracle, or SQL Server database.
+
 ## Why This Exists
 
 Scenario: you ask an LLM to "check the database and show how many orders we had by status last
@@ -52,11 +55,13 @@ The protocol is `stdio` only. The client starts the server as a child process.
 
 ## MCP Tools
 
+The 48 tools are grouped below by purpose.
+
 ### Query
 
 | Tool | Description |
 |---|---|
-| `executeQuery` | Execute a `SELECT`, `WITH`, or `EXPLAIN` statement and return JSON. Parameters: `sql`, `params` (array for `?`) or `namedParams` (object for `:name`), `limit`, `timeoutSeconds`. The result is marked with `truncated: true` if the row limit is hit |
+| `executeQuery` | Execute a `SELECT`, `WITH`, or `EXPLAIN` statement. Parameters: `sql`, `params` (array for `?`) or `namedParams` (object for `:name`), `limit`, `timeoutSeconds`. The result is marked with `truncated: true` if the row limit is hit |
 | `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` plus `DBMS_XPLAN.DISPLAY`. SQL Server: `SET SHOWPLAN_TEXT ON` on the same session. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). `analyze=true` on PostgreSQL enables `EXPLAIN ANALYZE`; be careful, because the query is actually executed. SQL Server currently returns estimated plans only |
 | `analyzePlan` | Compact LLM-oriented plan summary instead of a large raw plan dump: highest-cost nodes, full scans on large tables, estimate errors (planner vs. reality, requires `analyze=true` on PostgreSQL), risky nested loops with large outer input, and disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` plus `PLAN_TABLE` (`analyze` is ignored because Oracle provides a static plan here). SQL Server: `SET SHOWPLAN_XML ON` estimated plan. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`) |
 | `validateQuery` | Validate syntax without execution: read-only guard plus driver `prepareStatement`, with a JSqlParser-derived `inspection` summary when parsing succeeds. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). Useful for LLM self-correction |
@@ -80,13 +85,13 @@ can see actual milliseconds and buffer counters.
 |---|---|
 | `listSchemas` | List schemas. System schemas are hidden by default; use `includeSystem=true` to show all |
 | `listTables` | List tables and views in a schema. Parameters: `schema`, `namePattern` (with `%` / `_`), `types` (comma-separated, for example `TABLE,VIEW,MATERIALIZED VIEW`) |
-| `describeTable` | Full object description in one call: columns (type, size, nullable, default, remarks), primary key, unique constraints, indexes, outgoing FKs, and incoming FKs |
+| `describeTable` | Full object description in one call: columns, primary key, unique constraints, indexes, outgoing/incoming FKs, CHECK constraints and allowed values, plus compact trigger metadata |
 | `getTriggerDefinition` | Trigger body for one named trigger. Parameters: `schema`, `table`, `trigger` |
 | `getViewDefinition` | SQL definition of a view |
 | `listRoutines` | Functions, procedures, and packages in a schema |
 | `getRoutineDefinition` | Function or procedure source code. On Oracle, all `ALL_SOURCE` lines are concatenated in order |
-| `listSequences` | Sequences in a schema |
-| `searchObjects` | Case-insensitive substring search across all non-system objects: tables, views, functions, sequences |
+| `listSequences` | Sequences in one schema, or across schemas when `schema` is omitted |
+| `searchObjects` | Case-insensitive substring search across non-system tables, views, routines, sequences, and synonyms |
 
 ### Schema Context
 
@@ -97,7 +102,7 @@ context in one call: tables, columns, relationships, constraints, and sample row
 | Tool | Description |
 |---|---|
 | `tableContext` | Context around one table: the table itself, FK parents, and optionally child tables and relationship edges. FK traversal uses the requested depth (default 1, max 4). Parameters: `schema`, `table`, `depth`, `includeIncoming`, `includeStats`, `includeObserved` |
-| `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition` and a typed `evidence` bundle (see *Edge evidence* below). Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, max 300), `includeObserved` |
+| `findJoinPaths` | Find JOIN paths between two tables through FKs. The graph is traversed in both directions and each edge includes `joinCondition` and a typed `evidence` bundle (see *Edge evidence* below). Parameters: `fromSchema` / `fromTable`, `toSchema` / `toTable`, `maxDepth` (default/max 4), `maxPaths` (default 5, max 25), `scanLimit` (default/max 300), `includeObserved` |
 | `schemaBrief` | Plain-text full-schema map for SQL authoring: all matching tables/views with column counts, PK, incoming/outgoing relationship counts, key-like columns, central/isolated tables, and capped key FK relationships. Use this first when relevant tables are unknown; follow with `queryContext` for detailed context. Parameters: `schema`, `terms` (optional substring search), `maxTables` (safety cap; default 2000, max 5000) |
 | `schemaGraph` | Schema relationship graph metrics: nodes with in/out degree and classification, edges, central tables, isolated tables, connected components, and cycle hints. Optionally includes the shortest path between two tables |
 | `schemaLint` | Schema lint audit: missing primary keys, FKs without indexes, FK type mismatches, nullable unique constraints, status/type columns without CHECK constraints, orphan `*_id` columns, missing remarks, isolated tables, and wide tables. Checks are configurable through `checks` |
@@ -206,33 +211,31 @@ answers "how are they actually used by applications". With both, an LLM can repl
 undeclared joins with evidence-based reasoning ("these two columns are joined in 17 production
 reports, here are their uids").
 
-**Identity.** Each query is keyed by a textual `uid` derived from
-`(dataSource, source.path, source.unit)`:
+**Identity.** Each query is keyed by `(source.kind, source.path, source.unit)`. Diagnostics and
+evidence render this key as:
 
 ```
-{dataSource}/{source.path}#{source.unit}
+{source.kind}/{source.path}#{source.unit}
 ```
 
-The `#unit` suffix is omitted when there is no unit. Examples — assuming a demo `SHOP` database
-with `customer`, `customer_notes`, and `order` tables:
+The `#unit` suffix is omitted when there is no unit. Examples:
 
 ```
-SHOP/reports/customers/CustomerCard.xdo#CUST
-SHOP/manual/ad-hoc-2026-05-01
-SHOP/com/example/shop/dao/OrderDao.java#findByCustomer
+bi-publisher-report/reports/customers/CustomerCard.xdo#CUST
+manual/manual/ad-hoc-2026-05-01
+java-dao/src/main/java/com/example/shop/OrderDao.java#findByCustomer
 ```
 
-`dataSource` and `source.unit` must not contain `/` or `#`; `source.path` must not contain `#`.
-Duplicate uids across input files are reported by `usageCatalogStatus`; the first record wins for
-that index build.
+`source.kind` and `source.unit` must not contain `/` or `#`; `source.path` must not contain `#`.
+For duplicate source keys, the first record wins for that index build.
 
 **Where the files live.** The default catalog directory is
 `<data-dir>/<JDBC_MCP_CATALOG>/usage-catalog` (with the catalog name defaulting to `default`, i.e.
 `<data-dir>/default/usage-catalog`). Configure `JDBC_USAGE_CATALOG_PATHS` as a comma-separated list
 of additional directories, `.json` files, or `.zip` archives. Directories are scanned recursively
 for `*.json`; zip archives are scanned for JSON entries. Set `JDBC_USAGE_CATALOG_ENABLED=false` to
-disable the catalog: lookup tools return empty results with `catalog_enabled: false` so the agent
-can degrade gracefully.
+disable the catalog. `usageCatalogStatus` then reports `catalogEnabled: false`; other public usage
+tools return an `argument` error explaining how to enable it.
 
 **Database-native usage.** The catalog also indexes supported database objects from the default
 schema:
@@ -250,11 +253,11 @@ statements into the existing JSqlParser analysis pipeline. If no embedded statem
 object is still kept as a provenance record. Use `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to
 scan explicit schemas.
 
-**Runtime index.** The server never builds the usage index on startup. The first usage-catalog
-lookup builds the complete runtime index synchronously from both file-backed records and
-database-native objects. The index is rebuildable and in-memory; it is not the source of truth.
-Use `invalidateUsageCatalogCache` after changing source files or database object definitions; the
-next lookup rebuilds the index.
+**Persistent index.** The server never builds the usage index on startup. The first usage-catalog
+lookup builds it synchronously from file-backed records and database-native objects into the local
+SQLite `<catalog>.db`. Source files and database objects remain authoritative. Use
+`invalidateUsageCatalogCache` after changing them; it clears the indexed usage rows and the next
+lookup rebuilds them.
 
 **Local-only writes.** The usage catalog never writes to the inspected JDBC database
 (PostgreSQL / Oracle / SQL Server). The existing `ReadOnlyGuard` and connection-level protections
@@ -272,10 +275,10 @@ implemented inside the JDBC MCP server.
 
 | Tool | Description |
 |---|---|
-| `usageCatalogStatus` | Runtime index status: configured sources, indexing state, counts, duplicate uids, invalid files and load errors |
+| `usageCatalogStatus` | Current catalog state (`not_started`, `indexing`, `ready`, `failed`, or `invalidated`), enabled flag, and configured sources |
 | `invalidateUsageCatalogCache` | Drop the runtime index. The next lookup rebuilds it synchronously from configured files and database-native objects |
-| `getQuery` | Full record by uid: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns), and field usages |
-| `listQueries` | Paginated listing with optional filters: `dataSource`, `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `searchText` (case-insensitive full-text search across raw SQL, normalized SQL, labels, source paths, and domains) |
+| `getQuery` | Full record selected by `sourceKind`, `sourcePath`, and optional `sourceUnit`: header, parameters, parsed tables/columns/join pairs, outputs, and field usages |
+| `listQueries` | Paginated listing with optional filters: `sourcePath` (LIKE — `%` / `_` allowed), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `searchText`, `limit`, `offset` |
 | `findQueriesByTable` | All catalog queries that reference a given table. Case-insensitive matching against alias-resolved, uppercased table names. Optional `schema` filter |
 | `findQueriesByColumn` | All catalog queries that reference a given column, with the SQL `context` of the reference (`select` / `where` / `join` / `order_by` / `having`). Optional `schema` and `table` filters |
 | `observedRelationships` | Aggregate observed equi-join pairs across stored queries, grouped by `(left_table.left_column = right_table.right_column)` with `support` count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded. The same data feeds the `observedQuery` layer of the relationship `evidence` bundle in `tableContext` / `findJoinPaths` |
@@ -289,7 +292,15 @@ parser's alias map and uppercased for case-insensitive matching. An explicit sch
 index build against the live JDBC schema: exactly one match fills the schema, multiple matches are
 marked `ambiguous`, and zero matches stay `unresolved`.
 
-### Snapshot / Metadata Cache
+### Catalog Administration
+
+| Tool | Description |
+|---|---|
+| `rebuildCatalog` | Rebuild the persistent structure snapshot and usage index for comma-separated `schemas` (or the configured/default scope), checkpoint SQLite WAL, and return the distributable `<catalog>.db` path |
+
+This tool writes only to the local catalog. It does not modify the inspected database.
+
+### Persistent Structure Snapshot
 
 Structural metadata (columns, keys, indexes, FKs, views, routines, triggers, sequences) is held in a
 **persistent structure snapshot** stored in the local SQLite `<catalog>.db` file (the same database
@@ -443,7 +454,7 @@ user for the strongest guarantee.
 
 ## Stack
 
-- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.0-M5 (`stdio` transport)
+- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.0-M6 (`stdio` transport)
 - HikariCP through Spring Boot `starter-jdbc`
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
@@ -538,14 +549,15 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
 | `JDBC_POOL_IDLE_TIMEOUT_MS` | no | Hikari idle connection timeout in milliseconds, default `60000`; idle connections above `JDBC_POOL_MIN_IDLE` are closed after this |
 | `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Shared across catalogs; each catalog gets its own subdirectory under it |
-| `JDBC_MCP_CATALOG` | no | Name of the local catalog (knowledge store) for this database — the slot key under which everything kept about it lives (`usage-catalog/`, `logs/`, and the future persisted snapshot), all rooted at `<data-dir>/<name>/`. Defaults to `default`. Run several databases by launching one server instance per database, each with its own `JDBC_MCP_CATALOG` |
-| `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog (see *Usage Catalog* above), default `true`. When `false`, lookup tools return empty results with `catalog_enabled: false` |
+| `JDBC_MCP_CATALOG` | no | Name of the local catalog for this database. Local data lives under `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/`, and `logs/`. Defaults to `default`. Use a different catalog name for each database |
+| `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` | no | Comma-separated schemas captured by `rebuildCatalog`; empty means the resolved default schema |
+| `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog, default `true`. When `false`, `usageCatalogStatus` reports the disabled state and other usage tools return an `argument` error |
 | `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |
 | `JDBC_USAGE_NATIVE_SCHEMAS` | no | Comma-separated schemas to scan for native usage. When omitted, the resolved default schema is scanned |
 | `JDBC_USAGE_NATIVE_INCLUDE_VIEWS` | no | Include views/materialized views in native usage, default `true` |
 | `JDBC_USAGE_NATIVE_INCLUDE_ROUTINES` | no | Include functions/procedures in native usage, default `true` |
 | `JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS` | no | Include triggers in native usage, default `true` |
-| `JDBC_USAGE_NATIVE_MAX_OBJECTS` | no | Maximum native usage records to add per index build, default `1000` |
+| `JDBC_USAGE_NATIVE_MAX_OBJECTS` | no | Maximum native usage records to add per index build, default `10000` |
 
 The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL,
 `jdbc:oracle:` for Oracle, and `jdbc:sqlserver:` for SQL Server.
@@ -590,6 +602,44 @@ Add this server to the client configuration:
 }
 ```
 
+### Connecting Multiple Databases
+
+Register one MCP server instance per database, using a unique server key and
+`JDBC_MCP_CATALOG` for each instance. The client namespaces tools by server key, so an agent can
+work with several databases in the same session.
+
+For clients that use an `mcpServers` object:
+
+```json
+{
+  "mcpServers": {
+    "jdbc-orders": {
+      "command": "java",
+      "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
+      "env": {
+        "JDBC_URL": "jdbc:postgresql://db.example.com:5432/orders",
+        "JDBC_USERNAME": "ai_readonly",
+        "JDBC_PASSWORD": "secret",
+        "JDBC_MCP_CATALOG": "orders"
+      }
+    },
+    "jdbc-billing": {
+      "command": "java",
+      "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
+      "env": {
+        "JDBC_URL": "jdbc:oracle:thin:@//oracle.example.com:1521/BILLING",
+        "JDBC_USERNAME": "AI_READONLY",
+        "JDBC_PASSWORD": "secret",
+        "JDBC_MCP_CATALOG": "billing"
+      }
+    }
+  }
+}
+```
+
+Do not point different databases at the same `JDBC_MCP_CATALOG`: their usage index and persistent
+structure snapshot would share the same `<catalog>.db` file.
+
 Where to configure it:
 
 | Client | Connection method |
@@ -603,12 +653,6 @@ Where to configure it:
 For Claude Code, omitting `--scope user` adds the server only to the current project.
 Check the connection with `claude mcp list`. Restart the client after adding the server.
 
-If you use different databases for different projects, add multiple servers with different keys,
-such as `jdbc-pg`, `jdbc-oracle`, and `jdbc-mssql`, and different environment variable sets. The
-MCP client namespaces each server's tools by its key, so an agent can query several databases in
-one session. Give each instance its own `JDBC_MCP_CATALOG` so their local catalogs (usage index
-and logs now, persisted structure later) are stored separately under `<data-dir>/<name>/`.
-
 ## Project Structure
 
 ```text
@@ -616,6 +660,9 @@ and logs now, persisted structure later) are stored separately under `<data-dir>
 |   +-- JdbcMcpServerApplication.java   - Spring Boot entry point
 |   +-- config/
 |   |   +-- JdbcProperties.java         - connection settings from env
+|   |   +-- JdbcMcpProperties.java      - local data directory and catalog name
+|   |   +-- UsageProperties.java        - usage-catalog sources and native-object settings
+|   |   +-- StructureSnapshotProperties.java - schemas captured by rebuildCatalog
 |   |   +-- DatabaseKind.java           - PG/Oracle/SQL Server autodetection from URL
 |   |   +-- DataSourceConfig.java       - Hikari + connection-level read-only mode
 |   +-- dialect/
@@ -632,6 +679,7 @@ and logs now, persisted structure later) are stored separately under `<data-dir>
 |   |   +-- BenchmarkService.java       - benchmark (cold+warm) and timed (+ pg_stat_statements diff)
 |   +-- metadata/
 |   |   +-- MetadataService.java        - DatabaseMetaData + dialect-specific metadata
+|   |   +-- SqliteStructureSnapshotStore.java - persistent SQLite structure snapshot
 |   |   +-- StatsService.java           - table/index stats, FK coverage, redundant/unused indexes
 |   |   +-- DistributionService.java    - column distribution / histogram / null ratio / selectivity / join cardinality
 |   |   +-- SchemaContextService.java   - high-level schema context: overview, table context, join paths, graph, lint, brief, query context
@@ -642,12 +690,9 @@ and logs now, persisted structure later) are stored separately under `<data-dir>
 |   |   +-- OraclePlanParser.java       - PLAN_TABLE -> tree
 |   |   +-- SqlServerPlanParser.java    - SHOWPLAN_XML -> tree
 |   |   +-- PlanAnalyzer.java           - summary: expensive / full scan / estimate error / nested loop / spill
-|   |   +-- JsonReader.java             - small dependency-free JSON parser
 |   +-- usage/
-|   |   +-- UsageProperties.java        - catalog enable flag and JSON/zip source paths
 |   |   +-- CatalogDataSourceConfig.java - SQLite WAL datasource + schema init
 |   |   +-- CatalogStorageService.java  - WAL checkpoint for distributable catalogs
-|   |   +-- UsageUid.java               - build/parse/validate the textual query identifier
 |   |   +-- UsageCatalogService.java    - ingest, lookups, observed-relationships aggregation
 |   |   +-- format/
 |   |   |   +-- QueryUsage.java         - canonical query usage record DTO
@@ -660,7 +705,7 @@ and logs now, persisted structure later) are stored separately under `<data-dir>
 |       +-- StatsTools.java             - tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 |       +-- BenchmarkTools.java         - benchmarkQuery, timedQuery
 |       +-- SchemaContextTools.java     - schemaBrief, tableContext, findJoinPaths, schemaLint, schemaGraph, queryContext, schemaGraphDot
-|       +-- UsageTools.java             - usageCatalogStatus, invalidateUsageCatalogCache, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, listKnownTags/Domains
+|       +-- UsageTools.java             - usageCatalogStatus, invalidateUsageCatalogCache, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, listKnownTags/Domains/Kinds
 +-- src/main/resources/
     +-- application.yml                 - MCP stdio + JDBC properties
     +-- usage-catalog-schema.sql        - DDL for the usage-catalog index (in <catalog>.db)

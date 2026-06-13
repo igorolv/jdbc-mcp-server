@@ -8,7 +8,8 @@
 > - Full build: `./gradlew build`
 
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
-It exposes 47 read-only tools across nine groups:
+It exposes 48 tools across nine groups. Tools may update the local SQLite catalog, but never the
+inspected PostgreSQL, Oracle, or SQL Server database:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarized plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
@@ -18,7 +19,7 @@ It exposes 47 read-only tools across nine groups:
 - **Object statistics** — table/index size and activity, unused/redundant indexes, FK index coverage.
 - **Schema context** — high-level snapshots, table neighborhoods, FK join paths, schema lint, ERD/DOT export.
 - **Usage catalog** — indexed known SQL queries with business context, observed joins, and semantic evidence.
-- **Snapshot / cache** — in-memory metadata snapshot with TTL plus refresh / inspect / invalidate tools.
+- **Catalog administration** — rebuild the persistent structure snapshot and usage index into a distributable SQLite catalog.
 
 The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, and SQL Server JDBC drivers
 are bundled inside the fat jar.
@@ -86,9 +87,10 @@ new response record, run that test plus `ToolOutputSchemaSmokeTest`.
 - A database account. A **read-only** database user is strongly recommended — see the README
   for SQL snippets to create one in PostgreSQL, Oracle, or SQL Server.
 
-## Step 1: Get database credentials from the user
+## Step 1: Get database credentials before running the server
 
-Before building, ask the user for:
+Credentials are not required for `classes`, `test`, or `build`. Before starting the server or
+running tests against a live database, ask the user for:
 
 1. **JDBC URL** — e.g.
    - PostgreSQL: `jdbc:postgresql://<host>:5432/<database>`
@@ -103,8 +105,8 @@ Optionally:
   server-local data; each catalog gets its own subdirectory under it.
 - **Catalog name** — `JDBC_MCP_CATALOG` (default `default`). Names the local catalog (knowledge
   store) for this database — the slot key under which everything kept about it lives, all rooted
-  at `<data-dir>/<name>/`: `usage-catalog/` (catalog source files), `logs/`, and the future
-  persisted snapshot (e.g. `<data-dir>/default/usage-catalog/`, `<data-dir>/ssv/logs/`). Serve
+  at `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/` (catalog source files), and `logs/`
+  (e.g. `<data-dir>/default/default.db`, `<data-dir>/ssv/logs/`). Serve
   several databases by launching one server instance per database, each with its own
   `JDBC_MCP_CATALOG`; the MCP client namespaces their tools by server key.
 - **Default schema** for metadata tools (`JDBC_DEFAULT_SCHEMA`). If omitted, the server uses the
@@ -192,13 +194,13 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **47 read-only MCP tools**.
+The server exposes **48 MCP tools**. All are read-only with respect to the inspected database.
 
 ### Query tools
 
 | Tool | Description |
 |---|---|
-| `executeQuery` | Run a SELECT / WITH / EXPLAIN statement. Params: `sql`, `params` (array of values for `?` placeholders) or `namedParams` (object for `:name` placeholders), `limit`, `timeoutSeconds`, `format` (`json` default, `markdown`, `csv`). Result includes `truncated` flag if the row limit was hit |
+| `executeQuery` | Run a SELECT / WITH / EXPLAIN statement. Params: `sql`, `params` (array of values for `?` placeholders) or `namedParams` (object for `:name` placeholders), `limit`, `timeoutSeconds`. Result includes `truncated` flag if the row limit was hit |
 | `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` + `DBMS_XPLAN.DISPLAY`. SQL Server: `SET SHOWPLAN_TEXT ON` on the same session. `analyze=true` enables `EXPLAIN ANALYZE` on PostgreSQL (actually runs the query); Oracle and SQL Server return static/estimated plans. Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
 | `analyzePlan` | Compact, LLM-friendly summary of the execution plan: top-cost nodes, full scans on large relations, estimation errors (planner vs. reality — requires `analyze=true` on PG), risky nested loops with large outer input, disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` + `PLAN_TABLE` (static only, `analyze` ignored). SQL Server: `SET SHOWPLAN_XML ON` estimated plan. Params: `sql`, `params` (`?`) or `namedParams` (`:name`), `analyze` |
 | `validateQuery` | Validate a statement without running it — read-only guard + driver-side `prepareStatement` plus a JSqlParser-derived `inspection` summary when possible. Params: `sql`, `params` (`?`) or `namedParams` (`:name`) |
@@ -267,12 +269,18 @@ keep the response compact; raise the caps when needed.
 | Tool | Description |
 |---|---|
 | `tableContext` | Neighbourhood around one table: the table, FK parents, optionally child tables and edges. Params: `schema`, `table`, `depth` (default 1, cap 4), `includeIncoming`, `includeStats`, `includeObserved` |
-| `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default 4), `maxPaths` (default 5), `scanLimit` (default 300, cap 300), `includeObserved` |
+| `findJoinPaths` | FK-based join paths between two tables (graph traversed in both FK directions; each edge has `joinCondition`). Params: `fromSchema`/`fromTable`, `toSchema`/`toTable`, `maxDepth` (default/cap 4), `maxPaths` (default 5, cap 25), `scanLimit` (default/cap 300), `includeObserved` |
 | `schemaBrief` | Plain-text full-schema map: all matching tables/views with column counts, PK, incoming/outgoing relationship counts, key-like columns, central/isolated tables, and capped key FK relationships. Use this first when relevant tables are unknown; follow with `queryContext` for detailed context. Params: `schema`, `terms` (optional substring narrowing), `maxTables` (safety cap; default 2000, cap 5000) |
 | `schemaGraph` | Relationship-graph metrics: nodes with in/out degree, central tables, isolated tables, components, cycle hints; optional shortest path. Params: `schema`, `maxTables` (default 50, cap 300), `fromTable`, `toTable`, `maxDepth` |
 | `schemaLint` | Lint audit: missing PK, FK without index, FK type mismatch, nullable unique, status/type without CHECK, orphan `*_id`, missing remarks, isolated and wide tables. Params: `schema`, `table`, `checks` (allow-list), `maxTables` (default 50, cap 300), `maxFindings` |
 | `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables` (default 12, cap 50 — narrower than the other context tools to keep responses concise) |
 | `schemaGraphDot` | DOT/Graphviz ERD: nodes are tables with all columns and types (PK marked 🔑, FK with →). Params: `schema`, `tables` (optional filter) |
+
+### Catalog administration tools
+
+| Tool | Description |
+|---|---|
+| `rebuildCatalog` | Rebuild the persistent structure snapshot and usage index for comma-separated `schemas` (or the configured/default scope), checkpoint SQLite WAL, and return the `<catalog>.db` path. Writes only to the local catalog |
 
 ### Structure snapshot
 
@@ -293,7 +301,7 @@ and are not migrated; run `rebuildCatalog` to populate a newly created SQLite ca
 ### Usage catalog tools
 
 The usage catalog indexes known application SQL queries (from JSON/ZIP files) and the database's
-own views/routines into the persistent SQLite catalog. It enables the agent to discover how tables and
+own views, routines, and triggers into the persistent SQLite catalog. It enables the agent to discover how tables and
 columns are used in practice — what queries reference them, what join patterns exist, and what
 business context they belong to.
 
@@ -301,22 +309,23 @@ Configured via environment variables:
 - `JDBC_USAGE_CATALOG_ENABLED` (default `true`) — master switch
 - `JDBC_USAGE_CATALOG_PATHS` — comma-separated paths to JSON/ZIP files with `QueryUsage` records.
   These are additional to the default `{dataDir}/usage-catalog` directory.
-- The runtime index is built synchronously on first usage-catalog access, never during startup.
-- Database-native usage is included in the same index build for the database's own views/routines.
+- The persistent index is built synchronously on first usage-catalog access, never during startup.
+- Database-native usage is included in the same index build for views, routines, and triggers.
 
-Called methods return `{"catalog_enabled":false,"rows":[]}` when the catalog is off.
+When the catalog is off, `usageCatalogStatus` reports `catalogEnabled: false`; other public usage
+tools return an `argument` error explaining how to enable it.
 
 | Tool | Description |
 |---|---|
-| `usageCatalogStatus` | Runtime index status: configured sources, indexing state, record/parse-failure/duplicate counts |
+| `usageCatalogStatus` | Enabled flag, current state (`not_started`, `indexing`, `ready`, `failed`, or `invalidated`), and configured sources |
 | `invalidateUsageCatalogCache` | Drop the runtime usage index. The next lookup rebuilds it synchronously from configured files and database-native objects |
-| `getQuery` | Full stored record for one query uid (`{dataSource}/{path}#{unit}`): SQL, parameters, parsed tables/columns/joins, outputs, field usages |
-| `listQueries` | List stored queries with filters: `dataSource`, `sourcePath` (LIKE), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `searchText` (case-insensitive full-text across raw SQL, labels, source paths, and domains), `limit`, `offset` |
+| `getQuery` | Full stored record selected by `sourceKind`, `sourcePath`, and optional `sourceUnit`: SQL, parameters, parsed tables/columns/joins, outputs, field usages |
+| `listQueries` | List stored queries with filters: `sourcePath` (LIKE), `sourceKind`, `businessDomain`, `tag`, `parseStatus`, `searchText` (case-insensitive full-text across raw SQL, labels, source paths, and domains), `limit`, `offset` |
 | `findQueriesByTable` | Find queries referencing a table (case-insensitive, alias-expanded). Params: `schema`, `table` |
 | `findQueriesByColumn` | Find queries referencing a column, with usage context (`select`, `where`, `join`, `order_by`, `having`). Params: `schema`, `table`, `column` |
 | `observedRelationships` | Aggregate equi-join pairs across all queries: `(left_table.left_col = right_table.right_col)` with support count and contributing query uids. Params: `schema`, `table`, `minSupport` |
-| `listKnownTags` | Business tags with their query counts — reuse existing vocabulary. Params: `dataSource` |
-| `listKnownDomains` | Business domains with their query counts. Params: `dataSource` |
+| `listKnownTags` | Business tags with their query counts — reuse existing vocabulary. No params |
+| `listKnownDomains` | Business domains with their query counts. No params |
 | `listKnownKinds` | Source-kinds with their query counts — discover valid values for `listQueries` `sourceKind` filter |
 
 These tools feed the `evidence` bundle (`observedQuery` / `semanticUsage` layers) in
