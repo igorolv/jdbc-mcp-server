@@ -116,8 +116,9 @@ Optionally:
 - **JDBC pool settings** — `JDBC_POOL_MAX_SIZE` (default 40), `JDBC_POOL_MIN_IDLE` (default 0),
   `JDBC_CONNECTION_TIMEOUT_MS` (default 10000), `JDBC_VALIDATION_TIMEOUT_MS` (default 5000),
   and `JDBC_POOL_IDLE_TIMEOUT_MS` (default 60000).
-- **Metadata snapshot cache** — `JDBC_METADATA_CACHE_TTL_SECONDS` (default 300, `0` disables) and
-  `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000). Caches structural metadata only; live stats are not cached.
+- **Structure snapshot** — `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` (comma-separated; empty → default schema).
+  Persists structural metadata in the local `<catalog>.db` file ("cache forever", no TTL); live stats
+  are not cached. Build with the `rebuildCatalog` tool (structure + usage); clear by deleting `<catalog>.db`.
 
 ## Step 2: Build
 
@@ -272,14 +273,18 @@ keep the response compact; raise the caps when needed.
 | `queryContext` | Author-grade context from natural-language `terms` and/or explicit `tables`: relevant tables/columns, constraints, allowed values, relationships, join paths between selected tables, optional tiny samples (`includeSamples`). Params: `schema`, `terms`, `tables`, `includeSamples`, `maxTables` (default 12, cap 50 — narrower than the other context tools to keep responses concise) |
 | `schemaGraphDot` | DOT/Graphviz ERD: nodes are tables with all columns and types (PK marked 🔑, FK with →). Params: `schema`, `tables` (optional filter) |
 
-### Snapshot / metadata cache (internal)
+### Structure snapshot
 
-Structural metadata (columns, keys, indexes, FKs, constraints, triggers) is cached in memory with
-a TTL set by `JDBC_METADATA_CACHE_TTL_SECONDS` (default 86400, `0` disables). Live statistics are
-not cached. Hard cap on entries: `JDBC_METADATA_CACHE_MAX_ENTRIES` (default 2000).
+Structural metadata (columns, keys, indexes, FKs, views, routines, triggers, sequences) is persisted
+in the local `<catalog>.db` file (the same H2 database as the usage catalog). It is authoritative —
+"cache forever", no TTL or staleness detection. It fills lazily (`describeTable` persists each table)
+and can be front-loaded per schema with the `rebuildCatalog` tool (scope: `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS`,
+or the default schema). Once a schema is covered, `listTables`, view/routine/trigger/sequence lookups,
+`searchObjects` and the usage re-resolver are served from the snapshot; uncovered schemas fall through
+to the live database. Live statistics are never cached. The `rebuildCatalog` tool builds the
+structure snapshot **and** the usage index into one distributable `<catalog>.db` for a known database.
 
-No MCP tools expose the cache directly — it is managed internally. A server restart clears and
-re-warms the cache automatically.
+Clear it by deleting `<catalog>.db`.
 
 ### Usage catalog tools
 
@@ -386,14 +391,14 @@ Recommended flow when the user asks to optimize / audit queries or schema:
 9. To compare rewrites, use `benchmarkQuery` (cold + warm wall-clock) or `timedQuery`
    (`pg_stat_statements` deltas on PostgreSQL).
 
-Notes on the metadata snapshot cache:
+Notes on the structure snapshot:
 
-- Structural metadata is cached in memory with a TTL (default 86400 s / 24 h; set
-  `JDBC_METADATA_CACHE_TTL_SECONDS=0` to disable). Repeated
-  `tableContext`, `findJoinPaths`, `schemaLint`, `schemaGraph`, `queryContext` and
-  `describeTable` calls are served from the cache.
+- Structural metadata is persisted in the local `<catalog>.db` file ("cache forever", no TTL).
+  Repeated `tableContext`, `findJoinPaths`, `schemaLint`, `schemaGraph`, `queryContext`,
+  `describeTable` and `searchObjects` calls are served from it for covered schemas.
 - Live counters (table/index/column stats, samples, plans) are **never** cached.
-- The cache is internal and not exposed as MCP tools. A server restart clears and re-warms it.
+- Front-load a schema and prebuild a distributable `<catalog>.db` (structure + usage) with
+  `rebuildCatalog`; clear by deleting `<catalog>.db`. The snapshot survives restarts.
 
 
 ## Troubleshooting

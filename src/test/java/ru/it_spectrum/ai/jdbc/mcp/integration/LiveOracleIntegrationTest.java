@@ -82,12 +82,13 @@ class LiveOracleIntegrationTest {
 
         JdbcProperties props = new JdbcProperties(
                 url, username, password,
-                schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000, 300, 2000);
+                schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000);
         DataSource ds = buildPool(props);
         SqlDialect dialect = new OracleDialect();
         ReadOnlyGuard guard = new ReadOnlyGuard(props);
         executor = new SqlExecutor(ds, dialect, props, guard);
-        metadata = new MetadataService(executor, dialect, props);
+        metadata = new MetadataService(executor, dialect, props,
+                new ru.it_spectrum.ai.jdbc.mcp.metadata.PassThroughStructureSnapshotStore());
         stats = new StatsService(executor, dialect, props);
         QueryAnalysisService analysis = new QueryAnalysisService();
         QueryLineageService lineage = new QueryLineageService(analysis, metadata, new ProceduralSqlExtractor());

@@ -146,7 +146,7 @@ class UsageCatalogSourceLoadingTest {
     private UsageCatalogService service(List<String> paths, List<UsageCatalogSource> sources) throws Exception {
         UsageProperties properties = properties(paths);
         JdbcMcpProperties jdbcMcpProperties = jdbcMcpProperties();
-        DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
+        DataSource ds = CatalogTestSupport.inMemoryCatalog();
         return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
                 new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), jdbcMcpProperties,
                 new ObjectMapper(), sources, null);

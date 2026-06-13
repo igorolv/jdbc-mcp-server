@@ -13,7 +13,7 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.PassThroughStructureSnapshotStore;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
@@ -58,13 +58,13 @@ abstract class AbstractPostgresToolsIntegrationTest extends AbstractToolsIntegra
 
             JdbcProperties properties = new JdbcProperties(
                     PG.getJdbcUrl(), PG.getUsername(), PG.getPassword(),
-                    "public", 10, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000, 300, 2000);
+                    "public", 10, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000);
             DataSource dataSource = buildPool(properties);
             SqlDialect dialect = new PostgresDialect();
             ReadOnlyGuard guard = new ReadOnlyGuard(properties);
             SqlExecutor executor = new SqlExecutor(dataSource, dialect, properties, guard);
-            SchemaSnapshotCache cache = new SchemaSnapshotCache(properties);
-            MetadataService metadata = new MetadataService(executor, dialect, properties, cache);
+            PassThroughStructureSnapshotStore store = new PassThroughStructureSnapshotStore();
+            MetadataService metadata = new MetadataService(executor, dialect, properties, store);
             StatsService stats = new StatsService(executor, dialect, properties);
             SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
             ObjectMapper mapper = new JsonConfig().jdbcMcpObjectMapper();

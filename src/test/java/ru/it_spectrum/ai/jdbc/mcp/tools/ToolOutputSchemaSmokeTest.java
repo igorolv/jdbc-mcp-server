@@ -130,6 +130,7 @@ class ToolOutputSchemaSmokeTest {
                 QueryTools.class,
                 BenchmarkTools.class,
                 MetadataTools.class,
+                AdminTools.class,
                 SampleTools.class,
                 DistributionTools.class,
                 StatsTools.class,

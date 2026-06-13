@@ -38,8 +38,11 @@ jdbc:
   connection-timeout-ms: ${JDBC_CONNECTION_TIMEOUT_MS:10000}
   validation-timeout-ms: ${JDBC_VALIDATION_TIMEOUT_MS:5000}
   idle-timeout-ms: ${JDBC_POOL_IDLE_TIMEOUT_MS:60000}
-  metadata-cache-ttl-seconds: ${JDBC_METADATA_CACHE_TTL_SECONDS:86400}
-  metadata-cache-max-entries: ${JDBC_METADATA_CACHE_MAX_ENTRIES:2000}
+
+structure-snapshot:
+  # Schemas to front-load into the persistent structure snapshot on a full rebuild.
+  # CSV; empty falls back to the default schema (like usage.native-schemas).
+  schemas: ${JDBC_STRUCTURE_SNAPSHOT_SCHEMAS:}
 
 usage:
   catalog-enabled: ${JDBC_USAGE_CATALOG_ENABLED:true}

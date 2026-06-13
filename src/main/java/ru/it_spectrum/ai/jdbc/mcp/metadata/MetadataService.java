@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
+import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
@@ -41,28 +42,27 @@ public class MetadataService {
     private final SqlExecutor executor;
     private final SqlDialect dialect;
     private final JdbcProperties properties;
-    private final SchemaSnapshotCache cache;
+    private final StructureSnapshotStore store;
     private final SchemaResolver schemaResolver;
-
-    public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties) {
-        this(executor, dialect, properties, new SchemaSnapshotCache(properties),
-                new SchemaResolver(properties, executor, dialect));
-    }
+    private final StructureSnapshotProperties snapshotProperties;
 
     public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties,
-                           SchemaSnapshotCache cache) {
-        this(executor, dialect, properties, cache,
-                new SchemaResolver(properties, executor, dialect));
+                           StructureSnapshotStore store) {
+        this(executor, dialect, properties, store,
+                new SchemaResolver(properties, executor, dialect),
+                new StructureSnapshotProperties(List.of()));
     }
 
     @Autowired
     public MetadataService(SqlExecutor executor, SqlDialect dialect, JdbcProperties properties,
-                           SchemaSnapshotCache cache, SchemaResolver schemaResolver) {
+                           StructureSnapshotStore store, SchemaResolver schemaResolver,
+                           StructureSnapshotProperties snapshotProperties) {
         this.executor = executor;
         this.dialect = dialect;
         this.properties = properties;
-        this.cache = cache;
+        this.store = store;
         this.schemaResolver = schemaResolver;
+        this.snapshotProperties = snapshotProperties;
     }
 
     public String defaultSchema() throws SQLException {
@@ -93,7 +93,7 @@ public class MetadataService {
         String[] effectiveTypes = types != null && types.length > 0
                 ? types
                 : new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"};
-        return cache.listTables(effectiveSchema, namePattern, effectiveTypes,
+        return store.listTables(effectiveSchema, namePattern, effectiveTypes,
                 () -> listTablesUncached(effectiveSchema, namePattern, effectiveTypes));
     }
 
@@ -105,6 +105,10 @@ public class MetadataService {
      */
     public List<TableEntry> findTablesByName(String tableName) throws SQLException {
         if (tableName == null || tableName.isBlank()) return List.of();
+        return store.findTablesByName(tableName, () -> findTablesByNameLive(tableName));
+    }
+
+    private List<TableEntry> findTablesByNameLive(String tableName) throws SQLException {
         String[] effectiveTypes = new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"};
         return executor.withConnection(conn -> {
             DatabaseMetaData md = conn.getMetaData();
@@ -380,8 +384,8 @@ public class MetadataService {
     /**
      * Bulk-load structural metadata for a collection of table names (same schema). Uses
      * schema-level bulk queries (≈10 round trips total, regardless of table count) — much faster
-     * than calling {@link #describeTable} in a loop. Checks the metadata cache first and only
-     * loads uncached tables. All loaded results are written to the cache for subsequent fast
+     * than calling {@link #describeTable} in a loop. Checks the structure snapshot first and only
+     * loads uncached tables. All loaded results are persisted to the snapshot for subsequent fast
      * lookup.
      */
     public Map<String, TableDescription> describeTables(String schema, Collection<String> tableNames)
@@ -398,7 +402,7 @@ public class MetadataService {
         Map<String, TableDescription> result = new LinkedHashMap<>();
         List<String> uncached = new ArrayList<>();
         for (String tn : distinct) {
-            TableDescription cached = cache.peekDescribeTable(effectiveSchema, tn);
+            TableDescription cached = store.peekDescribeTable(effectiveSchema, tn);
             if (cached != null) {
                 result.put(key(effectiveSchema, tn), cached);
             } else {
@@ -408,7 +412,7 @@ public class MetadataService {
 
         if (!uncached.isEmpty()) {
             Map<String, TableDescription> loaded = describeListedTables(effectiveSchema, new LinkedHashSet<>(uncached));
-            cache.putAll(loaded);
+            store.saveAll(loaded.values());
             result.putAll(loaded);
         }
 
@@ -1426,6 +1430,12 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
 
     public String viewDefinition(String schema, String name) throws SQLException {
         String effectiveSchema = resolveSchema(schema);
+        return store.viewDefinition(effectiveSchema, name,
+                () -> viewDefinitionLive(schema, name));
+    }
+
+    private String viewDefinitionLive(String schema, String name) throws SQLException {
+        String effectiveSchema = resolveSchema(schema);
         QueryResult r = executor.queryInternal(dialect.viewDefinitionQuery(),
                 List.of(effectiveSchema == null ? "" : effectiveSchema, name), 5);
         if (r.rows().isEmpty()) return null;
@@ -1443,6 +1453,11 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
      * Falls back to per-view loading when the dialect does not provide a bulk query.
      */
     public List<Map<String, Object>> schemaViewDefinitions(String schema) throws SQLException {
+        String effectiveSchema = resolveSchema(schema);
+        return store.views(effectiveSchema, () -> schemaViewDefinitionsLive(schema));
+    }
+
+    private List<Map<String, Object>> schemaViewDefinitionsLive(String schema) throws SQLException {
         String bulkSql = dialect.schemaViewsQuery();
         if (bulkSql != null) {
             String effectiveSchema = resolveSchema(schema);
@@ -1470,6 +1485,12 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
 
     public String routineSource(String schema, String name) throws SQLException {
         String effectiveSchema = resolveSchema(schema);
+        return store.routineSource(effectiveSchema, name,
+                () -> routineSourceLive(schema, name));
+    }
+
+    private String routineSourceLive(String schema, String name) throws SQLException {
+        String effectiveSchema = resolveSchema(schema);
         QueryResult r = executor.queryInternal(dialect.routineSourceQuery(),
                 List.of(effectiveSchema == null ? "" : effectiveSchema, name), 10_000);
         if (r.rows().isEmpty()) return null;
@@ -1483,6 +1504,10 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
     }
 
     public List<SequenceEntry> listSequences(String schema) throws SQLException {
+        return store.sequences(schema, () -> listSequencesLive(schema));
+    }
+
+    private List<SequenceEntry> listSequencesLive(String schema) throws SQLException {
         String effectiveSchema = schema == null || schema.isBlank() ? null : schema;
         QueryResult r = executor.queryInternal(dialect.listSequencesQuery(),
                 Arrays.asList(effectiveSchema, effectiveSchema), 500);
@@ -1496,6 +1521,10 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
     }
 
     public List<RoutineEntry> listRoutines(String schema, String namePattern) throws SQLException {
+        return store.routines(schema, namePattern, () -> listRoutinesLive(schema, namePattern));
+    }
+
+    private List<RoutineEntry> listRoutinesLive(String schema, String namePattern) throws SQLException {
         String s = schema == null || schema.isBlank() ? null : schema;
         String p = namePattern == null || namePattern.isBlank() ? null : namePattern;
         QueryResult r = executor.queryInternal(dialect.listRoutinesQuery(),
@@ -1511,6 +1540,10 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
     }
 
     public List<SearchObjectEntry> searchObjects(String namePattern) throws SQLException {
+        return store.searchObjects(namePattern, () -> searchObjectsLive(namePattern));
+    }
+
+    private List<SearchObjectEntry> searchObjectsLive(String namePattern) throws SQLException {
         String pattern = (namePattern == null || namePattern.isBlank())
                 ? "%" : namePattern.contains("%") ? namePattern : "%" + namePattern + "%";
         QueryResult r = executor.queryInternal(dialect.searchObjectsQuery(),
@@ -1532,6 +1565,12 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
         if (trigger == null || trigger.isBlank()) {
             throw new IllegalArgumentException("trigger must be provided");
         }
+        String effectiveSchema = resolveSchema(schema);
+        return store.triggerDefinition(effectiveSchema, table, trigger,
+                () -> triggerDefinitionLive(schema, table, trigger));
+    }
+
+    private String triggerDefinitionLive(String schema, String table, String trigger) throws SQLException {
         String sql = dialect.triggerDefinitionQuery();
         if (sql == null) return null;
         QueryResult r = executor.queryInternal(sql, List.of(resolveSchema(schema), table, trigger), 10_000);
@@ -1550,6 +1589,12 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
      * Falls back to per-table loading when the dialect does not provide a bulk query.
      */
     public List<Trigger> schemaTriggers(String schema, boolean includeDefinition) throws SQLException {
+        String effectiveSchema = resolveSchema(schema);
+        return store.triggers(effectiveSchema, includeDefinition,
+                () -> schemaTriggersLive(schema, includeDefinition));
+    }
+
+    private List<Trigger> schemaTriggersLive(String schema, boolean includeDefinition) throws SQLException {
         String bulkSql = dialect.schemaTriggersQuery();
         if (bulkSql != null) {
             String effectiveSchema = resolveSchema(schema);
@@ -1580,6 +1625,81 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
             out.addAll(fetchTriggers(table.schema(), table.name(), includeDefinition));
         }
         return out;
+    }
+
+    // ---------- structure snapshot build-all ----------
+
+    /**
+     * Front-load the whole configured scope into the persistent structure snapshot in one
+     * transaction. Scope = {@code structure-snapshot.schemas}, or the resolved default schema when
+     * empty (same fallback as {@code DatabaseNativeUsageSourceProvider.schemas()}).
+     *
+     * @return the schemas actually covered by the rebuild
+     */
+    public List<String> rebuildStructureSnapshot() throws SQLException {
+        List<String> scope = snapshotProperties.resolvedSchemas();
+        if (scope.isEmpty()) {
+            String def = defaultSchema();
+            scope = (def == null || def.isBlank()) ? List.of() : List.of(def);
+        }
+        return rebuildStructureSnapshot(scope);
+    }
+
+    /**
+     * Build-all over an explicit list of schemas. Loads tables (full descriptions → JSON +
+     * projection), view definitions, routines with source, triggers with body and sequences from
+     * the live database, then replaces the whole structure snapshot atomically.
+     *
+     * @return the schemas actually covered by the rebuild
+     */
+    public List<String> rebuildStructureSnapshot(List<String> schemas) throws SQLException {
+        List<String> scope = schemas == null ? List.of() : schemas;
+        List<String> covered = new ArrayList<>();
+        List<TableDescription> tables = new ArrayList<>();
+        List<StructureSnapshotStore.ViewRecord> views = new ArrayList<>();
+        List<StructureSnapshotStore.RoutineRecord> routines = new ArrayList<>();
+        List<Trigger> triggers = new ArrayList<>();
+        List<SequenceEntry> sequences = new ArrayList<>();
+
+        for (String rawSchema : scope) {
+            String effectiveSchema = resolveSchema(rawSchema);
+            covered.add(effectiveSchema == null ? "" : effectiveSchema);
+
+            List<TableEntry> tableEntries = listTablesUncached(effectiveSchema, "%",
+                    new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"});
+            Set<String> names = new LinkedHashSet<>();
+            for (TableEntry te : tableEntries) {
+                if (te.name() != null) names.add(te.name());
+            }
+            if (!names.isEmpty()) {
+                tables.addAll(describeListedTables(effectiveSchema, names).values());
+            }
+
+            for (Map<String, Object> row : schemaViewDefinitionsLive(rawSchema)) {
+                String viewSchema = asString(getCI(row, "schema"));
+                String viewName = asString(getCI(row, "name"));
+                String definition = asString(getCI(row, "definition"));
+                if (viewName != null) {
+                    views.add(new StructureSnapshotStore.ViewRecord(
+                            viewSchema != null ? viewSchema : effectiveSchema, viewName, definition));
+                }
+            }
+
+            for (RoutineEntry routine : listRoutinesLive(rawSchema, "%")) {
+                if (routine.name() == null) continue;
+                String source = routineSourceLive(rawSchema, routine.name());
+                routines.add(new StructureSnapshotStore.RoutineRecord(
+                        routine.schema() != null ? routine.schema() : effectiveSchema,
+                        routine.name(), routine.type(), source));
+            }
+
+            triggers.addAll(schemaTriggersLive(rawSchema, true));
+            sequences.addAll(listSequencesLive(rawSchema));
+        }
+
+        store.rebuild(new StructureSnapshotStore.StructureSnapshotData(
+                covered, tables, views, routines, triggers, sequences));
+        return List.copyOf(covered);
     }
 
     // ---------- helpers ----------

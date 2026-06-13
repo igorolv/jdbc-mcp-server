@@ -12,7 +12,7 @@ class ReadOnlyGuardTest {
 
     private final ReadOnlyGuard guard = new ReadOnlyGuard(
             new JdbcProperties(null, null, null, null, 30, 1000, 500, "strict",
-                    40, 1, 10_000, 5_000, 60_000, 300, 2000));
+                    40, 1, 10_000, 5_000, 60_000));
 
     @ParameterizedTest
     @ValueSource(strings = {
@@ -67,7 +67,7 @@ class ReadOnlyGuardTest {
     void canBeDisabled() {
         ReadOnlyGuard off = new ReadOnlyGuard(
                 new JdbcProperties(null, null, null, null, 30, 1000, 500, "off",
-                        40, 1, 10_000, 5_000, 60_000, 300, 2000));
+                        40, 1, 10_000, 5_000, 60_000));
         off.check("DELETE FROM t");  // does not throw
     }
 

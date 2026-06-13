@@ -74,9 +74,7 @@ class DatabaseKindTest {
                 0,
                 10000,
                 5000,
-                60000,
-                300,
-                2000);
+                60000);
 
         HikariConfig config = DataSourceConfig.buildHikariConfig(properties, DatabaseKind.ORACLE);
 

@@ -40,10 +40,10 @@ dependencies {
     testImplementation(libs.testcontainers.oracle.free)
     testImplementation(libs.testcontainers.mssqlserver)
     testImplementation(libs.commons.lang3)
-    // Force all testcontainers modules to 1.20.4 to avoid version conflicts
-    testImplementation("org.testcontainers:testcontainers:1.20.4")
-    testImplementation("org.testcontainers:database-commons:1.20.4")
-    testImplementation("org.testcontainers:jdbc:1.20.4")
+    // Force all testcontainers modules to the same version to avoid version conflicts
+    testImplementation("org.testcontainers:testcontainers:1.21.4")
+    testImplementation("org.testcontainers:database-commons:1.21.4")
+    testImplementation("org.testcontainers:jdbc:1.21.4")
 }
 
 tasks.jar {

@@ -291,18 +291,22 @@ marked `ambiguous`, and zero matches stay `unresolved`.
 
 ### Snapshot / Metadata Cache
 
-Structural metadata (columns, keys, indexes, FKs, constraints, triggers) is cached in memory with a
-TTL. This speeds up repeated calls to `tableContext`, `findJoinPaths`,
-`schemaLint`, `schemaGraph`, `queryContext`, and `describeTable`. Statistics tools such as
-`tableStats`, `indexStats`, `columnStats`, and `sampleRows` are **not** cached; their counters are
-live.
+Structural metadata (columns, keys, indexes, FKs, views, routines, triggers, sequences) is held in a
+**persistent structure snapshot** stored in the local `<catalog>.db` file (the same H2 database file
+as the usage catalog, under `<data-dir>/<catalog>/`). This speeds up repeated calls to
+`tableContext`, `findJoinPaths`, `schemaLint`, `schemaGraph`, `queryContext`, `describeTable`,
+`searchObjects`, and the usage-catalog re-resolver. Statistics tools such as `tableStats`,
+`indexStats`, `columnStats`, and `sampleRows` are **not** cached; their counters are live.
+
+The snapshot is authoritative ("cache forever") — there is no TTL or staleness detection. It is
+filled lazily (`describeTable` persists each table it loads) and can be front-loaded for whole
+schemas with the `rebuildCatalog` tool, which builds the structure snapshot **and** the usage index
+into one distributable `<catalog>.db`. Clear it by deleting the `<catalog>.db` file.
 
 Configuration:
 
-- `JDBC_METADATA_CACHE_TTL_SECONDS` - TTL in seconds. Default: `86400` (24 hours). Set to `0` to disable the cache.
-- `JDBC_METADATA_CACHE_MAX_ENTRIES` - safety cap, default `2000`; when exceeded, the cache is cleared completely.
-
-The cache is internal and not exposed as MCP tools.
+- `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` - comma-separated schemas to front-load on a full rebuild
+  (empty → the default schema).
 
 ### Data Exploration
 
@@ -437,7 +441,7 @@ user for the strongest guarantee.
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
 - Microsoft SQL Server JDBC 12.8.1
-- H2 in-memory runtime index for the local usage catalog
+- H2 file-backed local catalog (`<catalog>.db`) holding the usage-catalog index and the persistent structure snapshot
 - Gradle 9.3.1 with version catalog
 
 ## License
@@ -642,6 +646,7 @@ and logs now, persisted structure later) are stored separately under `<data-dir>
 |   +-- tools/
 |       +-- QueryTools.java             - executeQuery, explainQuery, analyzePlan, validateQuery, inspectQuery, queryLint, resolveQueryLineage
 |       +-- MetadataTools.java          - schemas / tables / describe / view / routines / sequences / search
+|       +-- AdminTools.java             - rebuildCatalog (build structure snapshot + usage index into a distributable <catalog>.db)
 |       +-- SampleTools.java            - sampleRows
 |       +-- DistributionTools.java      - columnStats, columnDistribution, columnHistogram, nullRatio, estimateSelectivity, joinCardinality
 |       +-- StatsTools.java             - tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
@@ -650,7 +655,8 @@ and logs now, persisted structure later) are stored separately under `<data-dir>
 |       +-- UsageTools.java             - usageCatalogStatus, invalidateUsageCatalogCache, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, listKnownTags/Domains
 +-- src/main/resources/
     +-- application.yml                 - MCP stdio + JDBC properties
-    +-- usage-catalog-schema.sql        - DDL for the H2 in-memory usage-catalog runtime index
+    +-- usage-catalog-schema.sql        - DDL for the usage-catalog index (in <catalog>.db)
+    +-- structure-snapshot-schema.sql   - DDL for the persistent structure snapshot (in <catalog>.db)
     +-- logback-spring.xml              - logs to stderr because stdout is used by MCP
 ```
 

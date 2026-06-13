@@ -23,8 +23,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param connectionTimeoutMs Hikari connection checkout timeout in milliseconds
  * @param validationTimeoutMs Hikari validation timeout in milliseconds
  * @param idleTimeoutMs       Hikari idle connection timeout in milliseconds
- * @param metadataCacheTtlSeconds in-memory metadata snapshot TTL in seconds (default 86400, 0 disables)
- * @param metadataCacheMaxEntries hard cap on cached entries (defensive — clears the cache if exceeded)
  */
 @ConfigurationProperties(prefix = "jdbc")
 public record JdbcProperties(
@@ -40,9 +38,7 @@ public record JdbcProperties(
         int poolMinimumIdle,
         int connectionTimeoutMs,
         int validationTimeoutMs,
-        int idleTimeoutMs,
-        int metadataCacheTtlSeconds,
-        int metadataCacheMaxEntries
+        int idleTimeoutMs
 ) {
     public boolean guardEnabled() {
         return readonlyGuard == null || !"off".equalsIgnoreCase(readonlyGuard.trim());

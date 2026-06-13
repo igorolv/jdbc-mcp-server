@@ -10,7 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.PassThroughStructureSnapshotStore;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
@@ -55,13 +55,13 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
             String schema = ORACLE.getUsername().toUpperCase();
             JdbcProperties properties = new JdbcProperties(
                     ORACLE.getJdbcUrl(), ORACLE.getUsername(), ORACLE.getPassword(),
-                    schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000, 300, 2000);
+                    schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000);
             DataSource dataSource = buildPool(properties);
             SqlDialect dialect = new OracleDialect();
             ReadOnlyGuard guard = new ReadOnlyGuard(properties);
             SqlExecutor executor = new SqlExecutor(dataSource, dialect, properties, guard);
-            SchemaSnapshotCache cache = new SchemaSnapshotCache(properties);
-            MetadataService metadata = new MetadataService(executor, dialect, properties, cache);
+            PassThroughStructureSnapshotStore store = new PassThroughStructureSnapshotStore();
+            MetadataService metadata = new MetadataService(executor, dialect, properties, store);
             StatsService stats = new StatsService(executor, dialect, properties);
             SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
             DistributionService distribution = new DistributionService(

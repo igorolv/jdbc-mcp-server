@@ -11,7 +11,7 @@ import ru.it_spectrum.ai.jdbc.mcp.dialect.OracleDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaSnapshotCache;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.PassThroughStructureSnapshotStore;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
@@ -59,13 +59,13 @@ class LiveOracleIntegrationSchemaTest {
 
         JdbcProperties props = new JdbcProperties(
                 url, username, password,
-                schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000, 300, 2000);
+                schema, 30, 1000, 100, "strict", 40, 1, 10_000, 5_000, 60_000);
         DataSource ds = buildPool(props);
         SqlDialect dialect = new OracleDialect();
         ReadOnlyGuard guard = new ReadOnlyGuard(props);
         SqlExecutor executor = new SqlExecutor(ds, dialect, props, guard);
-        SchemaSnapshotCache cache = new SchemaSnapshotCache(props);
-        metadata = new MetadataService(executor, dialect, props, cache);
+        PassThroughStructureSnapshotStore store = new PassThroughStructureSnapshotStore();
+        metadata = new MetadataService(executor, dialect, props, store);
         StatsService stats = new StatsService(executor, dialect, props);
         schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
         JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());

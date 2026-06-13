@@ -11,7 +11,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTermEvidence;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
-import ru.it_spectrum.ai.jdbc.mcp.usage.UsageDataSourceConfig;
+import ru.it_spectrum.ai.jdbc.mcp.usage.CatalogTestSupport;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageConfidence;
@@ -37,8 +37,7 @@ class EdgeDecorationTest {
     @BeforeEach
     void setUp() throws Exception {
         UsageProperties properties = new UsageProperties(true, List.of(), List.of(), true, true, true, 1_000);
-        JdbcMcpProperties jdbcMcpProperties = new JdbcMcpProperties("");
-        DataSource ds = new UsageDataSourceConfig().usageDataSource(properties, jdbcMcpProperties);
+        DataSource ds = CatalogTestSupport.inMemoryCatalog();
         usageCatalog = new UsageCatalogService(properties, ds, new QueryAnalysisService(),
                 new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), null);
         probe = new DecorationProbe(usageCatalog);
