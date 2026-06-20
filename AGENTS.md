@@ -194,7 +194,12 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **48 MCP tools**. All are read-only with respect to the inspected database.
+The server exposes **48 MCP tools**, all read-only with respect to the inspected database. Which
+ones appear in `tools/list` depends on the `JDBC_MCP_TOOLS_*` group flags. **All groups are on by
+default**, so the full set is available out of the box. To shrink the manifest for a small-context
+(local) model, turn groups off — e.g. keep only Metadata + Query by setting the other flags to
+`false` (`JDBC_MCP_TOOLS_ANALYSIS=false`, `JDBC_MCP_TOOLS_STATS=false`, …); see the README "Tool
+Groups" table for the full mapping. The sections below document every tool.
 
 ### Query tools
 

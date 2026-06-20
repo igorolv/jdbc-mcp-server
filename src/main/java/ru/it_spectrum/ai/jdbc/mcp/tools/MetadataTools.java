@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListSchemasResult;
@@ -26,6 +27,7 @@ import java.util.List;
  * view definitions, routines, sequences, and cross-object search.
  */
 @Service
+@ConditionalOnProperty(prefix = "jdbc-mcp.tools", name = "metadata", havingValue = "true", matchIfMissing = true)
 public class MetadataTools {
 
     private static final Logger log = LoggerFactory.getLogger(MetadataTools.class);

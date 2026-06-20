@@ -29,16 +29,16 @@ class SqlServerIntegrationQueryToolsTest extends AbstractSqlServerToolsIntegrati
 
     @Test
     void explainAnalyzeAndValidateReturnToolLevelResponses() {
-        String plan = queryTools().explainQuery(
+        String plan = queryAnalysisTools().explainQuery(
                 "SELECT * FROM dbo.customers WHERE name LIKE 'A%'", null, null, false);
         assertThat(plan).containsIgnoringCase("customers");
 
-        ObjectNode summary = object(queryTools().analyzePlan(
+        ObjectNode summary = object(queryAnalysisTools().analyzePlan(
                 "SELECT * FROM dbo.customers WHERE name LIKE 'A%'", null, null, false));
         assertThat(field(summary, "engine").asText()).isEqualTo("mssql");
         assertThat(field(summary, "nodeCount").asInt()).isGreaterThan(0);
 
-        ObjectNode valid = object(queryTools().validateQuery("SELECT * FROM dbo.customers", null, null));
+        ObjectNode valid = object(queryAnalysisTools().validateQuery("SELECT * FROM dbo.customers", null, null));
         assertThat(field(valid, "valid").asBoolean()).isTrue();
         assertThat(field(field(valid, "inspection"), "parseable").asBoolean()).isTrue();
     }
@@ -52,7 +52,7 @@ class SqlServerIntegrationQueryToolsTest extends AbstractSqlServerToolsIntegrati
 
     @Test
     void inspectQueryAndQueryLintReturnAuthoringSignals() {
-        ObjectNode inspection = object(queryTools().inspectQuery("""
+        ObjectNode inspection = object(queryAnalysisTools().inspectQuery("""
                 SELECT c.name, o.total
                 FROM dbo.customers c
                 JOIN dbo.orders o ON o.customer_id = c.id
@@ -62,7 +62,7 @@ class SqlServerIntegrationQueryToolsTest extends AbstractSqlServerToolsIntegrati
         assertThat(field(inspection, "parseable").asBoolean()).isTrue();
         assertThat(field(inspection, "tables").size()).isEqualTo(2);
 
-        ObjectNode lint = object(queryTools().queryLint("""
+        ObjectNode lint = object(queryAnalysisTools().queryLint("""
                 SELECT *
                 FROM dbo.customers c
                 JOIN dbo.orders o ON o.customer_id = c.id

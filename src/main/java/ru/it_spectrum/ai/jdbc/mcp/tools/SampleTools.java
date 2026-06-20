@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
@@ -17,6 +18,7 @@ import java.util.Collections;
  * Convenience tools that help an LLM explore data quickly.
  */
 @Service
+@ConditionalOnProperty(prefix = "jdbc-mcp.tools", name = "sample", havingValue = "true", matchIfMissing = true)
 public class SampleTools {
 
     private static final Logger log = LoggerFactory.getLogger(SampleTools.class);

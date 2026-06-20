@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.IndexStats;
@@ -21,6 +22,7 @@ import java.sql.SQLException;
  * questions that the LLM otherwise has to guess.
  */
 @Service
+@ConditionalOnProperty(prefix = "jdbc-mcp.tools", name = "stats", havingValue = "true", matchIfMissing = true)
 public class StatsTools {
 
     private static final Logger log = LoggerFactory.getLogger(StatsTools.class);

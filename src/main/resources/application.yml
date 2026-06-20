@@ -23,6 +23,20 @@ jdbc-mcp:
   # future persisted snapshot). Defaults to "default". Run several DBs by launching several server
   # instances, each with its own JDBC_MCP_CATALOG.
   catalog-name: ${JDBC_MCP_CATALOG:default}
+  # Which tool groups are exposed in the MCP tools/list manifest. All groups are on by default;
+  # turn groups off (e.g. JDBC_MCP_TOOLS_STATS=false) to shrink the manifest for small-context
+  # (local) models that would otherwise be flooded at session start. Each flag toggles one @Service.
+  tools:
+    metadata: ${JDBC_MCP_TOOLS_METADATA:true}            # schemas/tables/columns/views/routines/search
+    query: ${JDBC_MCP_TOOLS_QUERY:true}                  # executeQuery
+    admin: ${JDBC_MCP_TOOLS_ADMIN:true}                  # rebuildCatalog
+    sample: ${JDBC_MCP_TOOLS_SAMPLE:true}                # sampleRows
+    analysis: ${JDBC_MCP_TOOLS_ANALYSIS:true}            # explain/analyzePlan/validate/inspect/lint/lineage
+    distribution: ${JDBC_MCP_TOOLS_DISTRIBUTION:true}    # column stats/histograms/selectivity
+    stats: ${JDBC_MCP_TOOLS_STATS:true}                  # table/index stats, unused/redundant indexes
+    benchmark: ${JDBC_MCP_TOOLS_BENCHMARK:true}          # benchmarkQuery/timedQuery
+    usage: ${JDBC_MCP_TOOLS_USAGE:true}                  # usage-catalog lookups
+    schema-context: ${JDBC_MCP_TOOLS_SCHEMA_CONTEXT:true} # tableContext/joinPaths/schemaGraph/lint
 
 jdbc:
   url: ${JDBC_URL:}

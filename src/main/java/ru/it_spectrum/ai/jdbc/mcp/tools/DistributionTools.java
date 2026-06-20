@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnDistribution;
@@ -22,6 +23,7 @@ import java.sql.SQLException;
  * column?" questions the other stats tools deliberately do not answer.
  */
 @Service
+@ConditionalOnProperty(prefix = "jdbc-mcp.tools", name = "distribution", havingValue = "true", matchIfMissing = true)
 public class DistributionTools {
 
     private static final Logger log = LoggerFactory.getLogger(DistributionTools.class);

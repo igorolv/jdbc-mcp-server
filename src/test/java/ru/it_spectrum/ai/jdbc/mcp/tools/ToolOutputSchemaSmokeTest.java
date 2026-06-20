@@ -128,6 +128,7 @@ class ToolOutputSchemaSmokeTest {
     private static Class<?>[] toolClasses() {
         return new Class<?>[]{
                 QueryTools.class,
+                QueryAnalysisTools.class,
                 BenchmarkTools.class,
                 MetadataTools.class,
                 AdminTools.class,

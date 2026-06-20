@@ -29,18 +29,18 @@ class OracleIntegrationQueryToolsTest extends AbstractOracleToolsIntegrationTest
 
     @Test
     void explainAnalyzeAndValidateReturnToolLevelResponses() {
-        String plan = queryTools().explainQuery(
+        String plan = queryAnalysisTools().explainQuery(
                 "SELECT * FROM customers WHERE name LIKE 'A%'", null, null, false);
         assertThat(plan).containsIgnoringCase("CUSTOMERS");
 
-        ObjectNode summary = object(queryTools().analyzePlan(
+        ObjectNode summary = object(queryAnalysisTools().analyzePlan(
                 "SELECT * FROM customers WHERE name LIKE 'A%'", null, null, false));
         assertThat(field(summary, "engine").asText()).isEqualTo("oracle");
         assertThat(field(summary, "nodeCount").asInt()).isGreaterThan(0);
 
-        ObjectNode valid = object(queryTools().validateQuery("SELECT * FROM customers", null, null));
+        ObjectNode valid = object(queryAnalysisTools().validateQuery("SELECT * FROM customers", null, null));
         assertThat(field(valid, "valid").asBoolean()).isTrue();
-        ObjectNode validNamed = object(queryTools().validateQuery(
+        ObjectNode validNamed = object(queryAnalysisTools().validateQuery(
                 "SELECT COUNT(*) FROM events WHERE status = :status",
                 null, Map.of("status", "PAID")));
         assertThat(field(validNamed, "valid").asBoolean()).isTrue();
@@ -56,7 +56,7 @@ class OracleIntegrationQueryToolsTest extends AbstractOracleToolsIntegrationTest
                         java.util.List.of(1), null, 5, 5),
                 "'namedParams'");
 
-        ObjectNode invalid = object(queryTools().validateQuery("DELETE FROM customers", null, null));
+        ObjectNode invalid = object(queryAnalysisTools().validateQuery("DELETE FROM customers", null, null));
         assertThat(field(invalid, "valid").asBoolean()).isFalse();
         assertThat(field(invalid, "stage").asText()).isEqualTo("guard");
     }
