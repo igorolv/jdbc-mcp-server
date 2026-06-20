@@ -24,6 +24,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.BenchmarkTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.DistributionTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.QueryAnalysisTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SampleTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
@@ -77,7 +78,8 @@ abstract class AbstractSqlServerToolsIntegrationTest extends AbstractToolsIntegr
 
             return new IntegrationTestContext(
                     properties.defaultSchema(),
-                    new QueryTools(executor, dialect, properties, guard, planParser, analysis, lineage, lint, json, errors),
+                    new QueryTools(executor, errors),
+                    new QueryAnalysisTools(executor, dialect, properties, guard, planParser, analysis, lineage, lint, errors),
                     new MetadataTools(metadata, json, errors),
                     new SampleTools(executor, dialect, json, errors),
                     new StatsTools(stats, json, errors),

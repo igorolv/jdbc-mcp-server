@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
@@ -20,6 +21,7 @@ import java.util.List;
  * lookups. The single entry point builds a complete, distributable {@code <catalog>.db}.
  */
 @Service
+@ConditionalOnProperty(prefix = "jdbc-mcp.tools", name = "admin", havingValue = "true", matchIfMissing = true)
 public class AdminTools {
 
     private static final Logger log = LoggerFactory.getLogger(AdminTools.class);

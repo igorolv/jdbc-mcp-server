@@ -14,10 +14,22 @@ public record RebuildCatalogResult(
         List<String> structureSchemas,
         @Schema(description = "Number of schemas captured into the structure snapshot.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int structureSchemaCount,
-        @Schema(description = "Status of the usage index after the rebuild.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        UsageCatalogStatus usage
+        @Schema(description = "False when the usage catalog is disabled.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        boolean usageCatalogEnabled,
+        @Schema(description = "Usage-index state after the rebuild, e.g. not_started, indexing, ready, failed.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        String usageCatalogState,
+        @Schema(description = "Number of usage-catalog sources considered for indexing.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        int usageSourceCount
 ) {
+    /**
+     * Flattens the nested {@link UsageCatalogStatus} into scalar fields so the generated output
+     * schema stays small (this tool is in the default {@code admin} group). Callers pass the full
+     * status; only a few summary values are surfaced.
+     */
     public RebuildCatalogResult(String catalogFile, List<String> structureSchemas, UsageCatalogStatus usage) {
-        this(catalogFile, structureSchemas, structureSchemas == null ? 0 : structureSchemas.size(), usage);
+        this(catalogFile, structureSchemas, structureSchemas == null ? 0 : structureSchemas.size(),
+                usage != null && usage.catalogEnabled(),
+                usage == null ? null : usage.state(),
+                usage == null || usage.sources() == null ? 0 : usage.sources().size());
     }
 }

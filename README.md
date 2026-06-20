@@ -57,6 +57,31 @@ The protocol is `stdio` only. The client starts the server as a child process.
 
 The 48 tools are grouped below by purpose.
 
+### Tool Groups
+
+Tools are organised into groups that can be turned on or off independently with
+`JDBC_MCP_TOOLS_*` flags. **All groups are on by default**, so the full tool set is available out of
+the box. Turning groups off shrinks the `tools/list` manifest, which matters for small-context
+(local) models that would otherwise be flooded with tool schemas before the first call.
+
+| Group | Flag | Default | Tools |
+|---|---|---|---|
+| Metadata | `JDBC_MCP_TOOLS_METADATA` | **on** | `listSchemas`, `listTables`, `describeTable`, `getTriggerDefinition`, `getViewDefinition`, `listRoutines`, `getRoutineDefinition`, `listSequences`, `searchObjects` |
+| Query | `JDBC_MCP_TOOLS_QUERY` | **on** | `executeQuery` |
+| Admin | `JDBC_MCP_TOOLS_ADMIN` | **on** | `rebuildCatalog` |
+| Sample | `JDBC_MCP_TOOLS_SAMPLE` | **on** | `sampleRows` |
+| Query analysis | `JDBC_MCP_TOOLS_ANALYSIS` | **on** | `explainQuery`, `analyzePlan`, `validateQuery`, `inspectQuery`, `queryLint`, `resolveQueryLineage` |
+| Distribution | `JDBC_MCP_TOOLS_DISTRIBUTION` | **on** | `columnStats`, `columnDistribution`, `columnHistogram`, `nullRatio`, `estimateSelectivity`, `joinCardinality` |
+| Statistics | `JDBC_MCP_TOOLS_STATS` | **on** | `tableStats`, `indexStats`, `unusedIndexes`, `redundantIndexes`, `fkIndexCoverage` |
+| Benchmark | `JDBC_MCP_TOOLS_BENCHMARK` | **on** | `benchmarkQuery`, `timedQuery` |
+| Usage catalog | `JDBC_MCP_TOOLS_USAGE` | **on** | `usageCatalogStatus`, `getQuery`, `listQueries`, `findQueriesByTable`, `findQueriesByColumn`, `observedRelationships`, `listKnownTags`, `listKnownDomains`, `listKnownKinds`, `invalidateUsageCatalogCache` |
+| Schema context | `JDBC_MCP_TOOLS_SCHEMA_CONTEXT` | **on** | `tableContext`, `findJoinPaths`, `schemaLint`, `schemaBrief`, `schemaGraph`, `queryContext`, `schemaGraphDot` |
+
+Each flag accepts `true` / `false`. For a small-context local model, turn off the groups you do not
+need — for example keep only Metadata + Query by setting the rest to `false` — to cut the manifest
+down to a minimal "explore the schema and run a query" set. The sections below describe each tool
+regardless of its group.
+
 ### Query
 
 | Tool | Description |
@@ -550,6 +575,7 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_POOL_IDLE_TIMEOUT_MS` | no | Hikari idle connection timeout in milliseconds, default `60000`; idle connections above `JDBC_POOL_MIN_IDLE` are closed after this |
 | `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Shared across catalogs; each catalog gets its own subdirectory under it |
 | `JDBC_MCP_CATALOG` | no | Name of the local catalog for this database. Local data lives under `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/`, and `logs/`. Defaults to `default`. Use a different catalog name for each database |
+| `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
 | `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` | no | Comma-separated schemas captured by `rebuildCatalog`; empty means the resolved default schema |
 | `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog, default `true`. When `false`, `usageCatalogStatus` reports the disabled state and other usage tools return an `argument` error |
 | `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |

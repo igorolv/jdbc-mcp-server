@@ -19,7 +19,7 @@ import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLineageService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
-import ru.it_spectrum.ai.jdbc.mcp.tools.QueryTools;
+import ru.it_spectrum.ai.jdbc.mcp.tools.QueryAnalysisTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.ToolErrors;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -60,7 +60,7 @@ class LiveOracleIntegrationTest {
     private SqlExecutor executor;
     private MetadataService metadata;
     private StatsService stats;
-    private QueryTools queryTools;
+    private QueryAnalysisTools queryAnalysisTools;
     private JsonResponses json;
 
     @BeforeAll
@@ -95,7 +95,7 @@ class LiveOracleIntegrationTest {
         QueryLintService lint = new QueryLintService(analysis, metadata, stats);
         json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
         ToolErrors errors = new ToolErrors(json);
-        queryTools = new QueryTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lineage, lint, json, errors);
+        queryAnalysisTools = new QueryAnalysisTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lineage, lint, errors);
     }
 
     private DataSource buildPool(JdbcProperties p) {
@@ -194,12 +194,12 @@ class LiveOracleIntegrationTest {
                 "code", "A",
                 "userId", "DUMMY_USER");
 
-        String explainResult = queryTools.explainQuery(sql, null, namedParams, null);
+        String explainResult = queryAnalysisTools.explainQuery(sql, null, namedParams, null);
         assertThat(explainResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error");
 
-        String analyzeResult = json.write(queryTools.analyzePlan(sql, null, namedParams, null));
+        String analyzeResult = json.write(queryAnalysisTools.analyzePlan(sql, null, namedParams, null));
         assertThat(analyzeResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error")
@@ -208,7 +208,7 @@ class LiveOracleIntegrationTest {
 
     @Test
     void resolveQueryLineageOnDualDoesNotThrow() {
-        String result = json.write(queryTools.resolveQueryLineage(
+        String result = json.write(queryAnalysisTools.resolveQueryLineage(
                 "SELECT 1 AS v FROM dual",
                 schema,
                 true,

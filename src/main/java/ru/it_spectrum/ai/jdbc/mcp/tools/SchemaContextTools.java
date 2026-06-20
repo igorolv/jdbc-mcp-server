@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.FindJoinPaths;
@@ -18,6 +19,7 @@ import java.sql.SQLException;
  * Higher-level schema context tools for SQL-writing agents.
  */
 @Service
+@ConditionalOnProperty(prefix = "jdbc-mcp.tools", name = "schema-context", havingValue = "true", matchIfMissing = true)
 public class SchemaContextTools {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaContextTools.class);

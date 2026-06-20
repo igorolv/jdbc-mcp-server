@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;
@@ -22,6 +23,7 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
  * together with their business context.
  */
 @Service
+@ConditionalOnProperty(prefix = "jdbc-mcp.tools", name = "usage", havingValue = "true", matchIfMissing = true)
 public class UsageTools {
 
     private static final Logger log = LoggerFactory.getLogger(UsageTools.class);
