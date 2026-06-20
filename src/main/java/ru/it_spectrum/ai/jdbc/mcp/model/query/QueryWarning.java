@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record QueryWarning(
         @Schema(description = "Stable warning or diagnostic code.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String code,
-        @Schema(description = "Human-readable diagnostic message.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String message
 ) {
 }

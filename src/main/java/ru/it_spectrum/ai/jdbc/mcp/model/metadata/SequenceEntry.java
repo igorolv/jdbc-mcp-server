@@ -4,9 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Database sequence found by metadata listing.")
 public record SequenceEntry(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name
 ) {
 }

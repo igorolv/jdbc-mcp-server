@@ -6,9 +6,9 @@ import java.util.Set;
 
 @Schema(description = "Schema lint audit result with capped findings for modeling, indexing, and data-quality issues.")
 public record SchemaLint(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
         @Schema(description = "Schema lint checks that were enabled for this audit.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Set<String> checks,

@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Planner estimate for joining two tables on a pair of columns without executing the join.")
 public record JoinCardinality(
-        @Schema(description = "Schema of the source or left-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fromSchema,
         @Schema(description = "Left or preserved source table for the join estimate.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fromTable,
@@ -12,7 +12,7 @@ public record JoinCardinality(
         String leftColumn,
         @Schema(description = "Planner row estimate for the source table before joining.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Long fromRowEstimate,
-        @Schema(description = "Schema of the target or right-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String toSchema,
         @Schema(description = "Right or joined target table for the join estimate.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String toTable,

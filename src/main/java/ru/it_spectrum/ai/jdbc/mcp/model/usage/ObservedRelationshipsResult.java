@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "Observed join relationships aggregated from known SQL queries.")
 public record ObservedRelationshipsResult(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
         @Schema(description = "Optional table filter used when aggregating observed relationships.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
@@ -33,11 +33,11 @@ public record ObservedRelationshipsResult(
     }
     @Schema(description = "Schema-qualified table column reference used in usage-catalog relationship and lineage details.")
     public record SchemaRef(
-            @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String schema,
-            @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String table,
-            @Schema(description = "Column name within the table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String column
     ) {
     }

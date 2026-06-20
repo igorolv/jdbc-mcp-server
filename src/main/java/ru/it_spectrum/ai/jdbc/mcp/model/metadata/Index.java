@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "Index metadata for a table, with uniqueness and ordered column list.")
 public record Index(
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
         @Schema(description = "True when the index or constraint enforces uniqueness.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean unique,

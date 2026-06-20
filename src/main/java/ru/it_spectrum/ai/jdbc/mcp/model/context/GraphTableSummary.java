@@ -4,9 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Compact table ranking entry used for central and isolated table summaries.")
 public record GraphTableSummary(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
         @Schema(description = "Heuristic table role in the schema graph, such as central, isolated, lookup, or regular.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String classification,

@@ -7,7 +7,7 @@ import java.util.List;
 
 @Schema(description = "Authoring context selected from schema terms or requested tables, with relevant tables, relationships, and join paths.")
 public record QueryContext(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
         @Schema(description = "Natural-language terms used to select relevant schema context.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String terms,

@@ -12,7 +12,7 @@ public record QueryValidationResult(
         Integer columns,
         @Schema(description = "Validation stage that failed, such as guard, params, or driver.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String stage,
-        @Schema(description = "Human-readable error message explaining why the requested operation failed.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String error,
         @Schema(description = "Parsed query inspection that underpins validation, lint, or lineage results.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         QueryInspection inspection

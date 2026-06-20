@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Column reference extracted from parsed SQL, with qualifier and source context.")
 public record QueryColumnRef(
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
         @Schema(description = "Qualifier used with the column reference, usually a table alias or table name.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String qualifier,

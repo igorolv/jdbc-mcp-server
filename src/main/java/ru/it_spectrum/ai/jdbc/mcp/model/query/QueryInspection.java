@@ -8,7 +8,7 @@ import java.util.Map;
 public record QueryInspection(
         @Schema(description = "True when SQL parsing succeeded well enough to produce structured inspection data.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Boolean parseable,
-        @Schema(description = "Human-readable error message explaining why the requested operation failed.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String error,
         @Schema(description = "Top-level SQL statement type detected by the parser.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String statementType,

@@ -7,17 +7,17 @@ import java.util.List;
 public record GraphEdgeSummary(
         @Schema(description = "Kind of relationship edge, such as declared foreign key or observed usage join.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String relationshipType,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
         @Schema(description = "Source node identifier for a graph edge or requested path.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String from,
         @Schema(description = "Target node identifier for a graph edge or requested path.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String to,
-        @Schema(description = "Source or left-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String fromTable,
         @Schema(description = "Source-side columns participating in the relationship, in join/key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> fromColumns,
-        @Schema(description = "Target or right-side table in the relationship.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String toTable,
         @Schema(description = "Target-side columns participating in the relationship, in join/key order.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<String> toColumns

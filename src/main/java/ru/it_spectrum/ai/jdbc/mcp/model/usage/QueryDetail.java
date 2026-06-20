@@ -11,7 +11,7 @@ public record QueryDetail(
         String sourcePath,
         @Schema(description = "Stable unit identifier inside the source, such as query id, method name, view name, or routine name.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String sourceUnit,
-        @Schema(description = "Human-readable business label attached to the query, parameter, or output.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String businessLabel,
         @Schema(description = "Business domain assigned to the catalog query or usage record.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String businessDomain,
@@ -40,7 +40,7 @@ public record QueryDetail(
     public record Param(
             @Schema(description = "One-based parameter ordinal in the query signature.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             int ordinal,
-            @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String name,
             @Schema(description = "Documented data type for the parameter.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String dataType,
@@ -48,7 +48,7 @@ public record QueryDetail(
             String defaultValue,
             @Schema(description = "True when the documented parameter is required.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             boolean required,
-            @Schema(description = "Human-readable business label attached to the query, parameter, or output.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String businessLabel,
             @Schema(description = "Free-text business explanation for a parameter, output, or transformation.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String businessDescription
@@ -58,9 +58,9 @@ public record QueryDetail(
     public record Table(
             @Schema(description = "Raw table name as it appeared in the SQL source before resolution.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String rawName,
-            @Schema(description = "Schema resolved by parser and metadata matching.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String schemaResolved,
-            @Schema(description = "Table name resolved by parser and metadata matching.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String tableResolved,
             @Schema(description = "SQL alias assigned to the table reference in the catalog query.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String alias,
@@ -72,9 +72,9 @@ public record QueryDetail(
     }
     @Schema(description = "Resolved column reference extracted from a usage-catalog query record.")
     public record Column(
-            @Schema(description = "Schema resolved by parser and metadata matching.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String schemaResolved,
-            @Schema(description = "Table name resolved by parser and metadata matching.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String tableResolved,
             @Schema(description = "Resolved column name referenced by the query.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String columnName,
@@ -97,11 +97,11 @@ public record QueryDetail(
     ) {
         @Schema(description = "Schema-qualified table column reference used in usage-catalog relationship and lineage details.")
         public record SchemaRef(
-                @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+                @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
                 String schema,
-                @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+                @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
                 String table,
-                @Schema(description = "Column name within the table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+                @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
                 String column
         ) {
         }
@@ -112,7 +112,7 @@ public record QueryDetail(
             String alias,
             @Schema(description = "SQL expression that produces the documented output field.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String sourceExpression,
-            @Schema(description = "Human-readable business label attached to the query, parameter, or output.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String businessLabel,
             @Schema(description = "Free-text business explanation for a parameter, output, or transformation.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String businessDescription,
@@ -121,11 +121,11 @@ public record QueryDetail(
     ) {
         @Schema(description = "Source column that contributes to a documented output field.")
         public record DerivedColumn(
-                @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+                @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
                 String schema,
-                @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+                @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
                 String table,
-                @Schema(description = "Column name within the table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+                @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
                 String column
         ) {
         }

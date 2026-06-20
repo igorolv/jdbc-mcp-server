@@ -22,7 +22,7 @@ public record ListQueriesResult(
             String sourcePath,
             @Schema(description = "Stable unit identifier inside the source, such as query id, method name, view name, or routine name.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String sourceUnit,
-            @Schema(description = "Human-readable business label attached to the query, parameter, or output.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String businessLabel,
             @Schema(description = "Business domain assigned to the catalog query or usage record.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String businessDomain,

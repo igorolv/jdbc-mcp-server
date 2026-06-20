@@ -5,11 +5,11 @@ import java.util.List;
 
 @Schema(description = "Resolved view, routine, or table reached while expanding lineage recursively.")
 public record LineageExpandedObject(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
-        @Schema(description = "Database object type, SQL construct type, or engine-specific classification.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String type,
         @Schema(description = "Objects that this expanded lineage object depends on.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<LineageObjectRef> dependsOn,

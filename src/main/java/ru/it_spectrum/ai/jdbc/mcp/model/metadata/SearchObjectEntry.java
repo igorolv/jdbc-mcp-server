@@ -4,9 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Database object found by cross-object metadata search.")
 public record SearchObjectEntry(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
         @Schema(description = "Database object type returned by search, such as TABLE, VIEW, ROUTINE, SEQUENCE, or SYNONYM.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String type

@@ -5,9 +5,9 @@ import java.util.List;
 
 @Schema(description = "Indexes that appear redundant because their leading columns are covered by another index on the same table.")
 public record RedundantIndexes(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
         @Schema(description = "Number of redundant-index findings returned.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int count,
@@ -16,9 +16,9 @@ public record RedundantIndexes(
 ) {
     @Schema(description = "One redundant-index finding and the larger index that covers it.")
     public record Finding(
-            @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String schema,
-            @Schema(description = "Table name for a finding or statistics row.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String tableName,
             @Schema(description = "Index that appears redundant because another index has the same leading columns.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String shadowedIndex,

@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Planner-only estimate of how selective a table predicate is.")
 public record SelectivityEstimate(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
         @Schema(description = "Table on which the predicate selectivity was estimated.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,

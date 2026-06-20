@@ -9,7 +9,7 @@ public record UnusedIndexes(
         boolean supported,
         @Schema(description = "Additional context about support, limits, interpretation, or engine-specific behavior.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String note,
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
         @Schema(description = "Number of unused indexes returned.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int count,
@@ -18,9 +18,9 @@ public record UnusedIndexes(
 ) {
     @Schema(description = "One non-primary, non-unique index with zero recorded scans.")
     public record UnusedIndexEntry(
-            @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String schema,
-            @Schema(description = "Table name for a finding or statistics row.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String tableName,
             @Schema(description = "Index name as reported by the database.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String indexName,

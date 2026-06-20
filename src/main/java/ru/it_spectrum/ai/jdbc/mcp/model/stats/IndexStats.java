@@ -10,9 +10,9 @@ public record IndexStats(
 ) {
     @Schema(description = "Statistics and metadata for one index.")
     public record IndexStatsRow(
-            @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String schema,
-            @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String table,
             @Schema(description = "Index name as reported by the database.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String indexName,

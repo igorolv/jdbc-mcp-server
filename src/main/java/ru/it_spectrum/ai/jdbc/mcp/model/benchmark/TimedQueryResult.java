@@ -10,7 +10,7 @@ public record TimedQueryResult(
         String engine,
         @Schema(description = "Wall-clock elapsed time for the query execution, in milliseconds.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         double elapsedMs,
-        @Schema(description = "Number of rows returned or represented in this response.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int rowCount,
         @Schema(description = "True when the configured row or finding cap was reached and more data may exist.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean truncated,

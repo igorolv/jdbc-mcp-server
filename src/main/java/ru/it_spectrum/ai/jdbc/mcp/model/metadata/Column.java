@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Database column metadata, including type, nullability, defaults, comments, and auto-increment status.")
 public record Column(
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
         @Schema(description = "One-based ordinal position of the column within the table.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int ordinalPosition,

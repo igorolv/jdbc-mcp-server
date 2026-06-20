@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "Shape and truncation status of a query result without carrying the row payload itself.")
 public record ResultSize(
-        @Schema(description = "Number of rows returned or represented in this response.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int rowCount,
         @Schema(description = "True when the configured row or finding cap was reached and more data may exist.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean truncated,

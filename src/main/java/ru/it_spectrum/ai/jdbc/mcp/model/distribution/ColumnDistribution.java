@@ -5,9 +5,9 @@ import java.util.List;
 
 @Schema(description = "Top-N frequency distribution for a column, useful for detecting skew and low-selectivity predicates.")
 public record ColumnDistribution(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Table name within the schema.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
         @Schema(description = "Column whose value frequencies were measured.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String column,

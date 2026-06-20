@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "Schema relationship graph metrics and edges for understanding table connectivity and join routes.")
 public record SchemaGraph(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
         @Schema(description = "Number of tables inspected by the tool before caps were applied.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int tablesScanned,

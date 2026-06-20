@@ -5,9 +5,9 @@ import java.util.List;
 
 @Schema(description = "Query object reference that could not be resolved unambiguously against metadata.")
 public record LineageUnresolvedObject(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
         @Schema(description = "Kind of unresolved reference, such as table, view, routine, or synonym.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String kind,

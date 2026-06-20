@@ -6,9 +6,9 @@ import java.util.Map;
 
 @Schema(description = "Full table or view description in one payload: columns, keys, indexes, constraints, allowed values, references, and triggers.")
 public record TableDescription(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
         @Schema(description = "Described object type, such as TABLE, VIEW, or MATERIALIZED VIEW.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String type,

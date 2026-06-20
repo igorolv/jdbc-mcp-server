@@ -5,11 +5,11 @@ import java.util.List;
 
 @Schema(description = "Usage-catalog matches for known SQL queries that reference a specific column.")
 public record FindQueriesByColumnResult(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
         @Schema(description = "Table containing the searched column.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String table,
-        @Schema(description = "Column name within the table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String column,
         @Schema(description = "Usage-catalog matches returned for the requested table, column, or filter.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<Match> matches,
@@ -24,15 +24,15 @@ public record FindQueriesByColumnResult(
             String sourcePath,
             @Schema(description = "Stable unit identifier inside the source, such as query id, method name, view name, or routine name.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String sourceUnit,
-            @Schema(description = "Human-readable business label attached to the query, parameter, or output.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String businessLabel,
             @Schema(description = "Business domain assigned to the catalog query or usage record.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String businessDomain,
             @Schema(description = "Usage context for the column reference, such as select, where, join, order_by, or having.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String context,
-            @Schema(description = "Schema resolved by parser and metadata matching.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String schemaResolved,
-            @Schema(description = "Table name resolved by parser and metadata matching.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String tableResolved,
             @Schema(description = "Resolved column name referenced by the query.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
             String columnName

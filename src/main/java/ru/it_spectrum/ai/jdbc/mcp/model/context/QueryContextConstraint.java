@@ -5,9 +5,9 @@ import java.util.List;
 
 @Schema(description = "Constraint metadata included in query authoring context, including extracted allowed values when available.")
 public record QueryContextConstraint(
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
-        @Schema(description = "Database object type, SQL construct type, or engine-specific classification.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String type,
         @Schema(description = "SQL definition or constraint expression as reported by the database.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String definition,

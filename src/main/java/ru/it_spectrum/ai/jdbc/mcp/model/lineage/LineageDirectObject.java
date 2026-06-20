@@ -4,11 +4,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Object directly referenced by the parsed query before recursive view or routine expansion.")
 public record LineageDirectObject(
-        @Schema(description = "Database schema or owner that qualifies the object.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String schema,
-        @Schema(description = "Object name as reported by database metadata or parsed SQL.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String name,
-        @Schema(description = "Database object type, SQL construct type, or engine-specific classification.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String type,
         @Schema(description = "SQL alias assigned to the directly referenced object, when present.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String alias,

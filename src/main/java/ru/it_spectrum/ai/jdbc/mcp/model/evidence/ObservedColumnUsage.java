@@ -7,7 +7,7 @@ import java.util.List;
 
 @Schema(description = "Usage-catalog evidence showing how often a column appears in known SQL queries.")
 public record ObservedColumnUsage(
-        @Schema(description = "Column name within the table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String column,
         @Schema(description = "Number of known SQL queries that reference this object or term.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int queryCount,
