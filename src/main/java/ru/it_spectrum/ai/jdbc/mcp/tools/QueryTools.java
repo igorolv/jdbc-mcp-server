@@ -50,8 +50,8 @@ public class QueryTools {
     )
     public QueryResult executeQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {

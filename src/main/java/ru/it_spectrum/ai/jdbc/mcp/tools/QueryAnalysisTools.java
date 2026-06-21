@@ -81,22 +81,20 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Return the execution plan for a SQL SELECT / WITH statement. " +
-            "PostgreSQL: uses EXPLAIN (FORMAT TEXT); with analyze=true runs EXPLAIN ANALYZE (note: this actually executes the query!). " +
-            "Oracle: uses EXPLAIN PLAN + DBMS_XPLAN.DISPLAY; analyze flag is ignored (Oracle returns a static plan). " +
-            "SQL Server: uses SET SHOWPLAN_TEXT ON for an estimated plan; analyze flag is ignored. " +
+            description = "Return the execution plan for a SELECT / WITH statement as text. " +
+            "The plan is estimated by default (no execution); analyze=true requests real run-time stats " +
+            "where the engine supports it, which actually executes the query, and is ignored otherwise. " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES +
-            "The statement is still read-only-validated before execution.",
+            "Read-only-validated before execution.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String explainQuery(
             @McpToolParam(description = "SQL statement to explain") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "PostgreSQL only: collect actual run-time stats via EXPLAIN ANALYZE. " +
-                    "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
+            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Collect real run-time stats where supported — actually executes the query. Default false.", required = false) Boolean analyze
     ) {
         log.info("Tool call: explainQuery (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
         long start = System.nanoTime();
@@ -153,25 +151,22 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Run a structured EXPLAIN and return a compact, LLM-friendly summary of the " +
-            "execution plan instead of the full dump: top expensive nodes, full table scans on large " +
-            "relations, estimation errors (planner vs. reality — requires analyze=true on PG), risky " +
-            "nested loops with large outer inputs, and disk-sort spills. " +
-            "PostgreSQL: uses EXPLAIN (FORMAT JSON); analyze=true switches to EXPLAIN ANALYZE (the query is executed!). " +
-            "Oracle: uses EXPLAIN PLAN + PLAN_TABLE; analyze flag is ignored (static plan only, no actual rows / times). " +
-            "SQL Server: uses SET SHOWPLAN_XML ON; analyze flag is ignored (estimated plan only). " +
+            description = "Run a structured EXPLAIN and return a compact, LLM-friendly plan summary instead " +
+            "of the full dump: top expensive nodes, full table scans on large relations, estimation errors " +
+            "(needs analyze=true), risky nested loops, and disk-sort spills. " +
+            "analyze=true requests real run-time stats where the engine supports it, which actually " +
+            "executes the query, and is ignored otherwise (the plan stays estimated). " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES +
-            "Use this to decide whether to add an index, refresh statistics, or rewrite a JOIN.",
+            "Use it to decide whether to add an index, refresh statistics, or rewrite a JOIN.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public PlanAnalysisSummary analyzePlan(
             @McpToolParam(description = "SQL statement to analyze") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "PostgreSQL only: collect actual row counts / timings via EXPLAIN ANALYZE. " +
-                    "Default false. Setting this to true causes the query to actually run!", required = false) Boolean analyze
+            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Collect real run-time stats where supported — actually executes the query. Default false.", required = false) Boolean analyze
     ) {
         log.info("Tool call: analyzePlan (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
         long start = System.nanoTime();
@@ -320,7 +315,7 @@ public class QueryAnalysisTools {
     )
     public QueryLintResult queryLint(
             @McpToolParam(description = "SQL statement to lint") String sql,
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema
     ) {
         log.info("Tool call: queryLint (sql={}, schema={})", sql, schema);
         long start = System.nanoTime();

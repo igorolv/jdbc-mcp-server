@@ -31,16 +31,9 @@ public class BenchmarkTools {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkTools.class);
 
-    private static final String BINDING_RULES =
-            "Binding rules: if SQL has no placeholders, omit both 'params' and 'namedParams'. " +
-            "If SQL contains '?', pass values in 'params' only, in placeholder order. " +
-            "If SQL contains named placeholders in the form ':paramName' such as ':userId' or ':status', " +
-            "pass values in 'namedParams' only. " +
-            "Never mix '?' and named placeholders in the same SQL statement, and never pass both argument styles. ";
+    private static final String BINDING_RULES = QueryToolSupport.BINDING_RULES;
 
-    private static final String BINDING_EXAMPLES =
-            "Examples: positional -> sql='SELECT * FROM events WHERE status = ?', params=['OK']; " +
-            "named -> sql='SELECT * FROM events WHERE status = :status', namedParams={status: 'OK'}. ";
+    private static final String BINDING_EXAMPLES = QueryToolSupport.BINDING_EXAMPLES;
 
     private final BenchmarkService benchmarks;
     private final JsonResponses json;
@@ -67,8 +60,8 @@ public class BenchmarkTools {
     )
     public BenchmarkResult benchmarkQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Max rows per run — required, > 0. Prevents benchmarking an unbounded query.") Integer limit,
             @McpToolParam(description = "Per-run timeout in seconds — required, > 0.") Integer timeoutSeconds,
             @McpToolParam(description = "Number of cold runs (default 1). Executed first.", required = false) Integer coldRuns,
@@ -107,17 +100,16 @@ public class BenchmarkTools {
             "wall-clock elapsed_ms measurement. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "On PostgreSQL, if the pg_stat_statements extension is installed, also attaches a " +
-            "per-queryid diff of counters that changed during the run (calls, total_exec_time_ms, rows, " +
-            "shared_blks_hit, shared_blks_read) so you can see what the server actually did. " +
+            "Where the engine exposes per-statement counters, also attaches a before/after diff of what " +
+            "changed during the run (calls, exec time, rows, buffer hits/reads). " +
             "Subject to the read-only guard, row limit and per-query timeout — same safety as executeQuery.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TimedQueryResult timedQuery(
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
-            @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
             @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
     ) {

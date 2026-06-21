@@ -75,7 +75,7 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnDistribution columnDistribution(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Column name") String column,
             @McpToolParam(description = "Number of top values to return (default 20, max 1000)", required = false) Integer topN
@@ -97,15 +97,13 @@ public class DistributionTools {
 
     @McpTool(
             description = "Return a percentile histogram for a column: min, max, P25, P50, P75, " +
-            "P90, P95, P99 plus null counts. Uses standard SQL:2003 WITHIN GROUP aggregates — " +
-            "percentile_cont for numeric types (interpolated), percentile_disc for everything else " +
-            "(date, timestamp, text) so it works on both engines. Use this instead of columnStats " +
-            "when you need to know the spread, not just the extremes.",
+            "P90, P95, P99 plus null counts. Works on numeric (interpolated), date, timestamp and " +
+            "text columns. Use this instead of columnStats when you need the spread, not just the extremes.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnHistogram columnHistogram(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Column name") String column
     ) {
@@ -133,7 +131,7 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public NullRatio nullRatio(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table
     ) {
         log.info("Tool call: nullRatio (schema={}, table={})", schema, table);
@@ -153,17 +151,15 @@ public class DistributionTools {
 
     @McpTool(
             description = "Estimate how many rows a predicate would return, without executing the " +
-            "query. Runs EXPLAIN (FORMAT JSON) on PostgreSQL / EXPLAIN PLAN on Oracle against " +
-            "'SELECT 1 FROM <table> WHERE <predicate>' and reports the planner's cardinality " +
-            "estimate, together with a baseline (no predicate) estimate and the selectivity ratio. " +
-            "Useful for choosing the most selective predicate to put first in a composite index. " +
-            "Predicate syntax is raw SQL (e.g. \"status = 'OK' AND created_at > now() - interval '7 days'\"). " +
-            "A ';' in the predicate is rejected to prevent multi-statement injection.",
+            "query: reports the planner's cardinality estimate, a baseline (no predicate) estimate, " +
+            "and the selectivity ratio. Useful for choosing the most selective predicate to put first " +
+            "in a composite index. Predicate is raw SQL without the WHERE keyword " +
+            "(e.g. \"status = 'OK' AND created_at > now() - interval '7 days'\"); a ';' is rejected.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SelectivityEstimate estimateSelectivity(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Boolean predicate expression — raw SQL, without the WHERE keyword") String predicate
     ) {
@@ -192,10 +188,10 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public JoinCardinality joinCardinality(
-            @McpToolParam(description = "From-side schema name (optional — defaults to current/default schema)", required = false) String fromSchema,
+            @McpToolParam(description = "From-side schema (optional; default schema)", required = false) String fromSchema,
             @McpToolParam(description = "From-side table or view name") String fromTable,
             @McpToolParam(description = "From-side join column") String leftColumn,
-            @McpToolParam(description = "To-side schema name (optional — defaults to current/default schema)", required = false) String toSchema,
+            @McpToolParam(description = "To-side schema (optional; default schema)", required = false) String toSchema,
             @McpToolParam(description = "To-side table or view name") String toTable,
             @McpToolParam(description = "To-side join column") String rightColumn,
             @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType

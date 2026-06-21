@@ -180,7 +180,7 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Aggregate observed equi-join pairs across all stored queries. Each row is a (left_table.left_column = right_table.right_column) pair with its support count and the list of contributing query uids. Feeds the 'observedQuery' layer of the relationship 'evidence' bundle in tableContext / findJoinPaths. Non-equi joins (BETWEEN, function-based) are excluded.",
+            description = "Aggregate observed equi-join pairs across all stored queries. Each row is a (left_table.left_column = right_table.right_column) pair with its support count and the list of contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

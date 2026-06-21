@@ -12,16 +12,11 @@ final class QueryToolSupport {
     }
 
     static final String BINDING_RULES =
-            "Binding rules: if SQL has no placeholders, omit both 'params' and 'namedParams'. " +
-            "If SQL contains '?', pass values in 'params' only, in placeholder order. " +
-            "If SQL contains named placeholders in the form ':paramName' such as ':userId' or ':status', " +
-            "pass values in 'namedParams' only. " +
-            "Never mix '?' and named placeholders in the same SQL statement, and never pass both argument styles. ";
+            "Param binding: '?' placeholders -> 'params' (in order); ':name' placeholders -> 'namedParams'; " +
+            "omit both if none. Never mix the two styles. ";
 
     static final String BINDING_EXAMPLES =
-            "Examples: positional -> sql='SELECT * FROM orders WHERE customer_id = ? AND status = ?', " +
-            "params=[123, 'PAID']; named -> sql='SELECT * FROM orders WHERE customer_id = :customerId " +
-            "AND status = :status', namedParams={customerId: 123, status: 'PAID'}. ";
+            "Example: 'WHERE status = :status' -> namedParams={status: 'PAID'}. ";
 
     /** Unescape the common backslash sequences an LLM may emit inside a JSON string before we run the SQL. */
     static String normalizeSql(String sql) {

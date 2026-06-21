@@ -39,15 +39,14 @@ public class StatsTools {
 
     @McpTool(
             description = "Return per-table storage and activity statistics: estimated row count, " +
-            "total / heap / indexes / toast size in bytes, dead tuple ratio (PG), last vacuum / analyze " +
-            "timestamps, sequential vs index scan counters. " +
-            "On Oracle also attempts a DBA_SEGMENTS lookup for on-disk size (silently skipped if the user " +
-            "lacks that privilege). The exact column set depends on the database engine.",
+            "total / heap / index / toast size in bytes, dead tuple ratio, last vacuum / analyze " +
+            "timestamps, sequential vs index scan counters. The exact column set depends on the engine, " +
+            "and some fields are skipped when the account lacks the needed privileges.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableStats tableStats(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Table name") String table
     ) {
         log.info("Tool call: tableStats (schema={}, table={})", schema, table);
@@ -67,10 +66,8 @@ public class StatsTools {
 
     @McpTool(
             description = "Return per-index statistics for a table or whole schema: size, scan counters, " +
-            "column list, uniqueness, primary flag, and engine-specific signals " +
-            "(PostgreSQL: idx_scans / idx_tup_read from pg_stat_user_indexes; " +
-            "Oracle: distinct_keys, clustering_factor, blevel, leaf_blocks, last_analyzed). " +
-            "Use it before deciding whether to add/drop an index.",
+            "column list, uniqueness, primary flag, and engine-specific signals such as scan/read counts " +
+            "and index cardinality. Use it before deciding whether to add/drop an index.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -93,10 +90,9 @@ public class StatsTools {
     @McpTool(
             description = "List indexes that have zero recorded scans — candidates for removal. " +
             "Excludes primary key / unique indexes (dropping them would break the constraint). " +
-            "PostgreSQL: uses pg_stat_user_indexes.idx_scan (cumulative since the last stats reset). " +
-            "Oracle: not directly supported — returns a diagnostic note pointing to DBA_INDEX_USAGE / V$OBJECT_USAGE. " +
-            "Caveat: a 'never-scanned' index is only a strong hint if the database has observed a full " +
-            "business cycle of traffic since the counters were reset.",
+            "Uses cumulative scan counters since the last stats reset; not supported on every engine " +
+            "(returns a diagnostic note where unavailable). Caveat: 'never-scanned' is only a strong hint " +
+            "after a full business cycle of traffic since the counters were reset.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

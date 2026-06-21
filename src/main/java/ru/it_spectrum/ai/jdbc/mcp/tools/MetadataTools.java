@@ -43,8 +43,7 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "List all schemas visible to the current user. " +
-            "System schemas (pg_catalog, information_schema, SYS, SYSTEM, ...) are excluded by default.",
+            description = "List all schemas visible to the current user. System schemas are excluded by default.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -72,7 +71,7 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListTablesResult listTables(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Name pattern with JDBC wildcards, e.g. '%user%' (optional)", required = false) String namePattern,
             @McpToolParam(description = "Comma-separated list of types: TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM (optional)", required = false) String types
     ) {
@@ -97,7 +96,7 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableDescription describeTable(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table
     ) {
         log.info("Tool call: describeTable (schema={}, table={})", schema, table);
@@ -121,7 +120,7 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String getTriggerDefinition(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Trigger name") String trigger
     ) {
@@ -169,7 +168,7 @@ public class MetadataTools {
 
     @McpTool(
             description = "List functions / procedures / packages in a schema. " +
-            "For Oracle, packages are listed once (use getRoutineDefinition to get the source of a specific package body).",
+            "Packages are listed once; use getRoutineDefinition for the source of a specific body.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -190,8 +189,7 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "Get the source code of a function / procedure / package (body, where applicable). " +
-            "On Oracle the result contains the concatenated source lines from ALL_SOURCE.",
+            description = "Get the source code of a function / procedure / package (body, where applicable).",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

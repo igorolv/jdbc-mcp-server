@@ -43,12 +43,12 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableContext tableContext(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Root table or view name") String table,
             @McpToolParam(description = "FK traversal depth. Default 1, capped at 4.", required = false) Integer depth,
             @McpToolParam(description = "Include incoming references from child tables. Default true.", required = false) Boolean includeIncoming,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
-            @McpToolParam(description = "Augment relationships with the three-layer 'evidence' bundle from the local usage catalog: declared schema FKs, observed equi-joins, and shared semantic usage. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
+            @McpToolParam(description = "Augment relationships with usage-catalog evidence (declared FKs, observed joins, semantic usage). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         log.info("Tool call: tableContext (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -82,7 +82,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum FK hops. Default 4, capped at 4.", required = false) Integer maxDepth,
             @McpToolParam(description = "Maximum paths to return. Default 5, capped at 25.", required = false) Integer maxPaths,
             @McpToolParam(description = "Maximum schema tables to scan when building the graph. Default 300, capped at 300.", required = false) Integer scanLimit,
-            @McpToolParam(description = "Include observed equi-join pairs from the local usage catalog as additional edges in the search graph. Each path step then carries an 'evidence' bundle with 'declaredSchema', 'observedQuery' and 'semanticUsage' layers (any of which may be absent). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
+            @McpToolParam(description = "Also use observed equi-joins from the usage catalog as extra graph edges. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         log.info("Tool call: findJoinPaths ({}.{} -> {}.{})", fromSchema, fromTable, toSchema, toTable);
         long start = System.nanoTime();
@@ -111,7 +111,7 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SchemaLint schemaLint(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Single table to lint (optional — omit to scan the schema)", required = false) String table,
             @McpToolParam(description = "Comma-separated checks to run, e.g. 'missingPrimaryKey,fkWithoutIndex' (optional)", required = false) String checks,
             @McpToolParam(description = "Maximum schema tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
@@ -142,7 +142,7 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String schemaBrief(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Optional search terms to narrow table discovery; falls back to whole schema if no table matches.", required = false) String terms,
             @McpToolParam(description = "Maximum tables/views to include as a safety cap. Default 2000, capped at 5000.", required = false) Integer maxTables
     ) {
@@ -169,7 +169,7 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SchemaGraph schemaGraph(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Maximum tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
             @McpToolParam(description = "Optional start table for shortestPath.", required = false) String fromTable,
             @McpToolParam(description = "Optional target table for shortestPath.", required = false) String toTable,
@@ -199,7 +199,7 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryContext queryContext(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Search terms from the user request, e.g. 'customers order totals'", required = false) String terms,
             @McpToolParam(description = "Comma-separated table names to force-include, e.g. 'customers,orders' (optional)", required = false) String tables,
             @McpToolParam(description = "Include up to 3 sample rows per selected table. Default false.", required = false) Boolean includeSamples,
@@ -230,7 +230,7 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String schemaGraphDot(
-            @McpToolParam(description = "Schema name (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
             @McpToolParam(description = "Comma-separated table names to include, e.g. 'customers,orders' (optional — all tables if omitted)", required = false) String tables
     ) {
         log.info("Tool call: schemaGraphDot (schema={})", schema);
