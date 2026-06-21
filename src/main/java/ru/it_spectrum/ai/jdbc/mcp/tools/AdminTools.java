@@ -44,10 +44,9 @@ public class AdminTools {
 
     @McpTool(
             description = "Build the local catalog file: capture structural metadata and rebuild the "
-                    + "usage index for the given schemas, so later metadata and usage lookups are served "
-                    + "from it and the file can be shipped or reused as a prebuilt catalog. 'schemas': "
-                    + "comma-separated; omit for the configured scope or default schema. Returns the "
-                    + "catalog file path, the captured schemas and the usage-index status.",
+                    + "usage index for the given schemas, so later lookups are served from it and the "
+                    + "file can be shipped or reused as a prebuilt catalog. Returns the catalog file "
+                    + "path, captured schemas, and usage-index status.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

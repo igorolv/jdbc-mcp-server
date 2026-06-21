@@ -39,9 +39,8 @@ public class StatsTools {
 
     @McpTool(
             description = "Return per-table storage and activity statistics: estimated row count, " +
-            "total / heap / index / toast size in bytes, dead tuple ratio, last vacuum / analyze " +
-            "timestamps, sequential vs index scan counters. The exact column set depends on the engine, " +
-            "and some fields are skipped when the account lacks the needed privileges.",
+            "total/heap/index/toast size, dead tuple ratio, last vacuum/analyze timestamps, " +
+            "seq vs index scan counters. Exact fields depend on the engine; some are skipped without privileges.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -88,11 +87,10 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "List indexes that have zero recorded scans — candidates for removal. " +
-            "Excludes primary key / unique indexes (dropping them would break the constraint). " +
-            "Uses cumulative scan counters since the last stats reset; not supported on every engine " +
-            "(returns a diagnostic note where unavailable). Caveat: 'never-scanned' is only a strong hint " +
-            "after a full business cycle of traffic since the counters were reset.",
+            description = "List indexes with zero recorded scans — candidates for removal. " +
+            "Excludes PK/unique indexes (dropping them breaks the constraint). " +
+            "Uses cumulative scan counters since the last stats reset; not supported on every engine. " +
+            "Caveat: 'never-scanned' is reliable only after a full traffic cycle since the reset.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -113,10 +111,9 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "List indexes whose leading-column list is a strict prefix of another index on the same table — " +
-            "the shorter index is redundant and a candidate for removal. " +
-            "Only non-unique indexes are reported (removing a UNIQUE index loses the constraint). " +
-            "Index types must match (we do not claim a GIN index shadows a BTREE).",
+            description = "List indexes whose leading columns are a strict prefix of another index on the same table — " +
+            "the shorter one is redundant and a candidate for removal. " +
+            "Only non-unique indexes are reported; index types must match (a GIN index won't shadow a BTREE).",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -137,11 +134,10 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "List foreign keys on the child side that lack a supporting index. " +
-            "A FK is considered covered if some index starts with exactly the FK columns in order. " +
+            description = "List child-side foreign keys that lack a supporting index. " +
+            "A FK is covered if some index starts with exactly the FK columns in order. " +
             "Missing FK indexes are a classic cause of slow DELETE/UPDATE cascades and slow joins. " +
-            "If 'table' is omitted, every table in the schema is scanned. " +
-            "Each entry includes a suggested_index_columns list that you can feed directly into a CREATE INDEX.",
+            "Each entry includes suggested_index_columns ready for CREATE INDEX.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

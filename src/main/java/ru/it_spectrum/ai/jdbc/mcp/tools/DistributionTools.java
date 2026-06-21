@@ -39,9 +39,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return basic statistics for a column: total row count, non-null count, " +
-            "distinct value count, min and max. A cheap one-shot scan when you only need the extremes; " +
-            "use columnHistogram for percentiles or nullRatio for per-column null shares across the whole table.",
+            description = "Return basic statistics for a column: total rows, non-null count, distinct count, " +
+            "min, max. Cheap one-shot scan for extremes; " +
+            "use columnHistogram for percentiles or nullRatio for per-column null shares.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -66,11 +66,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return the top-N most frequent values of a column together with their " +
-            "share of the total row count. Helps detect data skew — e.g. '70 % of rows have " +
-            "status=OK' — which makes a plain index on that column nearly useless without another " +
-            "predicate in the WHERE clause. Executes GROUP BY + COUNT — may be heavy on very large " +
-            "tables; use a limited topN. Default topN=20, max 1000.",
+            description = "Return the top-N most frequent values of a column with their share of total rows. " +
+            "Detects data skew (e.g. '70% of rows have status=OK'), which makes a plain index nearly useless. " +
+            "Executes GROUP BY + COUNT — may be heavy on large tables; keep topN small. Default 20, max 1000.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -96,9 +94,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return a percentile histogram for a column: min, max, P25, P50, P75, " +
-            "P90, P95, P99 plus null counts. Works on numeric (interpolated), date, timestamp and " +
-            "text columns. Use this instead of columnStats when you need the spread, not just the extremes.",
+            description = "Return a percentile histogram for a column: min, max, P25/P50/P75/P90/P95/P99 " +
+            "plus null counts. Works on numeric (interpolated), date, timestamp and text columns. " +
+            "Use instead of columnStats when you need the spread, not just extremes.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -123,10 +121,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return the null / non-null ratio for every column of a table in a single " +
-            "scan. Columns are sorted by descending null_ratio so sparse columns — the ones most " +
-            "likely to benefit from a WHERE col IS NOT NULL partial index — appear first. " +
-            "A 'sparse' flag is set on columns whose null ratio is > 50 %.",
+            description = "Return the null/non-null ratio for every column of a table in one scan. " +
+            "Sorted by descending null_ratio, so sparse columns (candidates for a WHERE col IS NOT NULL " +
+            "partial index) appear first. A 'sparse' flag marks columns with null ratio > 50%.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -150,11 +147,11 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Estimate how many rows a predicate would return, without executing the " +
-            "query: reports the planner's cardinality estimate, a baseline (no predicate) estimate, " +
-            "and the selectivity ratio. Useful for choosing the most selective predicate to put first " +
-            "in a composite index. Predicate is raw SQL without the WHERE keyword " +
-            "(e.g. \"status = 'OK' AND created_at > now() - interval '7 days'\"); a ';' is rejected.",
+            description = "Estimate how many rows a predicate would return without executing it: " +
+            "planner cardinality estimate, baseline (no-predicate) estimate, and selectivity ratio. " +
+            "Helps pick the most selective predicate for a composite index. " +
+            "Predicate is raw SQL without WHERE " +
+            "(e.g. \"status = 'OK' AND created_at > now() - interval '7 days'\"); no ';'.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -179,11 +176,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Estimate the row count of an equi-join between two tables without " +
-            "executing the query. Builds 'SELECT 1 FROM <left> JOIN <right> ON left.col = right.col' " +
-            "and reports the planner's cardinality estimate plus each side's base row estimate " +
-            "and the selectivity versus the Cartesian product. Supported join types: INNER " +
-            "(default), LEFT, RIGHT, FULL.",
+            description = "Estimate the row count of an equi-join between two tables without executing it: " +
+            "planner cardinality estimate, each side's base row estimate, and selectivity vs the Cartesian product. " +
+            "Join types: INNER (default), LEFT, RIGHT, FULL.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

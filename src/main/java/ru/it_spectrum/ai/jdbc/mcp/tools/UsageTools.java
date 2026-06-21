@@ -97,7 +97,7 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "List queries in the usage catalog. All filters are optional; default ordering is by most-recent ingest. sourcePath supports SQL LIKE wildcards ('%' / '_'). searchText performs a case-insensitive search across raw SQL, labels, source paths, and domains.",
+            description = "List queries in the usage catalog; default order is most-recent ingest. Filters combine; sourcePath uses SQL LIKE wildcards ('%' / '_').",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -154,7 +154,7 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Find catalog queries that reference a given column. The 'context' field in each match indicates where the column is used: 'select' | 'where' | 'join' | 'order_by' | 'having'. Schema and table filters are optional and case-insensitive; when omitted, all columns with the given name are matched.",
+            description = "Find catalog queries that reference a given column. Each match's 'context' field shows where the column is used: select | where | join | order_by | having. Schema/table filters are case-insensitive; omitted = match all columns with that name.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -180,7 +180,7 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Aggregate observed equi-join pairs across all stored queries. Each row is a (left_table.left_column = right_table.right_column) pair with its support count and the list of contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded.",
+            description = "Aggregate observed equi-join pairs across all stored queries. Each row is a left.col = right.col pair with its support count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

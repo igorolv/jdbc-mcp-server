@@ -82,8 +82,7 @@ public class QueryAnalysisTools {
 
     @McpTool(
             description = "Return the execution plan for a SELECT / WITH statement as text. " +
-            "The plan is estimated by default (no execution); analyze=true requests real run-time stats " +
-            "where the engine supports it, which actually executes the query, and is ignored otherwise. " +
+            "Estimated by default; analyze=true collects real run-time stats where supported (executes the query). " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES,
             generateOutputSchema = true,
@@ -150,11 +149,9 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Run a structured EXPLAIN and return a compact, LLM-friendly plan summary instead " +
-            "of the full dump: top expensive nodes, full table scans on large relations, estimation errors " +
-            "(needs analyze=true), risky nested loops, and disk-sort spills. " +
-            "analyze=true requests real run-time stats where the engine supports it, which actually " +
-            "executes the query, and is ignored otherwise (the plan stays estimated). " +
+            description = "Run a structured EXPLAIN and return a compact plan summary instead of the full dump: " +
+            "top expensive nodes, full scans on large tables, estimation errors (needs analyze=true), " +
+            "risky nested loops, and disk-sort spills. " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES +
             "Use it to decide whether to add an index, refresh statistics, or rewrite a JOIN.",
@@ -331,10 +328,9 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Resolve metadata-aware lineage for a SQL SELECT / WITH / EXPLAIN statement. " +
-            "Returns direct objects named in FROM/JOIN and expands database views and routines to the " +
-            "underlying physical tables when enabled. Routine expansion is best-effort: it extracts " +
-            "embedded SELECT/WITH statements from function/procedure source and may miss dynamic SQL.",
+            description = "Resolve metadata-aware lineage for a SELECT / WITH / EXPLAIN statement. " +
+            "Returns direct objects in FROM/JOIN and expands views and routines to underlying physical tables. " +
+            "Routine expansion is best-effort (extracts embedded SELECT/WITH from source; may miss dynamic SQL).",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

@@ -35,10 +35,9 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Return a compact context around one table: the table itself, FK parent tables, " +
+            description = "Return a compact context around one table: the table, FK parent tables, " +
             "optionally child tables that reference it, and relationship edges. " +
-            "Use this when a query starts from a known table and needs nearby joins. " +
-            "Depth defaults to 1.",
+            "Use when a query starts from a known table and needs nearby joins. Depth defaults to 1.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -102,11 +101,10 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Run a compact schema lint audit for SQL-writing and query-optimization risks. " +
-            "Checks include missing primary keys, FK columns without supporting indexes, FK type mismatch, " +
-            "nullable unique columns, status/type columns without CHECK, " +
-            "orphan *_id columns, missing remarks, isolated tables, and wide tables. " +
-            "The optional checks parameter is a comma-separated allow-list; omit it to run the default set.",
+            description = "Run a compact schema lint audit for SQL-writing and query-optimization risks: " +
+            "missing PKs, unindexed/mismatched FKs, nullable unique columns, status/type columns without CHECK, " +
+            "orphan *_id columns, missing remarks, isolated and wide tables. " +
+            "'checks' is a comma-separated allow-list; omit for the default set.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -135,9 +133,9 @@ public class SchemaContextTools {
 
     @McpTool(
             description = "Return a plain-text full-schema map for SQL authoring. " +
-            "Lists all matching tables/views with column counts, PK, relationship counts, and key-like columns; " +
-            "also summarizes central/isolated tables and key FK relationships. " +
-            "Use this first when the relevant tables are not known yet, then call queryContext for detailed context.",
+            "Lists matching tables/views with column counts, PK, relationship counts, and key-like columns; " +
+            "summarizes central/isolated tables and key FK relationships. " +
+            "Use first when relevant tables are unknown; then call queryContext for detail.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -162,8 +160,8 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Return relationship graph metrics for a schema: nodes with incoming/outgoing degree " +
-            "and classification, edges, central tables, isolated tables, connected components, cycle hints, " +
+            description = "Return relationship graph metrics for a schema: nodes (in/out degree + classification), " +
+            "edges, central and isolated tables, connected components, cycle hints, " +
             "and optionally the shortest path between two tables.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
@@ -193,8 +191,8 @@ public class SchemaContextTools {
 
     @McpTool(
             description = "Build a compact SQL authoring context from natural-language terms and/or known tables. " +
-            "The tool discovers relevant tables/columns, includes constraints and allowed values, " +
-            "adds relationships and join paths between selected tables, and can include tiny best-effort samples.",
+            "Discovers relevant tables/columns, includes constraints and allowed values, " +
+            "adds relationships and join paths between selected tables, and optionally tiny samples.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -223,9 +221,8 @@ public class SchemaContextTools {
 
     @McpTool(
             description = "Return a DOT/Graphviz representation of the schema relationship graph. " +
-            "Nodes are tables with all columns and types (PK marked with 🔑, FK with →), " +
-            "edges include join conditions. " +
-            "Use this to visualize the ERD in an external Graphviz tool.",
+            "Nodes are tables with all columns and types (PK 🔑, FK →), edges include join conditions. " +
+            "Render the ERD in an external Graphviz tool.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

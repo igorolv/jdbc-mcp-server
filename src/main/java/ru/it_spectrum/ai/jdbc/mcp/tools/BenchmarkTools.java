@@ -46,14 +46,13 @@ public class BenchmarkTools {
     }
 
     @McpTool(
-            description = "Benchmark a SQL statement by running it repeatedly and reporting " +
-            "wall-clock latency: the first 'coldRuns' executions (default 1) are reported separately " +
-            "as 'cold' (caches cold, plan not primed), then 'warmRuns' executions (default 3) are " +
-            "aggregated into min / median / max. " +
+            description = "Benchmark a SQL statement by running it repeatedly: " +
+            "'coldRuns' cold executions (default 1) reported separately, then 'warmRuns' (default 3) " +
+            "aggregated into min/median/max. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "Both 'limit' and 'timeoutSeconds' are REQUIRED — unbounded queries are rejected. " +
-            "Returns the size of the last result (row count, columns, truncation flag), not the rows.",
+            "'limit' and 'timeoutSeconds' are REQUIRED — unbounded queries are rejected. " +
+            "Returns the size of the last result (rows, columns, truncated), not the rows.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
