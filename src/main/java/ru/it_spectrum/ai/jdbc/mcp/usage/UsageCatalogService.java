@@ -1,7 +1,5 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import net.sf.jsqlparser.JSQLParserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +41,8 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutput;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageOutputColumn;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageParameter;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -321,14 +321,14 @@ public class UsageCatalogService {
                         addRecord(origin + "[" + i + "]",
                                 mapper.treeToValue(root.get(i), QueryUsage.class),
                                 records, duplicateKeys, errors);
-                    } catch (RuntimeException | IOException e) {
+                    } catch (RuntimeException e) {
                         errors.add(origin + "[" + i + "]: " + e.getMessage());
                     }
                 }
                 return;
             }
             errors.add(origin + ": expected QueryUsage object or array of QueryUsage objects");
-        } catch (RuntimeException | IOException e) {
+        } catch (RuntimeException e) {
             errors.add(origin + ": " + e.getMessage());
         }
     }

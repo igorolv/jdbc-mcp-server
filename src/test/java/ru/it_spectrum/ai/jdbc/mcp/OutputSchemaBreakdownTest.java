@@ -1,7 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.util.json.schema.JsonSchemaGenerator;
@@ -11,7 +11,6 @@ import org.springframework.core.type.filter.RegexPatternTypeFilter;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -83,8 +82,7 @@ class OutputSchemaBreakdownTest {
     /** Walks the schema tree accumulating byte costs. */
     private static void walk(JsonNode node, long[] acc, int[] cnt) {
         if (node.isObject()) {
-            for (Iterator<Map.Entry<String, JsonNode>> it = node.fields(); it.hasNext(); ) {
-                var e = it.next();
+            for (Map.Entry<String, JsonNode> e : node.properties()) {
                 String key = e.getKey();
                 JsonNode v = e.getValue();
                 if (key.equals("description") && v.isTextual()) {

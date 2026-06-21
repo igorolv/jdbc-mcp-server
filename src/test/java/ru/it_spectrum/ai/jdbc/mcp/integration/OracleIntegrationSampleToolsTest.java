@@ -1,6 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.integration;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 

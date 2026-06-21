@@ -1,6 +1,5 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
@@ -11,6 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageSource;
+import tools.jackson.databind.json.JsonMapper;
 
 import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
@@ -149,7 +149,7 @@ class UsageCatalogSourceLoadingTest {
         DataSource ds = CatalogTestSupport.temporaryCatalog();
         return new UsageCatalogService(properties, ds, new QueryAnalysisService(),
                 new JsonResponses(new JsonConfig().jdbcMcpObjectMapper()), jdbcMcpProperties,
-                new ObjectMapper(), sources, null);
+                JsonMapper.builder().build(), sources, null);
     }
 
     private JdbcMcpProperties jdbcMcpProperties() {

@@ -23,7 +23,6 @@ dependencies {
     implementation(libs.spring.ai.mcp.server)
     implementation(libs.jsqlparser)
     implementation(libs.sqlite.jdbc)
-    implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation(libs.antlr4.runtime)
     antlr(libs.antlr4)
 

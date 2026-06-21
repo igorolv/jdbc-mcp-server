@@ -2,8 +2,8 @@ package ru.it_spectrum.ai.jdbc.mcp.plan;
 
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
+import tools.jackson.databind.json.JsonMapper;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +66,7 @@ class PostgresPlanParserTest {
 
     @Test
     void parsesAnalyzedPlanWithChildren() {
-        PostgresPlanParser parser = new PostgresPlanParser(new ObjectMapper());
+        PostgresPlanParser parser = new PostgresPlanParser(JsonMapper.builder().build());
         ParsedPlan p = parser.parse(wrap(PG_ANALYZE_JSON), true);
 
         assertThat(p.engine()).isEqualTo("postgresql");
@@ -93,7 +93,7 @@ class PostgresPlanParserTest {
     void failsOnEmptyResult() {
         QueryResult empty = new QueryResult(List.of("QUERY PLAN"), List.of("text"),
                 List.of(), false, 0);
-        assertThatThrownBy(() -> new PostgresPlanParser(new ObjectMapper()).parse(empty, false))
+        assertThatThrownBy(() -> new PostgresPlanParser(JsonMapper.builder().build()).parse(empty, false))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

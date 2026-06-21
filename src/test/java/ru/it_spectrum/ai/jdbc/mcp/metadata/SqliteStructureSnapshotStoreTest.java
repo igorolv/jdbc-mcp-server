@@ -1,6 +1,5 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
@@ -23,6 +22,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.UniqueConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.usage.CatalogTestSupport;
+import tools.jackson.databind.ObjectMapper;
 
 import javax.sql.DataSource;
 import java.util.List;

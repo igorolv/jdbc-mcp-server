@@ -1,7 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.plan;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

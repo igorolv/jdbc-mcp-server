@@ -1,10 +1,10 @@
 package ru.it_spectrum.ai.jdbc.mcp.integration;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import ru.it_spectrum.ai.jdbc.mcp.tools.BenchmarkTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.DistributionTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.MetadataTools;
@@ -157,7 +157,7 @@ abstract class AbstractToolsIntegrationTest {
         }
         try {
             return JSON.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new AssertionError("Expected serializable response but got: " + value, e);
         }
     }
@@ -165,7 +165,7 @@ abstract class AbstractToolsIntegrationTest {
     private JsonNode parse(String json) {
         try {
             return JSON.readTree(json);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new AssertionError("Expected JSON response but got: " + json, e);
         }
     }
@@ -178,9 +178,7 @@ abstract class AbstractToolsIntegrationTest {
         if (direct != null) {
             return direct;
         }
-        var fields = node.fields();
-        while (fields.hasNext()) {
-            var entry = fields.next();
+        for (var entry : node.properties()) {
             if (entry.getKey().equalsIgnoreCase(name)) {
                 return entry.getValue();
             }

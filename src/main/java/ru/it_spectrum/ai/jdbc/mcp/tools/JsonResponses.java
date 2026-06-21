@@ -1,8 +1,8 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class JsonResponses {
@@ -16,7 +16,7 @@ public class JsonResponses {
     public String write(Object value) {
         try {
             return mapper.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize JSON response", e);
         }
     }

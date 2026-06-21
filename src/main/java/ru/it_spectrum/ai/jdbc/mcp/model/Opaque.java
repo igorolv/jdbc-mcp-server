@@ -1,15 +1,13 @@
 package ru.it_spectrum.ai.jdbc.mcp.model;
 
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.BeanProperty;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.databind.deser.ContextualDeserializer;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.BeanProperty;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
-import java.io.IOException;
 import java.util.Objects;
 
 /**
@@ -33,14 +31,12 @@ import java.util.Objects;
  * and a short {@code @Schema(description = ...)} pointer. {@link #of} returns {@code null} for a
  * {@code null} input so the NON_NULL mapper omits it.
  *
- * <p><b>Jackson-version note:</b> {@link JsonValue} is honored by both Jackson 2 and Jackson 3, but
- * {@link OpaqueDeserializer} and its {@link JsonDeserialize} binding are Jackson 2
- * ({@code com.fasterxml.jackson}). Only the Jackson 2 application mapper (snapshot store, usage
- * catalog) ever deserializes {@code Opaque}; the Jackson 3 MCP server mapper only serializes it.
- * When the app moves to Spring Boot 4 / Jackson 3, port the deserializer to {@code tools.jackson}
- * (a {@code ValueDeserializer} + the {@code tools.jackson} {@code @JsonDeserialize}). The
- * {@code OpaqueTest} round-trip runs against the real store mapper and will fail loudly if that
- * mapper migrates before this class is ported.
+ * <p><b>Jackson-version note:</b> this class is fully on Jackson 3 ({@code tools.jackson}). The
+ * {@link JsonValue} serialization hook stays in {@code com.fasterxml.jackson.annotation} (the
+ * annotations package Jackson 3 kept), while {@link OpaqueDeserializer} is a
+ * {@link ValueDeserializer} bound via the {@code tools.jackson} {@link JsonDeserialize}. The single
+ * application {@code JsonMapper} now both serializes and deserializes {@code Opaque}; the
+ * {@code OpaqueTest} round-trip exercises that mapper end to end.
  */
 @JsonDeserialize(using = Opaque.OpaqueDeserializer.class)
 public final class Opaque<T> {
@@ -85,7 +81,7 @@ public final class Opaque<T> {
     }
 
     /** Reconstructs {@code Opaque<T>} by resolving {@code T} from the field's declared generic type. */
-    static final class OpaqueDeserializer extends JsonDeserializer<Opaque<?>> implements ContextualDeserializer {
+    static final class OpaqueDeserializer extends ValueDeserializer<Opaque<?>> {
 
         private final JavaType inner;
 
@@ -98,7 +94,7 @@ public final class Opaque<T> {
         }
 
         @Override
-        public JsonDeserializer<?> createContextual(DeserializationContext ctxt, BeanProperty property) {
+        public ValueDeserializer<?> createContextual(DeserializationContext ctxt, BeanProperty property) {
             JavaType declared = property != null ? property.getType() : ctxt.getContextualType();
             return new OpaqueDeserializer(locateInner(declared));
         }
@@ -118,7 +114,7 @@ public final class Opaque<T> {
         }
 
         @Override
-        public Opaque<?> deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        public Opaque<?> deserialize(JsonParser p, DeserializationContext ctxt) {
             return Opaque.of(ctxt.readValue(p, inner));
         }
     }

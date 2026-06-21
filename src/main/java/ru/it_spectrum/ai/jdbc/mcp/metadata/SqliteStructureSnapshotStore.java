@@ -1,7 +1,5 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
@@ -12,6 +10,8 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SequenceEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -657,7 +657,7 @@ public class SqliteStructureSnapshotStore implements StructureSnapshotStore {
     private TableDescription parseTable(String json) throws SQLException {
         try {
             return mapper.readValue(json, TableDescription.class);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new SQLException("Failed to parse snapshot detail_json: " + e.getMessage(), e);
         }
     }
@@ -665,7 +665,7 @@ public class SqliteStructureSnapshotStore implements StructureSnapshotStore {
     private String writeJson(TableDescription td) throws SQLException {
         try {
             return mapper.writeValueAsString(td);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new SQLException("Failed to serialize TableDescription: " + e.getMessage(), e);
         }
     }

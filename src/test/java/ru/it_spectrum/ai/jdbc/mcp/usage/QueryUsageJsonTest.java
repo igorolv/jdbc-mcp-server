@@ -1,7 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.usage;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.exc.InvalidFormatException;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsage;
 import ru.it_spectrum.ai.jdbc.mcp.usage.format.QueryUsageConfidence;
@@ -78,7 +78,7 @@ class QueryUsageJsonTest {
                 """;
         assertThatThrownBy(() -> mapper.readValue(json, QueryUsage.class))
                 .isInstanceOfAny(InvalidFormatException.class, IllegalArgumentException.class,
-                        com.fasterxml.jackson.databind.JsonMappingException.class);
+                        tools.jackson.databind.DatabindException.class);
     }
 
     @Test
