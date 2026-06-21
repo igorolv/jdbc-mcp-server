@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 
 import java.util.List;
@@ -17,8 +18,8 @@ public record QueryContext(
         boolean includeSamples,
         @Schema(description = "Number of tables selected into the query context.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int tableCount,
-        @Schema(description = "Tables matched by semantic usage-catalog terms before final context assembly.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        List<SemanticTableCandidate> semanticMatches,
+        @Schema(description = "Tables matched by semantic usage-catalog terms before final context assembly (opaque).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        List<Opaque<SemanticTableCandidate>> semanticMatches,
         @Schema(description = "Tables included in this context, graph, query inspection, or usage record.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<QueryContextTable> tables,
         @Schema(description = "Relationship edges relevant to the context, graph, or observed-relationships result.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)

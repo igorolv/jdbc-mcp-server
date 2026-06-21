@@ -8,6 +8,7 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore.RoutineRecord;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore.SqlSupplier;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore.StructureSnapshotData;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore.ViewRecord;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
@@ -52,8 +53,8 @@ class SqliteStructureSnapshotStoreTest {
                 List.of(new Index("customer_status_ix", false, List.of("status"))),
                 List.of(new ForeignKey("customer_org_fk", List.of("org_id"),
                         "public", "org", List.of("id"))),
-                List.of(new IncomingForeignKey("order_customer_fk", "public", "orders",
-                        List.of("customer_id"), List.of("id"))),
+                List.of(Opaque.of(new IncomingForeignKey("order_customer_fk", "public", "orders",
+                        List.of("customer_id"), List.of("id")))),
                 List.of(new CheckConstraint("customer_status_chk", List.of("status"),
                         "status IN ('NEW','ACTIVE')", List.of("NEW", "ACTIVE"))),
                 List.of());

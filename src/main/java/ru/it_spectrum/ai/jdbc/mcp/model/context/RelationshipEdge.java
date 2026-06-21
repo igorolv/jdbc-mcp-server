@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
 
 import java.util.List;
@@ -25,12 +26,12 @@ public record RelationshipEdge(
         List<String> toColumns,
         @Schema(description = "True when the relationship can be traversed in either direction for graph search.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         Boolean undirected,
-        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        RelationshipEvidence evidence
+        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources (opaque).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        Opaque<RelationshipEvidence> evidence
 ) {
     public RelationshipEdge withEvidence(RelationshipEvidence evidence) {
         return new RelationshipEdge(
                 relationshipType, name, fromSchema, fromTable, fromColumns,
-                toSchema, toTable, toColumns, undirected, evidence);
+                toSchema, toTable, toColumns, undirected, Opaque.of(evidence));
     }
 }

@@ -488,7 +488,7 @@ public class QueryLineageService {
 
         QueryLineageResult result() {
             return new QueryLineageResult(
-                    inspection,
+                    ru.it_spectrum.ai.jdbc.mcp.model.Opaque.of(inspection),
                     List.copyOf(directObjects),
                     dedupePhysical(physicalTables),
                     List.copyOf(expandedObjects),

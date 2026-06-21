@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.SemanticTableCandidate;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
@@ -32,8 +33,8 @@ public record QueryContextTable(
         List<ForeignKey> foreignKeys,
         @Schema(description = "Indexes available on the table or returned by an index-statistics scan.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<CompactTable.CompactIndex> indexes,
-        @Schema(description = "Semantic match evidence that caused this table to be selected for query context.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        SemanticTableCandidate semanticMatch,
+        @Schema(description = "Semantic match evidence that caused this table to be selected for query context (opaque).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        Opaque<SemanticTableCandidate> semanticMatch,
         @Schema(description = "Small sample of table rows included for data-shape inspection.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         QueryContextSample sample
 ) {

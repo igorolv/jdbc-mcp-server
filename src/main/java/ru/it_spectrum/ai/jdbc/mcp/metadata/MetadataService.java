@@ -7,6 +7,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
@@ -471,8 +472,10 @@ public class MetadataService {
 
                 descMap.put(key(te.schema(), t), new TableDescription(
                         te.schema(), t, te.type(), te.remarks(),
-                        cols, pk, unique, indexes, fks, refs,
-                        checkConstraints, triggers));
+                        cols, pk, unique, indexes, fks,
+                        refs.stream().map(Opaque::of).toList(),
+                        checkConstraints,
+                        triggers.stream().map(Opaque::of).toList()));
             }
             return descMap;
         });

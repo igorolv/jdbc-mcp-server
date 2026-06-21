@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.metadata;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import java.util.List;
 
 @Schema(description = "Full table or view description in one payload: columns, keys, indexes, constraints, allowed values, references, and triggers.")
@@ -23,11 +24,11 @@ public record TableDescription(
         List<Index> indexes,
         @Schema(description = "Outgoing foreign keys declared by the table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<ForeignKey> foreignKeys,
-        @Schema(description = "Incoming foreign keys from other tables that reference this table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        List<IncomingForeignKey> referencedBy,
+        @Schema(description = "Incoming foreign keys from other tables that reference this table (opaque).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        List<Opaque<IncomingForeignKey>> referencedBy,
         @Schema(description = "CHECK constraints declared on the table, with raw expression and parsed allowed values when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<CheckConstraint> checkConstraints,
-        @Schema(description = "Triggers attached to the table, usually without full body unless requested.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        List<Trigger> triggers
+        @Schema(description = "Triggers attached to the table, usually without full body unless requested (opaque).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        List<Opaque<Trigger>> triggers
 ) {
 }

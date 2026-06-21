@@ -83,7 +83,7 @@ public class QueryLintService {
         lintFkCoverage(model, schema, warnings);
 
         return new QueryLintResult(
-                inspection,
+                ru.it_spectrum.ai.jdbc.mcp.model.Opaque.of(inspection),
                 true,
                 tableSummaries(tables.values()),
                 warnings.size(),

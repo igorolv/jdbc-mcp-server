@@ -177,8 +177,9 @@ class EdgeDecorationTest {
     }
 
     private static RelationshipEvidence evidence(RelationshipEdge edge) {
-        RelationshipEvidence raw = edge.evidence();
-        assertThat(raw).as("edge evidence bundle").isNotNull();
+        assertThat(edge.evidence()).as("edge evidence bundle").isNotNull();
+        RelationshipEvidence raw = edge.evidence().unwrap();
+        assertThat(raw).as("edge evidence payload").isNotNull();
         return raw;
     }
 

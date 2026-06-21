@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.query;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 
 @Schema(description = "Validation result for a SQL statement, including guard, parameter, driver, and inspection diagnostics.")
 public record QueryValidationResult(
@@ -14,14 +15,14 @@ public record QueryValidationResult(
         String stage,
         @Schema(nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String error,
-        @Schema(description = "Parsed query inspection that underpins validation, lint, or lineage results.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        QueryInspection inspection
+        @Schema(description = "Parsed query inspection that underpins validation (opaque; the inspectQuery tool returns the typed form).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        Opaque<QueryInspection> inspection
 ) {
     public static QueryValidationResult valid(int parameters, int columns, QueryInspection inspection) {
-        return new QueryValidationResult(true, parameters, columns, null, null, inspection);
+        return new QueryValidationResult(true, parameters, columns, null, null, Opaque.of(inspection));
     }
 
     public static QueryValidationResult invalid(String stage, String error, QueryInspection inspection) {
-        return new QueryValidationResult(false, null, null, stage, error, inspection);
+        return new QueryValidationResult(false, null, null, stage, error, Opaque.of(inspection));
     }
 }

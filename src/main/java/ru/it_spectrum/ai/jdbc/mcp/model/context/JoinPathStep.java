@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.evidence.RelationshipEvidence;
 
 import java.util.List;
@@ -27,7 +28,7 @@ public record JoinPathStep(
         List<String> toColumns,
         @Schema(description = "SQL equality condition that joins the two tables for this step.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String joinCondition,
-        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        RelationshipEvidence evidence
+        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources (opaque).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        Opaque<RelationshipEvidence> evidence
 ) {
 }

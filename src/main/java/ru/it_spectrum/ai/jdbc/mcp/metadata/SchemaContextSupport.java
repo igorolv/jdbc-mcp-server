@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.CompactTable;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.CycleHint;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.GraphComponent;
@@ -369,7 +370,7 @@ abstract class SchemaContextSupport {
                 info.foreignKeys(),
                 compactIndexes(info.indexes()),
                 info.triggers(),
-                tableStats,
+                Opaque.of(tableStats),
                 null);
     }
 
@@ -392,7 +393,8 @@ abstract class SchemaContextSupport {
             out.add(new Neighbor(fk.referencedSchema(), fk.referencedTable()));
         }
         if (includeIncoming) {
-            for (IncomingForeignKey fk : info.referencedBy()) {
+            for (Opaque<IncomingForeignKey> ref : info.referencedBy()) {
+                IncomingForeignKey fk = ref.unwrap();
                 out.add(new Neighbor(fk.fromSchema(), fk.fromTable()));
             }
         }
@@ -417,7 +419,8 @@ abstract class SchemaContextSupport {
         String schema = info.schema();
         String table = info.name();
         List<RelationshipEdge> out = new ArrayList<>();
-        for (IncomingForeignKey fk : info.referencedBy()) {
+        for (Opaque<IncomingForeignKey> ref : info.referencedBy()) {
+            IncomingForeignKey fk = ref.unwrap();
             out.add(new RelationshipEdge(
                     "foreignKey", fk.name(), fk.fromSchema(), fk.fromTable(), fk.fromColumns(),
                     schema, table, fk.toColumns(), null, null));
@@ -772,7 +775,7 @@ abstract class SchemaContextSupport {
     protected record GraphEdge(String direction, String relationshipType, String fkName,
                                String fromSchema, String fromTable, List<String> fromColumns,
                                String toSchema, String toTable, List<String> toColumns,
-                               RelationshipEvidence evidence) {
+                               Opaque<RelationshipEvidence> evidence) {
 
         static GraphEdge forward(RelationshipEdge edge) {
             return new GraphEdge("forward",

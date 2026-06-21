@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
@@ -142,7 +143,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
 
         return new QueryContext(schema, terms, requestedTables, samples,
                 tableContexts.size(),
-                semanticCandidates,
+                semanticCandidates.stream().map(Opaque::of).toList(),
                 tableContexts,
                 graphEdges(declaredEdges),
                 pairwiseJoinPaths(new ArrayList<>(selected.keySet()), declaredEdges));
@@ -168,7 +169,7 @@ class SchemaQueryContextService extends SchemaContextSupport {
                 compactCheckConstraints(info),
                 info.foreignKeys(),
                 compactIndexes(info.indexes()),
-                semanticMatch,
+                Opaque.of(semanticMatch),
                 includeSamples ? sampleRowsBestEffort(schema, table, 3) : null);
     }
 

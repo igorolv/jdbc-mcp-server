@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
@@ -30,18 +31,18 @@ public record CompactTable(
         List<ForeignKey> foreignKeys,
         @Schema(description = "Indexes available on the table or returned by an index-statistics scan.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<CompactIndex> indexes,
-        @Schema(description = "Triggers attached to the table, usually without full body unless requested.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        List<Trigger> triggers,
-        @Schema(description = "Optional live table statistics and storage metrics.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        TableStats stats,
-        @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        TableEvidenceProfile evidence
+        @Schema(description = "Triggers attached to the table, usually without full body unless requested (opaque).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        List<Opaque<Trigger>> triggers,
+        @Schema(description = "Optional live table statistics and storage metrics (opaque; typed shape is returned by the tableStats tool).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        Opaque<TableStats> stats,
+        @Schema(description = "Optional evidence explaining why this object is relevant, from schema and usage sources (opaque).", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        Opaque<TableEvidenceProfile> evidence
 
 ) {
     public CompactTable withEvidence(TableEvidenceProfile evidence) {
         return new CompactTable(
                 schema, name, type, remarks, columns, primaryKey, checkConstraints,
-                foreignKeys, indexes, triggers, stats, evidence);
+                foreignKeys, indexes, triggers, stats, Opaque.of(evidence));
     }
     @Schema(description = "Compact column metadata used inside table context responses.")
     public record CompactColumn(
