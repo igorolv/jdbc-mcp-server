@@ -1,7 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.model.context;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.PrimaryKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
@@ -9,7 +9,6 @@ import ru.it_spectrum.ai.jdbc.mcp.model.evidence.TableEvidenceProfile;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.TableStats;
 
 import java.util.List;
-import java.util.Map;
 
 @Schema(description = "Compact table context optimized for LLM SQL authoring: metadata, keys, constraints, indexes, triggers, optional stats, and usage evidence.")
 public record CompactTable(
@@ -25,10 +24,8 @@ public record CompactTable(
         List<CompactColumn> columns,
         @Schema(description = "Primary key metadata for the table, null when no primary key is declared or visible.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         PrimaryKey primaryKey,
-        @Schema(description = "Relevant table constraints, including checks, unique constraints, and foreign-key metadata.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        List<Constraint> constraints,
-        @Schema(description = "Allowed values extracted from CHECK constraints, keyed by column name when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        Map<String, List<String>> allowedValues,
+        @Schema(description = "CHECK constraints declared on the table, with raw expression and parsed allowed values when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        List<CheckConstraint> checkConstraints,
         @Schema(description = "Outgoing foreign keys declared by the table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<ForeignKey> foreignKeys,
         @Schema(description = "Indexes available on the table or returned by an index-statistics scan.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
@@ -43,8 +40,8 @@ public record CompactTable(
 ) implements ContextTable {
     public CompactTable withEvidence(TableEvidenceProfile evidence) {
         return new CompactTable(
-                schema, name, type, remarks, columns, primaryKey, constraints,
-                allowedValues, foreignKeys, indexes, triggers, stats, evidence);
+                schema, name, type, remarks, columns, primaryKey, checkConstraints,
+                foreignKeys, indexes, triggers, stats, evidence);
     }
     @Schema(description = "Compact column metadata used inside table context responses.")
     public record CompactColumn(

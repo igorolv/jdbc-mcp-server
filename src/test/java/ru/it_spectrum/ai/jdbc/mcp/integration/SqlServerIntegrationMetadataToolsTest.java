@@ -25,7 +25,7 @@ class SqlServerIntegrationMetadataToolsTest extends AbstractSqlServerToolsIntegr
         assertThat(field(table, "name").asText()).isEqualTo("orders");
         assertThat(findByField((ArrayNode) field(table, "columns"), "name", "customer_id")).isNotNull();
         assertThat(field(field(table, "primaryKey"), "name").asText()).isNotBlank();
-        assertThat(findByField((ArrayNode) field(table, "constraints"),
+        assertThat(findByField((ArrayNode) field(table, "checkConstraints"),
                 "name", "orders_total_nonnegative")).isNotNull();
 
         String viewDefinition = metadataTools().getViewDefinition("dbo", "v_customer_totals");
@@ -35,10 +35,9 @@ class SqlServerIntegrationMetadataToolsTest extends AbstractSqlServerToolsIntegr
     @Test
     void exposesConstraintsAndTriggersViaDescribeTable() {
         ObjectNode orders = object(metadataTools().describeTable("dbo", "orders"));
-        ArrayNode constraints = (ArrayNode) field(orders, "constraints");
-        ObjectNode check = (ObjectNode) findByField(constraints, "name", "orders_total_nonnegative");
+        ArrayNode checkConstraints = (ArrayNode) field(orders, "checkConstraints");
+        ObjectNode check = (ObjectNode) findByField(checkConstraints, "name", "orders_total_nonnegative");
         assertThat(check).isNotNull();
-        assertThat(field(check, "type").asText()).isEqualTo("CHECK");
         assertThat(field(check, "definition").asText()).contains("total");
 
         ObjectNode customerNotes = object(metadataTools().describeTable("dbo", "customer_notes"));

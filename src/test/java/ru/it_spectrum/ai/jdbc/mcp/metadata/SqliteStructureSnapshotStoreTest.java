@@ -8,8 +8,8 @@ import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore.RoutineRecord;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore.SqlSupplier;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore.StructureSnapshotData;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore.ViewRecord;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.IncomingForeignKey;
@@ -25,7 +25,6 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.CatalogTestSupport;
 
 import javax.sql.DataSource;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,10 +54,8 @@ class SqliteStructureSnapshotStoreTest {
                         "public", "org", List.of("id"))),
                 List.of(new IncomingForeignKey("order_customer_fk", "public", "orders",
                         List.of("customer_id"), List.of("id"))),
-                List.of(new Constraint("customer_status_chk", "CHECK", List.of("status"),
-                        "status IN ('NEW','ACTIVE')", "status", List.of("NEW", "ACTIVE"),
-                        null, null, null)),
-                Map.of("status", List.of("NEW", "ACTIVE")),
+                List.of(new CheckConstraint("customer_status_chk", List.of("status"),
+                        "status IN ('NEW','ACTIVE')", List.of("NEW", "ACTIVE"))),
                 List.of());
     }
 

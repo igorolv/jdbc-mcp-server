@@ -25,8 +25,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 
 @Service
@@ -212,17 +212,22 @@ class SchemaQueryContextService extends SchemaContextSupport {
 
     private List<QueryContextConstraint> compactCheckConstraints(TableDescription info) {
         List<QueryContextConstraint> out = new ArrayList<>();
-        for (Constraint constraint : info.constraints()) {
-            String type = str(constraint.type());
-            if (!"CHECK".equalsIgnoreCase(type) && constraint.allowedValues() == null) continue;
+        if (info.checkConstraints() == null) return out;
+        for (CheckConstraint constraint : info.checkConstraints()) {
             out.add(new QueryContextConstraint(
                     constraint.name(),
-                    type,
+                    "CHECK",
                     constraint.definition(),
-                    constraint.allowedValuesColumn(),
+                    singleColumn(constraint),
                     constraint.allowedValues()));
         }
         return out;
+    }
+
+    /** The lone referenced column when a check constrains exactly one column, else null. */
+    private static String singleColumn(CheckConstraint constraint) {
+        List<String> columns = constraint.columns();
+        return columns != null && columns.size() == 1 ? columns.get(0) : null;
     }
 
     private QueryContextSample sampleRowsBestEffort(String schema, String table, int limit) {
@@ -236,7 +241,16 @@ class SchemaQueryContextService extends SchemaContextSupport {
     }
 
     private Map<String, List<String>> allowedValues(TableDescription info) {
-        return info.allowedValues() == null ? Map.of() : info.allowedValues();
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        if (info.checkConstraints() == null) return out;
+        for (CheckConstraint constraint : info.checkConstraints()) {
+            List<String> values = constraint.allowedValues();
+            String column = singleColumn(constraint);
+            if (column != null && values != null && !values.isEmpty()) {
+                out.put(column, values);
+            }
+        }
+        return out;
     }
 
     private List<ShortestPath> pairwiseJoinPaths(List<String> tableKeys, List<RelationshipEdge> edges) {
