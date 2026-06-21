@@ -2,7 +2,6 @@ package ru.it_spectrum.ai.jdbc.mcp.model.metadata;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
-import java.util.Map;
 
 @Schema(description = "Full table or view description in one payload: columns, keys, indexes, constraints, allowed values, references, and triggers.")
 public record TableDescription(
@@ -26,10 +25,8 @@ public record TableDescription(
         List<ForeignKey> foreignKeys,
         @Schema(description = "Incoming foreign keys from other tables that reference this table.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<IncomingForeignKey> referencedBy,
-        @Schema(description = "Relevant table constraints, including checks, unique constraints, and foreign-key metadata.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        List<Constraint> constraints,
-        @Schema(description = "Allowed values extracted from CHECK constraints, keyed by column name when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        Map<String, List<String>> allowedValues,
+        @Schema(description = "CHECK constraints declared on the table, with raw expression and parsed allowed values when available.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        List<CheckConstraint> checkConstraints,
         @Schema(description = "Triggers attached to the table, usually without full body unless requested.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<Trigger> triggers
 ) {

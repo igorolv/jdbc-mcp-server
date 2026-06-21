@@ -25,31 +25,33 @@ class OracleIntegrationMetadataToolsTest extends AbstractOracleToolsIntegrationT
         assertThat(field(table, "name").asText()).isEqualTo("ORDERS");
         assertThat(findByField((ArrayNode) field(table, "columns"), "name", "CUSTOMER_ID")).isNotNull();
         assertThat(field(field(table, "primaryKey"), "name").asText()).isNotBlank();
-        assertThat(findByField((ArrayNode) field(table, "constraints"),
+        assertThat(findByField((ArrayNode) field(table, "checkConstraints"),
                 "name", "ORDERS_TOTAL_NONNEGATIVE")).isNotNull();
 
         String viewDefinition = metadataTools().getViewDefinition(schema(), "V_CUSTOMER_TOTALS");
         assertThat(viewDefinition).containsIgnoringCase("FROM customers");
 
         ObjectNode events = object(metadataTools().describeTable(schema(), "EVENTS"));
-        assertThat(textValues((ArrayNode) field(field(events, "allowedValues"), "status")))
+        ObjectNode statusCheckValues = (ObjectNode) findByField(
+                (ArrayNode) field(events, "checkConstraints"), "name", "EVENTS_STATUS_CHECK");
+        assertThat(textValues((ArrayNode) field(statusCheckValues, "allowedValues")))
                 .containsExactly("OK", "FAIL");
     }
 
     @Test
     void exposesConstraintsAndTriggersViaDescribeTable() {
         ObjectNode orders = object(metadataTools().describeTable(schema(), "ORDERS"));
-        ArrayNode constraints = (ArrayNode) field(orders, "constraints");
-        ObjectNode check = (ObjectNode) findByField(constraints, "name", "ORDERS_TOTAL_NONNEGATIVE");
+        ArrayNode checkConstraints = (ArrayNode) field(orders, "checkConstraints");
+        ObjectNode check = (ObjectNode) findByField(checkConstraints, "name", "ORDERS_TOTAL_NONNEGATIVE");
         assertThat(check).isNotNull();
-        assertThat(field(check, "type").asText()).isEqualTo("CHECK");
         assertThat(field(check, "definition").asText()).containsIgnoringCase("total");
 
         ObjectNode events = object(metadataTools().describeTable(schema(), "EVENTS"));
-        ArrayNode eventConstraints = (ArrayNode) field(events, "constraints");
-        ObjectNode statusCheck = (ObjectNode) findByField(eventConstraints, "name", "EVENTS_STATUS_CHECK");
+        ArrayNode eventChecks = (ArrayNode) field(events, "checkConstraints");
+        ObjectNode statusCheck = (ObjectNode) findByField(eventChecks, "name", "EVENTS_STATUS_CHECK");
         assertThat(statusCheck).isNotNull();
-        assertThat(field(statusCheck, "allowedValuesColumn").asText()).isEqualTo("status");
+        assertThat(textValues((ArrayNode) field(statusCheck, "columns")))
+                .anySatisfy(c -> assertThat(c).isEqualToIgnoringCase("status"));
         assertThat(textValues((ArrayNode) field(statusCheck, "allowedValues")))
                 .containsExactly("OK", "FAIL");
 

@@ -17,7 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
-import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Index;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
@@ -246,9 +246,9 @@ class SchemaLintService extends SchemaContextSupport {
     private boolean hasCheckConstraintForColumn(TableDescription info, String columnName) {
         if (columnName == null) return false;
         String normalizedColumn = normalizeIdentifier(columnName);
-        for (Constraint constraint : info.constraints()) {
-            if (!"CHECK".equalsIgnoreCase(str(constraint.type()))) continue;
-            if (constraint.columns().stream()
+        if (info.checkConstraints() == null) return false;
+        for (CheckConstraint constraint : info.checkConstraints()) {
+            if (constraint.columns() != null && constraint.columns().stream()
                     .anyMatch(c -> normalizedColumn.equals(normalizeIdentifier(c)))) {
                 if (isNotNullCheck(constraint.definition(), normalizedColumn)) continue;
                 return true;

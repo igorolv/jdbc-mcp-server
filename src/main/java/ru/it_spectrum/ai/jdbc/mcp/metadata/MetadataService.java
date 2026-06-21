@@ -7,6 +7,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
+import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Constraint;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ForeignKey;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.IncomingForeignKey;
@@ -465,13 +466,13 @@ public class MetadataService {
                 List<ForeignKey> fks = fkMap.getOrDefault(t, List.of());
                 List<IncomingForeignKey> refs = exportedMap.getOrDefault(t, List.of());
                 List<Constraint> cons = constraintsMap.getOrDefault(t, List.of());
-                Map<String, List<String>> allowedValues = extractAllowedValues(cons);
+                List<CheckConstraint> checkConstraints = checkConstraintsFromConstraints(cons);
                 List<Trigger> triggers = triggersMap.getOrDefault(t, List.of());
 
                 descMap.put(key(te.schema(), t), new TableDescription(
                         te.schema(), t, te.type(), te.remarks(),
                         cols, pk, unique, indexes, fks, refs,
-                        cons, allowedValues, triggers));
+                        checkConstraints, triggers));
             }
             return descMap;
         });
@@ -1741,14 +1742,23 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
         return out;
     }
 
-    private Map<String, List<String>> extractAllowedValues(List<Constraint> constraints) {
-        Map<String, List<String>> out = new LinkedHashMap<>();
+    /**
+     * Projects CHECK rows of the raw constraint list into the lean {@link CheckConstraint} output
+     * type, mirroring {@link #primaryKeysFromConstraints} / {@link #foreignKeysFromConstraints}.
+     * PK/FK/UNIQUE rows are intentionally dropped here: they are already exposed through the
+     * dedicated {@code primaryKey}/{@code foreignKeys}/{@code uniqueConstraints} fields.
+     */
+    private List<CheckConstraint> checkConstraintsFromConstraints(List<Constraint> constraints) {
+        List<CheckConstraint> out = new ArrayList<>();
         for (Constraint constraint : constraints) {
-            String column = constraint.allowedValuesColumn();
-            List<String> values = constraint.allowedValues();
-            if (column != null && values != null && !values.isEmpty()) {
-                out.put(column, values);
-            }
+            boolean isCheck = "CHECK".equalsIgnoreCase(constraint.type());
+            boolean hasAllowed = constraint.allowedValues() != null && !constraint.allowedValues().isEmpty();
+            if (!isCheck && !hasAllowed) continue;
+            out.add(new CheckConstraint(
+                    constraint.name(),
+                    constraint.columns(),
+                    constraint.definition(),
+                    constraint.allowedValues()));
         }
         return out;
     }
