@@ -37,7 +37,7 @@ public record CompactTable(
         @Schema(description = "Evidence explaining why this object or relationship is relevant, from schema and usage sources.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         TableEvidenceProfile evidence
 
-) implements ContextTable {
+) {
     public CompactTable withEvidence(TableEvidenceProfile evidence) {
         return new CompactTable(
                 schema, name, type, remarks, columns, primaryKey, checkConstraints,

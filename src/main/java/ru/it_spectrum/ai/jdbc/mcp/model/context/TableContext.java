@@ -18,7 +18,7 @@ public record TableContext(
         @Schema(description = "True when usage-catalog observed joins were included as relationship evidence.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean includeObserved,
         @Schema(description = "Tables included in this context, graph, query inspection, or usage record.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        List<ContextTable> tables,
+        List<CompactTable> tables,
         @Schema(description = "Relationship edges relevant to the context, graph, or observed-relationships result.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         List<RelationshipEdge> relationships
 ) {}
