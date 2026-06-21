@@ -46,7 +46,7 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableStats tableStats(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table name") String table
     ) {
         log.info("Tool call: tableStats (schema={}, table={})", schema, table);
@@ -72,8 +72,8 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public IndexStats indexStats(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
-            @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Table; omit to scan whole schema", required = false) String table
     ) {
         log.info("Tool call: indexStats (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -97,8 +97,8 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public UnusedIndexes unusedIndexes(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
-            @McpToolParam(description = "Minimum index size in bytes to report (optional — filters out tiny indexes)", required = false) Long minSizeBytes
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Minimum index size in bytes to report; filters out tiny indexes", required = false) Long minSizeBytes
     ) {
         log.info("Tool call: unusedIndexes (schema={})", schema);
         long start = System.nanoTime();
@@ -121,8 +121,8 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public RedundantIndexes redundantIndexes(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
-            @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Table; omit to scan whole schema", required = false) String table
     ) {
         log.info("Tool call: redundantIndexes (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -146,8 +146,8 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FkIndexCoverage fkIndexCoverage(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
-            @McpToolParam(description = "Table name (optional — omit to scan every table in the schema)", required = false) String table
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Table; omit to scan whole schema", required = false) String table
     ) {
         log.info("Tool call: fkIndexCoverage (schema={}, table={})", schema, table);
         long start = System.nanoTime();

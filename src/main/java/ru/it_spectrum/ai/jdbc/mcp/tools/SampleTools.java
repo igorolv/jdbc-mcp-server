@@ -37,12 +37,12 @@ public class SampleTools {
 
     @McpTool(
             description = "Return a small sample of rows from a table or view. " +
-            "Shortcut for a dialect-limited 'SELECT * FROM <table>'. Safe and read-only.",
+            "Shortcut for a dialect-limited 'SELECT * FROM <table>'.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryResult sampleRows(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Number of rows to return (default 10, max 100)", required = false) Integer limit
     ) {

@@ -46,7 +46,7 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnStats columnStats(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Column name") String column
     ) {
@@ -75,7 +75,7 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnDistribution columnDistribution(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Column name") String column,
             @McpToolParam(description = "Number of top values to return (default 20, max 1000)", required = false) Integer topN
@@ -103,7 +103,7 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnHistogram columnHistogram(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Column name") String column
     ) {
@@ -131,7 +131,7 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public NullRatio nullRatio(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table
     ) {
         log.info("Tool call: nullRatio (schema={}, table={})", schema, table);
@@ -159,7 +159,7 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SelectivityEstimate estimateSelectivity(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Boolean predicate expression — raw SQL, without the WHERE keyword") String predicate
     ) {
@@ -188,10 +188,10 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public JoinCardinality joinCardinality(
-            @McpToolParam(description = "From-side schema (optional; default schema)", required = false) String fromSchema,
+            @McpToolParam(description = "From-side schema", required = false) String fromSchema,
             @McpToolParam(description = "From-side table or view name") String fromTable,
             @McpToolParam(description = "From-side join column") String leftColumn,
-            @McpToolParam(description = "To-side schema (optional; default schema)", required = false) String toSchema,
+            @McpToolParam(description = "To-side schema", required = false) String toSchema,
             @McpToolParam(description = "To-side table or view name") String toTable,
             @McpToolParam(description = "To-side join column") String rightColumn,
             @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType

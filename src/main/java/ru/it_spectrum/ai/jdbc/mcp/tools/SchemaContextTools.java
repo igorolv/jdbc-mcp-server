@@ -38,14 +38,14 @@ public class SchemaContextTools {
             description = "Return a compact context around one table: the table itself, FK parent tables, " +
             "optionally child tables that reference it, and relationship edges. " +
             "Use this when a query starts from a known table and needs nearby joins. " +
-            "Depth defaults to 1 and is capped at 4.",
+            "Depth defaults to 1.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableContext tableContext(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Root table or view name") String table,
-            @McpToolParam(description = "FK traversal depth. Default 1, capped at 4.", required = false) Integer depth,
+            @McpToolParam(description = "FK traversal depth. Default 1.", required = false) Integer depth,
             @McpToolParam(description = "Include incoming references from child tables. Default true.", required = false) Boolean includeIncoming,
             @McpToolParam(description = "Include per-table row/size/activity stats where available. Default false.", required = false) Boolean includeStats,
             @McpToolParam(description = "Augment relationships with usage-catalog evidence (declared FKs, observed joins, semantic usage). Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
@@ -70,18 +70,18 @@ public class SchemaContextTools {
             description = "Find FK-based join paths between two tables. " +
             "The graph is traversed in both FK directions and each edge includes a joinCondition. " +
             "Use this when you know the start and target tables but not the intermediate joins. " +
-            "maxDepth defaults to 4 and is capped at 4; maxPaths defaults to 5.",
+            "maxDepth defaults to 4; maxPaths defaults to 5.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FindJoinPaths findJoinPaths(
-            @McpToolParam(description = "Start schema (optional — defaults to current/default schema)", required = false) String fromSchema,
+            @McpToolParam(description = "Start schema", required = false) String fromSchema,
             @McpToolParam(description = "Start table name") String fromTable,
-            @McpToolParam(description = "Target schema (optional — defaults to current/default schema)", required = false) String toSchema,
+            @McpToolParam(description = "Target schema", required = false) String toSchema,
             @McpToolParam(description = "Target table name") String toTable,
-            @McpToolParam(description = "Maximum FK hops. Default 4, capped at 4.", required = false) Integer maxDepth,
-            @McpToolParam(description = "Maximum paths to return. Default 5, capped at 25.", required = false) Integer maxPaths,
-            @McpToolParam(description = "Maximum schema tables to scan when building the graph. Default 300, capped at 300.", required = false) Integer scanLimit,
+            @McpToolParam(description = "Maximum FK hops. Default 4.", required = false) Integer maxDepth,
+            @McpToolParam(description = "Maximum paths to return. Default 5, max 25.", required = false) Integer maxPaths,
+            @McpToolParam(description = "Maximum schema tables to scan when building the graph. Default 300.", required = false) Integer scanLimit,
             @McpToolParam(description = "Also use observed equi-joins from the usage catalog as extra graph edges. Default: true if the catalog is enabled, else false.", required = false) Boolean includeObserved
     ) {
         log.info("Tool call: findJoinPaths ({}.{} -> {}.{})", fromSchema, fromTable, toSchema, toTable);
@@ -111,11 +111,11 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SchemaLint schemaLint(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
-            @McpToolParam(description = "Single table to lint (optional — omit to scan the schema)", required = false) String table,
-            @McpToolParam(description = "Comma-separated checks to run, e.g. 'missingPrimaryKey,fkWithoutIndex' (optional)", required = false) String checks,
-            @McpToolParam(description = "Maximum schema tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
-            @McpToolParam(description = "Maximum findings to return. Default 200, capped at 1000.", required = false) Integer maxFindings
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Single table to lint; omit to scan the schema", required = false) String table,
+            @McpToolParam(description = "Comma-separated checks to run, e.g. 'missingPrimaryKey,fkWithoutIndex'", required = false) String checks,
+            @McpToolParam(description = "Maximum schema tables to scan. Default 50.", required = false) Integer maxTables,
+            @McpToolParam(description = "Maximum findings to return. Default 200.", required = false) Integer maxFindings
     ) {
         log.info("Tool call: schemaLint (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -142,9 +142,9 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String schemaBrief(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Optional search terms to narrow table discovery; falls back to whole schema if no table matches.", required = false) String terms,
-            @McpToolParam(description = "Maximum tables/views to include as a safety cap. Default 2000, capped at 5000.", required = false) Integer maxTables
+            @McpToolParam(description = "Maximum tables/views to include as a safety cap. Default 2000.", required = false) Integer maxTables
     ) {
         log.info("Tool call: schemaBrief (schema={})", schema);
         long start = System.nanoTime();
@@ -169,11 +169,11 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SchemaGraph schemaGraph(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
-            @McpToolParam(description = "Maximum tables to scan. Default 50, capped at 300.", required = false) Integer maxTables,
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Maximum tables to scan. Default 50.", required = false) Integer maxTables,
             @McpToolParam(description = "Optional start table for shortestPath.", required = false) String fromTable,
             @McpToolParam(description = "Optional target table for shortestPath.", required = false) String toTable,
-            @McpToolParam(description = "Maximum hops for shortestPath. Default 4, capped at 4.", required = false) Integer maxDepth
+            @McpToolParam(description = "Maximum hops for shortestPath. Default 4.", required = false) Integer maxDepth
     ) {
         log.info("Tool call: schemaGraph (schema={})", schema);
         long start = System.nanoTime();
@@ -199,11 +199,11 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryContext queryContext(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Search terms from the user request, e.g. 'customers order totals'", required = false) String terms,
-            @McpToolParam(description = "Comma-separated table names to force-include, e.g. 'customers,orders' (optional)", required = false) String tables,
+            @McpToolParam(description = "Comma-separated table names to force-include, e.g. 'customers,orders'", required = false) String tables,
             @McpToolParam(description = "Include up to 3 sample rows per selected table. Default false.", required = false) Boolean includeSamples,
-            @McpToolParam(description = "Maximum tables to include. Default 12, capped at 50.", required = false) Integer maxTables
+            @McpToolParam(description = "Maximum tables to include. Default 12.", required = false) Integer maxTables
     ) {
         log.info("Tool call: queryContext (schema={})", schema);
         long start = System.nanoTime();
@@ -230,8 +230,8 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String schemaGraphDot(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
-            @McpToolParam(description = "Comma-separated table names to include, e.g. 'customers,orders' (optional — all tables if omitted)", required = false) String tables
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Comma-separated table names to include, e.g. 'customers,orders'; all tables if omitted", required = false) String tables
     ) {
         log.info("Tool call: schemaGraphDot (schema={})", schema);
         long start = System.nanoTime();

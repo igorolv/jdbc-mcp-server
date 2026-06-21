@@ -46,15 +46,14 @@ public class BenchmarkTools {
     }
 
     @McpTool(
-            description = "Benchmark a read-only SQL statement by running it repeatedly and reporting " +
+            description = "Benchmark a SQL statement by running it repeatedly and reporting " +
             "wall-clock latency: the first 'coldRuns' executions (default 1) are reported separately " +
             "as 'cold' (caches cold, plan not primed), then 'warmRuns' executions (default 3) are " +
             "aggregated into min / median / max. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
             "Both 'limit' and 'timeoutSeconds' are REQUIRED — unbounded queries are rejected. " +
-            "Returns the size of the last result (row count, columns, truncation flag), not the rows. " +
-            "All runs are subject to the read-only guard; any write statement is rejected.",
+            "Returns the size of the last result (row count, columns, truncation flag), not the rows.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -96,13 +95,13 @@ public class BenchmarkTools {
     }
 
     @McpTool(
-            description = "Run a read-only SQL statement once and return the result together with a " +
+            description = "Run a SQL statement once and return the result together with a " +
             "wall-clock elapsed_ms measurement. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
             "Where the engine exposes per-statement counters, also attaches a before/after diff of what " +
             "changed during the run (calls, exec time, rows, buffer hits/reads). " +
-            "Subject to the read-only guard, row limit and per-query timeout — same safety as executeQuery.",
+            "Respects the row limit and per-query timeout.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -110,8 +109,8 @@ public class BenchmarkTools {
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
-            @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
+            @McpToolParam(description = "Max rows to return. Default JDBC_MAX_ROWS", required = false) Integer limit,
+            @McpToolParam(description = "Per-query timeout in seconds. Default JDBC_QUERY_TIMEOUT_SECONDS", required = false) Integer timeoutSeconds
     ) {
         log.info("Tool call: timedQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
         long start = System.nanoTime();

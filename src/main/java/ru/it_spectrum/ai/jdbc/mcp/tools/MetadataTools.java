@@ -71,9 +71,9 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListTablesResult listTables(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
-            @McpToolParam(description = "Name pattern with JDBC wildcards, e.g. '%user%' (optional)", required = false) String namePattern,
-            @McpToolParam(description = "Comma-separated list of types: TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM (optional)", required = false) String types
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Name pattern with JDBC wildcards, e.g. '%user%'", required = false) String namePattern,
+            @McpToolParam(description = "Comma-separated list of types: TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM", required = false) String types
     ) {
         log.info("Tool call: listTables (schema={}, pattern={})", schema, namePattern);
         long start = System.nanoTime();
@@ -96,7 +96,7 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableDescription describeTable(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table
     ) {
         log.info("Tool call: describeTable (schema={}, table={})", schema, table);
@@ -120,7 +120,7 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String getTriggerDefinition(
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Table or view name") String table,
             @McpToolParam(description = "Trigger name") String trigger
     ) {
@@ -148,7 +148,7 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String getViewDefinition(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "View name") String name
     ) {
         log.info("Tool call: getViewDefinition (schema={}, name={})", schema, name);
@@ -173,8 +173,8 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListRoutinesResult listRoutines(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
-            @McpToolParam(description = "Name pattern (optional, e.g. '%calculate%')", required = false) String namePattern
+            @McpToolParam(description = "Schema", required = false) String schema,
+            @McpToolParam(description = "Name pattern, e.g. '%calculate%'", required = false) String namePattern
     ) {
         log.info("Tool call: listRoutines (schema={}, pattern={})", schema, namePattern);
         long start = System.nanoTime();
@@ -194,7 +194,7 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String getRoutineDefinition(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema,
+            @McpToolParam(description = "Schema", required = false) String schema,
             @McpToolParam(description = "Routine name") String name
     ) {
         log.info("Tool call: getRoutineDefinition (schema={}, name={})", schema, name);
@@ -218,7 +218,7 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListSequencesResult listSequences(
-            @McpToolParam(description = "Schema name (optional)", required = false) String schema
+            @McpToolParam(description = "Schema", required = false) String schema
     ) {
         log.info("Tool call: listSequences (schema={})", schema);
         long start = System.nanoTime();

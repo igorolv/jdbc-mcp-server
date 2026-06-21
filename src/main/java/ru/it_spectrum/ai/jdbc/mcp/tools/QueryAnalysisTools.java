@@ -85,8 +85,7 @@ public class QueryAnalysisTools {
             "The plan is estimated by default (no execution); analyze=true requests real run-time stats " +
             "where the engine supports it, which actually executes the query, and is ignored otherwise. " +
             QueryToolSupport.BINDING_RULES +
-            QueryToolSupport.BINDING_EXAMPLES +
-            "Read-only-validated before execution.",
+            QueryToolSupport.BINDING_EXAMPLES,
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -229,8 +228,8 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Validate a SQL statement without executing it: checks the read-only guard " +
-            "and prepares it with the driver (which verifies syntax and referenced objects). " +
+            description = "Validate a SQL statement without executing it: prepares it with the driver " +
+            "(which verifies syntax and referenced objects). " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES +
             "Useful to let an LLM self-correct before running a real query.",
@@ -290,8 +289,7 @@ public class QueryAnalysisTools {
     @McpTool(
             description = "Parse SQL with JSqlParser and return an AST-derived summary for LLM query authoring: " +
             "tables, aliases, selected expressions, joins, predicates, order by, referenced columns, parameters, " +
-            "features and parser-level warnings. This is informational only; it does not execute SQL and does not " +
-            "replace the read-only guard or driver validation.",
+            "features and parser-level warnings. This is informational only; it does not execute SQL.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -315,7 +313,7 @@ public class QueryAnalysisTools {
     )
     public QueryLintResult queryLint(
             @McpToolParam(description = "SQL statement to lint") String sql,
-            @McpToolParam(description = "Schema (optional; default schema)", required = false) String schema
+            @McpToolParam(description = "Schema", required = false) String schema
     ) {
         log.info("Tool call: queryLint (sql={}, schema={})", sql, schema);
         long start = System.nanoTime();
@@ -342,10 +340,10 @@ public class QueryAnalysisTools {
     )
     public QueryLineageResult resolveQueryLineage(
             @McpToolParam(description = "SQL statement to resolve") String sql,
-            @McpToolParam(description = "Default schema for unqualified names (optional — defaults to current/default schema)", required = false) String schema,
+            @McpToolParam(description = "Default schema for unqualified names", required = false) String schema,
             @McpToolParam(description = "Expand database views and materialized views recursively. Default true.", required = false) Boolean expandViews,
             @McpToolParam(description = "Expand database functions/procedures referenced by the query, best-effort. Default true.", required = false) Boolean expandRoutines,
-            @McpToolParam(description = "Maximum recursive expansion depth. Default 5, hard cap 20.", required = false) Integer maxDepth
+            @McpToolParam(description = "Maximum recursive expansion depth. Default 5, max 20.", required = false) Integer maxDepth
     ) {
         log.info("Tool call: resolveQueryLineage (sql={}, schema={}, expandViews={}, expandRoutines={}, maxDepth={})", sql, schema, expandViews, expandRoutines, maxDepth);
         long start = System.nanoTime();

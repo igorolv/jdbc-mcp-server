@@ -39,9 +39,7 @@ public class QueryTools {
     }
 
     @McpTool(
-            description = "Execute a read-only SQL SELECT / WITH / EXPLAIN statement and return the result. " +
-            "Only pure read statements are allowed — write operations (INSERT, UPDATE, DELETE, DDL, etc.) " +
-            "are rejected before being sent to the database. " +
+            description = "Execute a SQL SELECT / WITH / EXPLAIN statement and return the result. " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES +
             "Results are truncated to 'limit' rows (default JDBC_MAX_ROWS) with a 'truncated' marker.",
@@ -52,8 +50,8 @@ public class QueryTools {
             @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Max rows to return (optional, default JDBC_MAX_ROWS)", required = false) Integer limit,
-            @McpToolParam(description = "Per-query timeout in seconds (optional, default JDBC_QUERY_TIMEOUT_SECONDS)", required = false) Integer timeoutSeconds
+            @McpToolParam(description = "Max rows to return. Default JDBC_MAX_ROWS", required = false) Integer limit,
+            @McpToolParam(description = "Per-query timeout in seconds. Default JDBC_QUERY_TIMEOUT_SECONDS", required = false) Integer timeoutSeconds
     ) {
         log.info("Tool call: executeQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
         long start = System.nanoTime();

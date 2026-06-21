@@ -12,11 +12,10 @@ final class QueryToolSupport {
     }
 
     static final String BINDING_RULES =
-            "Param binding: '?' placeholders -> 'params' (in order); ':name' placeholders -> 'namedParams'; " +
-            "omit both if none. Never mix the two styles. ";
+            "Bind '?'->params, ':name'->namedParams; never mix. ";
 
     static final String BINDING_EXAMPLES =
-            "Example: 'WHERE status = :status' -> namedParams={status: 'PAID'}. ";
+            "E.g. :status -> namedParams={status:'PAID'} — key is the bare name. ";
 
     /** Unescape the common backslash sequences an LLM may emit inside a JSON string before we run the SQL. */
     static String normalizeSql(String sql) {

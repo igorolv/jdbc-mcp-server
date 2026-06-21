@@ -78,7 +78,7 @@ public class UsageTools {
     public QueryDetail getQuery(
             @McpToolParam(description = "Source kind (e.g. 'dao', 'report', 'database-view').") String sourceKind,
             @McpToolParam(description = "Source path — stable identifier, e.g. file path.") String sourcePath,
-            @McpToolParam(description = "Source unit — sub-unit, e.g. method name (optional).", required = false) String sourceUnit
+            @McpToolParam(description = "Source unit — sub-unit, e.g. method name.", required = false) String sourceUnit
     ) {
         log.info("Tool call: getQuery (kind={}, path={}, unit={})", sourceKind, sourcePath, sourceUnit);
         if (!service.enabled()) throw disabledException("getQuery");
@@ -134,7 +134,7 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FindQueriesByTableResult findQueriesByTable(
-            @McpToolParam(description = "Schema name (optional; case-insensitive).", required = false) String schema,
+            @McpToolParam(description = "Schema (case-insensitive).", required = false) String schema,
             @McpToolParam(description = "Table name (required; case-insensitive).") String table
     ) {
         log.info("Tool call: findQueriesByTable (schema={}, table={})", schema, table);
@@ -159,8 +159,8 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FindQueriesByColumnResult findQueriesByColumn(
-            @McpToolParam(description = "Schema name (optional; case-insensitive).", required = false) String schema,
-            @McpToolParam(description = "Table name (optional; case-insensitive).", required = false) String table,
+            @McpToolParam(description = "Schema (case-insensitive).", required = false) String schema,
+            @McpToolParam(description = "Table name (case-insensitive).", required = false) String table,
             @McpToolParam(description = "Column name (required; case-insensitive).") String column
     ) {
         log.info("Tool call: findQueriesByColumn (schema={}, table={}, column={})", schema, table, column);
