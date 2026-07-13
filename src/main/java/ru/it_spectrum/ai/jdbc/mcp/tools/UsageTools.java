@@ -39,7 +39,7 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Return the runtime usage-catalog index status: configured JSON/zip sources, indexing state, record counts, parse failures, duplicate UIDs and load errors.",
+            description = "Return usage-catalog sources, indexing state, record/parse/duplicate counts and load errors.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -52,7 +52,8 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Invalidate the runtime usage-catalog index. The next usage-catalog lookup rebuilds it synchronously from configured files and database-native objects.",
+            description = "Invalidate the runtime usage index; the next lookup rebuilds it synchronously from " +
+            "configured files and database objects.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -71,14 +72,15 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Return the full usage-catalog record for one query: header, parameters, parsed tables/columns/join pairs, outputs (with derived columns) and field usages.",
+            description = "Return one full usage-catalog query record with SQL, parameters, parsed " +
+            "tables/columns/joins, derived outputs and field usages.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryDetail getQuery(
-            @McpToolParam(description = "Source kind (e.g. 'dao', 'report', 'database-view').") String sourceKind,
-            @McpToolParam(description = "Source path — stable identifier, e.g. file path.") String sourcePath,
-            @McpToolParam(description = "Source unit — sub-unit, e.g. method name.", required = false) String sourceUnit
+            @McpToolParam(description = "Source kind, e.g. dao, report, database-view.") String sourceKind,
+            @McpToolParam(description = "Stable source path, e.g. file path.") String sourcePath,
+            @McpToolParam(description = "Optional sub-unit, e.g. method name.", required = false) String sourceUnit
     ) {
         log.info("Tool call: getQuery (kind={}, path={}, unit={})", sourceKind, sourcePath, sourceUnit);
         if (!service.enabled()) throw disabledException("getQuery");
@@ -97,19 +99,19 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "List queries in the usage catalog; default order is most-recent ingest. Filters combine; sourcePath uses SQL LIKE wildcards ('%' / '_').",
+            description = "List usage-catalog queries, newest ingest first; filters combine.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListQueriesResult listQueries(
-            @McpToolParam(description = "Filter by source path (LIKE — '%' / '_' allowed).", required = false) String sourcePath,
-            @McpToolParam(description = "Filter by source kind ('bi-publisher-report', 'dao', etc.).", required = false) String sourceKind,
-            @McpToolParam(description = "Filter by business domain (exact).", required = false) String businessDomain,
-            @McpToolParam(description = "Filter by tag (exact).", required = false) String tag,
-            @McpToolParam(description = "Filter by parse status: 'parsed' or 'failed'.", required = false) String parseStatus,
-            @McpToolParam(description = "Full-text search across raw SQL, normalized SQL, business label, domain, and source path (case-insensitive).", required = false) String searchText,
-            @McpToolParam(description = "Maximum rows to return (default 100, max 1000).", required = false) Integer limit,
-            @McpToolParam(description = "Skip this many rows (for paging, default 0).", required = false) Integer offset
+            @McpToolParam(description = "Source path LIKE pattern ('%'/'_').", required = false) String sourcePath,
+            @McpToolParam(description = "Source kind, e.g. bi-publisher-report or dao.", required = false) String sourceKind,
+            @McpToolParam(description = "Exact business domain.", required = false) String businessDomain,
+            @McpToolParam(description = "Exact tag.", required = false) String tag,
+            @McpToolParam(description = "Parse status: parsed or failed.", required = false) String parseStatus,
+            @McpToolParam(description = "Case-insensitive full-text search over SQL, labels, domains and source paths.", required = false) String searchText,
+            @McpToolParam(description = "Rows to return (default 100, max 1000).", required = false) Integer limit,
+            @McpToolParam(description = "Paging offset (default 0).", required = false) Integer offset
     ) {
         log.info("Tool call: listQueries (searchText={})", searchText);
         if (!service.enabled()) throw disabledException("listQueries");
@@ -129,13 +131,14 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Find catalog queries that reference a given table. Matches case-insensitively on the resolved (uppercased, alias-expanded) table name. When schema is given, also matches queries where the table is referenced without an explicit schema.",
+            description = "Find catalog queries referencing a table, matching resolved names case-insensitively; " +
+            "a schema filter also includes unqualified references.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FindQueriesByTableResult findQueriesByTable(
-            @McpToolParam(description = "Schema (case-insensitive).", required = false) String schema,
-            @McpToolParam(description = "Table name (required; case-insensitive).") String table
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "") String table
     ) {
         log.info("Tool call: findQueriesByTable (schema={}, table={})", schema, table);
         if (!service.enabled()) throw disabledException("findQueriesByTable");
@@ -154,14 +157,16 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Find catalog queries that reference a given column. Each match's 'context' field shows where the column is used: select | where | join | order_by | having. Schema/table filters are case-insensitive; omitted = match all columns with that name.",
+            description = "Find catalog queries referencing a column; each match identifies " +
+            "select/where/join/order_by/having context. Filters are case-insensitive; omit schema/table to " +
+            "match all tables.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FindQueriesByColumnResult findQueriesByColumn(
-            @McpToolParam(description = "Schema (case-insensitive).", required = false) String schema,
-            @McpToolParam(description = "Table name (case-insensitive).", required = false) String table,
-            @McpToolParam(description = "Column name (required; case-insensitive).") String column
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "", required = false) String table,
+            @McpToolParam(description = "") String column
     ) {
         log.info("Tool call: findQueriesByColumn (schema={}, table={}, column={})", schema, table, column);
         if (!service.enabled()) throw disabledException("findQueriesByColumn");
@@ -180,14 +185,15 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Aggregate observed equi-join pairs across all stored queries. Each row is a left.col = right.col pair with its support count and contributing query uids. Non-equi joins (BETWEEN, function-based) are excluded.",
+            description = "Aggregate observed equi-join column pairs with support counts and query UIDs; excludes " +
+            "non-equi joins.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ObservedRelationshipsResult observedRelationships(
-            @McpToolParam(description = "Optional schema filter (case-insensitive).", required = false) String schema,
-            @McpToolParam(description = "Optional table filter — at least one side of the join must reference this table (case-insensitive).", required = false) String table,
-            @McpToolParam(description = "Minimum number of distinct queries that must agree on the pair (default 1).", required = false) Integer minSupport
+            @McpToolParam(description = "Case-insensitive filter.", required = false) String schema,
+            @McpToolParam(description = "Require either join side to use this table.", required = false) String table,
+            @McpToolParam(description = "Minimum supporting queries (default 1).", required = false) Integer minSupport
     ) {
         log.info("Tool call: observedRelationships (schema={}, table={})", schema, table);
         if (!service.enabled()) throw disabledException("observedRelationships");
@@ -206,7 +212,7 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "List business tags currently used in the catalog with their query counts. Helps the agent reuse an existing vocabulary instead of inventing new tags on each ingest.",
+            description = "List business tags and query counts.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -244,7 +250,7 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "List source-kinds currently used in the catalog with their query counts. Helps the agent discover valid values for listQueries 'sourceKind' filter.",
+            description = "List source kinds and query counts.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

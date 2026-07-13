@@ -81,18 +81,17 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Return the execution plan for a SELECT / WITH statement as text. " +
-            "Estimated by default; analyze=true collects real run-time stats where supported (executes the query). " +
+            description = "Return a textual execution plan for a SELECT / WITH statement. " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES,
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String explainQuery(
-            @McpToolParam(description = "SQL statement to explain") String sql,
+            @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Collect real run-time stats where supported — actually executes the query. Default false.", required = false) Boolean analyze
+            @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze
     ) {
         log.info("Tool call: explainQuery (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
         long start = System.nanoTime();
@@ -149,20 +148,18 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Run a structured EXPLAIN and return a compact plan summary instead of the full dump: " +
-            "top expensive nodes, full scans on large tables, estimation errors (needs analyze=true), " +
-            "risky nested loops, and disk-sort spills. " +
+            description = "Return compact structured plan findings: expensive nodes, large-table full scans, " +
+            "estimation errors, risky nested loops and disk-sort spills. " +
             QueryToolSupport.BINDING_RULES +
-            QueryToolSupport.BINDING_EXAMPLES +
-            "Use it to decide whether to add an index, refresh statistics, or rewrite a JOIN.",
+            QueryToolSupport.BINDING_EXAMPLES,
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public PlanAnalysisSummary analyzePlan(
-            @McpToolParam(description = "SQL statement to analyze") String sql,
+            @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Collect real run-time stats where supported — actually executes the query. Default false.", required = false) Boolean analyze
+            @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze
     ) {
         log.info("Tool call: analyzePlan (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
         long start = System.nanoTime();
@@ -225,16 +222,15 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Validate a SQL statement without executing it: prepares it with the driver " +
-            "(which verifies syntax and referenced objects). " +
+            description = "Validate a SELECT / WITH / EXPLAIN without executing it by preparing it with the driver, " +
+            "checking syntax and referenced objects. " +
             QueryToolSupport.BINDING_RULES +
-            QueryToolSupport.BINDING_EXAMPLES +
-            "Useful to let an LLM self-correct before running a real query.",
+            QueryToolSupport.BINDING_EXAMPLES,
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryValidationResult validateQuery(
-            @McpToolParam(description = "SQL statement to validate") String sql,
+            @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams
     ) {
@@ -284,14 +280,13 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Parse SQL with JSqlParser and return an AST-derived summary for LLM query authoring: " +
-            "tables, aliases, selected expressions, joins, predicates, order by, referenced columns, parameters, " +
-            "features and parser-level warnings. This is informational only; it does not execute SQL.",
+            description = "Parse SQL without accessing the database and return its AST summary: tables, aliases, " +
+            "select expressions, joins, predicates, order by, columns, parameters, features and parser warnings.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryInspection inspectQuery(
-            @McpToolParam(description = "SQL statement to inspect") String sql
+            @McpToolParam(description = "") String sql
     ) {
         log.info("Tool call: inspectQuery (sql={})", sql);
         long start = System.nanoTime();
@@ -301,16 +296,15 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Parse SQL and run metadata-aware lint checks for LLM query authoring. " +
-            "Returns advisory warnings such as unknown table/column, SELECT *, joins without conditions, " +
-            "FKs without supporting indexes, and predicate/order-by columns that are not leading columns " +
-            "of any visible index. This tool does not execute SQL and never blocks execution.",
+            description = "Parse SQL and run metadata-aware lint checks without executing it. Reports advisory " +
+            "warnings for unknown tables/columns, SELECT *, conditionless joins, unindexed FKs, and " +
+            "predicate/order-by columns that are not leading index columns.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryLintResult queryLint(
-            @McpToolParam(description = "SQL statement to lint") String sql,
-            @McpToolParam(description = "Schema", required = false) String schema
+            @McpToolParam(description = "") String sql,
+            @McpToolParam(description = "", required = false) String schema
     ) {
         log.info("Tool call: queryLint (sql={}, schema={})", sql, schema);
         long start = System.nanoTime();
@@ -328,14 +322,13 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Resolve metadata-aware lineage for a SELECT / WITH / EXPLAIN statement. " +
-            "Returns direct objects in FROM/JOIN and expands views and routines to underlying physical tables. " +
+            description = "Resolve SQL lineage from direct FROM/JOIN objects to underlying physical tables. " +
             "Routine expansion is best-effort (extracts embedded SELECT/WITH from source; may miss dynamic SQL).",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryLineageResult resolveQueryLineage(
-            @McpToolParam(description = "SQL statement to resolve") String sql,
+            @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Default schema for unqualified names", required = false) String schema,
             @McpToolParam(description = "Expand database views and materialized views recursively. Default true.", required = false) Boolean expandViews,
             @McpToolParam(description = "Expand database functions/procedures referenced by the query, best-effort. Default true.", required = false) Boolean expandRoutines,

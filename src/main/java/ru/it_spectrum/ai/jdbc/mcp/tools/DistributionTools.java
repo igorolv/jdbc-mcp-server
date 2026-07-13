@@ -39,16 +39,14 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return basic statistics for a column: total rows, non-null count, distinct count, " +
-            "min, max. Cheap one-shot scan for extremes; " +
-            "use columnHistogram for percentiles or nullRatio for per-column null shares.",
+            description = "Return total, non-null and distinct row counts plus min/max for one column.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnStats columnStats(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table or view name") String table,
-            @McpToolParam(description = "Column name") String column
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "") String table,
+            @McpToolParam(description = "") String column
     ) {
         log.info("Tool call: columnStats (schema={}, table={}, column={})", schema, table, column);
         long start = System.nanoTime();
@@ -66,17 +64,16 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return the top-N most frequent values of a column with their share of total rows. " +
-            "Detects data skew (e.g. '70% of rows have status=OK'), which makes a plain index nearly useless. " +
-            "Executes GROUP BY + COUNT — may be heavy on large tables; keep topN small. Default 20, max 1000.",
+            description = "Return top-N values with counts and shares of total rows. Runs GROUP BY + COUNT and " +
+            "may be expensive on large tables.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnDistribution columnDistribution(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table or view name") String table,
-            @McpToolParam(description = "Column name") String column,
-            @McpToolParam(description = "Number of top values to return (default 20, max 1000)", required = false) Integer topN
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "") String table,
+            @McpToolParam(description = "") String column,
+            @McpToolParam(description = "Top values to return (default 20, max 1000).", required = false) Integer topN
     ) {
         log.info("Tool call: columnDistribution (schema={}, table={}, column={})", schema, table, column);
         long start = System.nanoTime();
@@ -94,16 +91,15 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return a percentile histogram for a column: min, max, P25/P50/P75/P90/P95/P99 " +
-            "plus null counts. Works on numeric (interpolated), date, timestamp and text columns. " +
-            "Use instead of columnStats when you need the spread, not just extremes.",
+            description = "Return min/max, P25/P50/P75/P90/P95/P99 and null counts for a numeric, date, " +
+            "timestamp or text column.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnHistogram columnHistogram(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table or view name") String table,
-            @McpToolParam(description = "Column name") String column
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "") String table,
+            @McpToolParam(description = "") String column
     ) {
         log.info("Tool call: columnHistogram (schema={}, table={}, column={})", schema, table, column);
         long start = System.nanoTime();
@@ -121,15 +117,14 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return the null/non-null ratio for every column of a table in one scan. " +
-            "Sorted by descending null_ratio, so sparse columns (candidates for a WHERE col IS NOT NULL " +
-            "partial index) appear first. A 'sparse' flag marks columns with null ratio > 50%.",
+            description = "Return null/non-null counts and ratios for every column, sorted by descending null " +
+            "ratio; 'sparse' marks ratios above 50%.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public NullRatio nullRatio(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table or view name") String table
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "") String table
     ) {
         log.info("Tool call: nullRatio (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -147,18 +142,15 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Estimate how many rows a predicate would return without executing it: " +
-            "planner cardinality estimate, baseline (no-predicate) estimate, and selectivity ratio. " +
-            "Helps pick the most selective predicate for a composite index. " +
-            "Predicate is raw SQL without WHERE " +
-            "(e.g. \"status = 'OK' AND created_at > now() - interval '7 days'\"); no ';'.",
+            description = "Return planner-estimated rows, the unfiltered baseline and predicate selectivity " +
+            "without executing the query.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SelectivityEstimate estimateSelectivity(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table or view name") String table,
-            @McpToolParam(description = "Boolean predicate expression — raw SQL, without the WHERE keyword") String predicate
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "") String table,
+            @McpToolParam(description = "Raw boolean SQL without WHERE or ';'.") String predicate
     ) {
         log.info("Tool call: estimateSelectivity (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -176,19 +168,18 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Estimate the row count of an equi-join between two tables without executing it: " +
-            "planner cardinality estimate, each side's base row estimate, and selectivity vs the Cartesian product. " +
-            "Join types: INNER (default), LEFT, RIGHT, FULL.",
+            description = "Return planner-estimated equi-join rows, per-side base estimates and selectivity versus " +
+            "the Cartesian product without executing the join.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public JoinCardinality joinCardinality(
-            @McpToolParam(description = "From-side schema", required = false) String fromSchema,
-            @McpToolParam(description = "From-side table or view name") String fromTable,
-            @McpToolParam(description = "From-side join column") String leftColumn,
-            @McpToolParam(description = "To-side schema", required = false) String toSchema,
-            @McpToolParam(description = "To-side table or view name") String toTable,
-            @McpToolParam(description = "To-side join column") String rightColumn,
+            @McpToolParam(description = "", required = false) String fromSchema,
+            @McpToolParam(description = "") String fromTable,
+            @McpToolParam(description = "Column in fromTable.") String leftColumn,
+            @McpToolParam(description = "", required = false) String toSchema,
+            @McpToolParam(description = "") String toTable,
+            @McpToolParam(description = "Column in toTable.") String rightColumn,
             @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType
     ) {
         log.info("Tool call: joinCardinality ({}.{} <-> {}.{})", fromTable, leftColumn, toTable, rightColumn);

@@ -38,15 +38,14 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "Return per-table storage and activity statistics: estimated row count, " +
-            "total/heap/index/toast size, dead tuple ratio, last vacuum/analyze timestamps, " +
-            "seq vs index scan counters. Exact fields depend on the engine; some are skipped without privileges.",
+            description = "Return estimated rows, storage sizes, dead-tuple ratio, maintenance timestamps and scan " +
+            "counters for a table. Available fields depend on the engine and privileges.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableStats tableStats(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table name") String table
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "") String table
     ) {
         log.info("Tool call: tableStats (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -64,15 +63,14 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "Return per-index statistics for a table or whole schema: size, scan counters, " +
-            "column list, uniqueness, primary flag, and engine-specific signals such as scan/read counts " +
-            "and index cardinality. Use it before deciding whether to add/drop an index.",
+            description = "Return index columns, size, uniqueness/primary flags and available usage/cardinality " +
+            "counters for a table or schema.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public IndexStats indexStats(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table; omit to scan whole schema", required = false) String table
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "Omit to scan the schema.", required = false) String table
     ) {
         log.info("Tool call: indexStats (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -87,16 +85,14 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "List indexes with zero recorded scans — candidates for removal. " +
-            "Excludes PK/unique indexes (dropping them breaks the constraint). " +
-            "Uses cumulative scan counters since the last stats reset; not supported on every engine. " +
-            "Caveat: 'never-scanned' is reliable only after a full traffic cycle since the reset.",
+            description = "Return non-PK/non-unique indexes with zero scans. Counters are cumulative since reset and " +
+            "meaningful only after a representative traffic cycle; not supported by every engine.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public UnusedIndexes unusedIndexes(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Minimum index size in bytes to report; filters out tiny indexes", required = false) Long minSizeBytes
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "Minimum size in bytes; omit tiny indexes.", required = false) Long minSizeBytes
     ) {
         log.info("Tool call: unusedIndexes (schema={})", schema);
         long start = System.nanoTime();
@@ -111,15 +107,14 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "List indexes whose leading columns are a strict prefix of another index on the same table — " +
-            "the shorter one is redundant and a candidate for removal. " +
-            "Only non-unique indexes are reported; index types must match (a GIN index won't shadow a BTREE).",
+            description = "Return non-unique indexes whose leading columns are a strict prefix of another same-type " +
+            "index on the same table.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public RedundantIndexes redundantIndexes(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table; omit to scan whole schema", required = false) String table
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "Omit to scan the schema.", required = false) String table
     ) {
         log.info("Tool call: redundantIndexes (schema={}, table={})", schema, table);
         long start = System.nanoTime();
@@ -134,16 +129,14 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "List child-side foreign keys that lack a supporting index. " +
-            "A FK is covered if some index starts with exactly the FK columns in order. " +
-            "Missing FK indexes are a classic cause of slow DELETE/UPDATE cascades and slow joins. " +
-            "Each entry includes suggested_index_columns ready for CREATE INDEX.",
+            description = "Return child-side foreign keys not covered by an index starting with the FK columns in " +
+            "order, including suggested index columns.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FkIndexCoverage fkIndexCoverage(
-            @McpToolParam(description = "Schema", required = false) String schema,
-            @McpToolParam(description = "Table; omit to scan whole schema", required = false) String table
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = "Omit to scan the schema.", required = false) String table
     ) {
         log.info("Tool call: fkIndexCoverage (schema={}, table={})", schema, table);
         long start = System.nanoTime();

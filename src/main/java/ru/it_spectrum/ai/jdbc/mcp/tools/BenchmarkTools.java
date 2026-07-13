@@ -46,24 +46,22 @@ public class BenchmarkTools {
     }
 
     @McpTool(
-            description = "Benchmark a SQL statement by running it repeatedly: " +
-            "'coldRuns' cold executions (default 1) reported separately, then 'warmRuns' (default 3) " +
-            "aggregated into min/median/max. " +
+            description = "Repeat a read-only SQL SELECT / WITH / EXPLAIN; report cold runs separately " +
+            "and aggregate warm runs into min/median/max. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "'limit' and 'timeoutSeconds' are REQUIRED — unbounded queries are rejected. " +
             "Returns the size of the last result (rows, columns, truncated), not the rows.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public BenchmarkResult benchmarkQuery(
-            @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
+            @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Max rows per run — required, > 0. Prevents benchmarking an unbounded query.") Integer limit,
-            @McpToolParam(description = "Per-run timeout in seconds — required, > 0.") Integer timeoutSeconds,
-            @McpToolParam(description = "Number of cold runs (default 1). Executed first.", required = false) Integer coldRuns,
-            @McpToolParam(description = "Number of warm runs (default 3). Aggregated into min/median/max.", required = false) Integer warmRuns
+            @McpToolParam(description = "Row limit per run (> 0).") Integer limit,
+            @McpToolParam(description = "Timeout per run in seconds (> 0).") Integer timeoutSeconds,
+            @McpToolParam(description = "Cold runs (default 1); executed first.", required = false) Integer coldRuns,
+            @McpToolParam(description = "Warm runs (default 3).", required = false) Integer warmRuns
     ) {
         log.info("Tool call: benchmarkQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={}, coldRuns={}, warmRuns={})", sql, params, namedParams, limit, timeoutSeconds, coldRuns, warmRuns);
         long start = System.nanoTime();
@@ -94,22 +92,19 @@ public class BenchmarkTools {
     }
 
     @McpTool(
-            description = "Run a SQL statement once and return the result together with a " +
-            "wall-clock elapsed_ms measurement. " +
+            description = "Run one read-only SQL SELECT / WITH / EXPLAIN and return rows plus elapsed_ms. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
-            "Where the engine exposes per-statement counters, also attaches a before/after diff of what " +
-            "changed during the run (calls, exec time, rows, buffer hits/reads). " +
-            "Respects the row limit and per-query timeout.",
+            "Adds available per-statement counter deltas (calls, execution time, rows, buffer hits/reads).",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TimedQueryResult timedQuery(
-            @McpToolParam(description = "SQL statement (SELECT, WITH, or EXPLAIN)") String sql,
+            @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Max rows to return. Default JDBC_MAX_ROWS", required = false) Integer limit,
-            @McpToolParam(description = "Per-query timeout in seconds. Default JDBC_QUERY_TIMEOUT_SECONDS", required = false) Integer timeoutSeconds
+            @McpToolParam(description = "Row limit (default JDBC_MAX_ROWS).", required = false) Integer limit,
+            @McpToolParam(description = "Timeout in seconds (default JDBC_QUERY_TIMEOUT_SECONDS).", required = false) Integer timeoutSeconds
     ) {
         log.info("Tool call: timedQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
         long start = System.nanoTime();

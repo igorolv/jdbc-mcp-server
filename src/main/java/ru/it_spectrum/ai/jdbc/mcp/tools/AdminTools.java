@@ -43,15 +43,13 @@ public class AdminTools {
     }
 
     @McpTool(
-            description = "Build the local catalog file: capture structural metadata and rebuild the "
-                    + "usage index for the given schemas, so later lookups are served from it and the "
-                    + "file can be shipped or reused as a prebuilt catalog. Returns the catalog file "
-                    + "path, captured schemas, and usage-index status.",
+            description = "Build a distributable local catalog by capturing schema metadata and rebuilding the "
+                    + "usage index; return file path, captured schemas and usage status.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public RebuildCatalogResult rebuildCatalog(
-            @McpToolParam(description = "Schemas to capture into the structure snapshot (comma-separated). Omit to use the configured scope / default schema.", required = false) String schemas
+            @McpToolParam(description = "Schemas to capture (CSV); omit for configured/default scope.", required = false) String schemas
     ) {
         log.info("Tool call: rebuildCatalog (schemas={})", schemas);
         long start = System.nanoTime();
