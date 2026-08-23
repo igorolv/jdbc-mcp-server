@@ -42,4 +42,16 @@ class OracleDialectTest {
                 .contains("ELSE 'PACKAGE'")
                 .contains("ORDER BY s.line");
     }
+
+    @Test
+    void columnDefaultQueriesScopeDynamicLookupByOwner() {
+        assertThat(dialect.columnMetadataQuery())
+                .containsIgnoringCase("from all_tab_columns where owner =")
+                .contains("DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.owner")
+                .doesNotContainIgnoringCase("from user_tab_columns");
+        assertThat(dialect.columnDefaultsQuery())
+                .containsIgnoringCase("from all_tab_columns where owner =")
+                .contains("DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.owner")
+                .doesNotContainIgnoringCase("from user_tab_columns");
+    }
 }

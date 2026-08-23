@@ -12,17 +12,23 @@ import java.util.List;
  * <p>{@code schemas} is the build-time input: which schemas {@code rebuildStructureSnapshot}
  * front-loads into the snapshot. Modelled on {@link UsageProperties#nativeSchemas} — a CSV string
  * parsed into a trimmed, non-blank list. When empty, callers fall back to {@code defaultSchema()}.
+ * {@code oracleColumnQueryTimeoutSeconds} overrides the ordinary JDBC statement timeout only for
+ * Oracle's expensive bulk column/default query during a full rebuild; zero disables that timeout.
  *
  * <p>This is distinct from {@code catalog_meta.structure_schemas}, which records the schemas that
  * actually made it into the snapshot and drives scope checks for {@code searchObjects} /
  * {@code findTablesByName}.
  */
 @ConfigurationProperties(prefix = "structure-snapshot")
-public record StructureSnapshotProperties(List<String> schemas) {
+public record StructureSnapshotProperties(
+        List<String> schemas,
+        int oracleColumnQueryTimeoutSeconds
+) {
 
     @ConstructorBinding
     public StructureSnapshotProperties {
         if (schemas == null) schemas = List.of();
+        if (oracleColumnQueryTimeoutSeconds < 0) oracleColumnQueryTimeoutSeconds = 0;
     }
 
     /** CSV → trimmed non-blank list, like {@link UsageProperties#resolvedNativeSchemas()}. */

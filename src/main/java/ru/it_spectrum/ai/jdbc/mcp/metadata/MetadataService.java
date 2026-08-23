@@ -52,7 +52,7 @@ public class MetadataService {
                            StructureSnapshotStore store) {
         this(executor, dialect, properties, store,
                 new SchemaResolver(properties, executor, dialect),
-                new StructureSnapshotProperties(List.of()));
+                new StructureSnapshotProperties(List.of(), 300));
     }
 
     @Autowired
@@ -424,6 +424,13 @@ public class MetadataService {
     private Map<String, TableDescription> describeListedTables(
             String effectiveSchema,
             Set<String> tableNames) throws SQLException {
+        return describeListedTables(effectiveSchema, tableNames, properties.queryTimeoutSeconds());
+    }
+
+    private Map<String, TableDescription> describeListedTables(
+            String effectiveSchema,
+            Set<String> tableNames,
+            int oracleColumnQueryTimeoutSeconds) throws SQLException {
         if (tableNames.isEmpty()) return Map.of();
 
         Map<String, TableDescription> result = executor.withConnection(conn -> {
@@ -444,7 +451,8 @@ public class MetadataService {
                 }
             }
 
-            Map<String, List<Column>> columnsMap = fetchColumnsForTables(md, effectiveSchema, tableNames);
+            Map<String, List<Column>> columnsMap = fetchColumnsForTables(
+                    md, effectiveSchema, tableNames, oracleColumnQueryTimeoutSeconds);
 
             Map<String, List<Index>> indexesMap = new LinkedHashMap<>();
             Map<String, List<UniqueConstraint>> uniqueMap = new LinkedHashMap<>();
@@ -483,10 +491,12 @@ public class MetadataService {
     }
 
     private Map<String, List<Column>> fetchColumnsForTables(DatabaseMetaData md, String schema,
-                                                            Set<String> tableNames)
+                                                            Set<String> tableNames,
+                                                            int oracleColumnQueryTimeoutSeconds)
             throws SQLException {
         if (useOracleSelectedBulk(tableNames)) {
-            return fetchOracleColumnsForTables(md.getConnection(), schema, tableNames);
+            return fetchOracleColumnsForTables(
+                    md.getConnection(), schema, tableNames, oracleColumnQueryTimeoutSeconds);
         }
         if (tableNames.size() > 100) {
             Map<String, List<Column>> all = fetchAllColumns(md, schema);
@@ -504,8 +514,9 @@ public class MetadataService {
         return byTable;
     }
 
-    private Map<String, List<Column>> fetchOracleColumnsForTables(Connection conn, String schema,
-                                                                    Set<String> tableNames)
+    Map<String, List<Column>> fetchOracleColumnsForTables(Connection conn, String schema,
+                                                          Set<String> tableNames,
+                                                          int queryTimeoutSeconds)
             throws SQLException {
         Map<String, List<Column>> byTable = new LinkedHashMap<>();
         for (Set<String> chunk : partition(tableNames, ORACLE_IN_LIST_LIMIT)) {
@@ -522,11 +533,12 @@ public class MetadataService {
                                WHEN c.default_length IS NULL THEN NULL
                                ELSE EXTRACTVALUE(
                                        DBMS_XMLGEN.GETXMLTYPE(
-                                           'select data_default from user_tab_columns where table_name = '''
-                                           || c.table_name
-                                           || ''' and column_name = '''
-                                           || c.column_name
-                                           || '''' ),
+                                           'select data_default from all_tab_columns where owner = '
+                                           || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.owner, '''', ''''''))
+                                           || ' and table_name = '
+                                           || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.table_name, '''', ''''''))
+                                           || ' and column_name = '
+                                           || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.column_name, '''', '''''')) ),
                                        '//text()' )
                            END AS default_value
                     FROM all_tab_columns c
@@ -540,7 +552,7 @@ public class MetadataService {
                     """.formatted(upperPlaceholders(chunk.size()));
             try (PreparedStatement ps = conn.prepareStatement(sql,
                     ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                ps.setQueryTimeout(queryTimeoutSeconds);
                 ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
                 bindSchemaAndTables(ps, schema, chunk);
                 try (ResultSet rs = ps.executeQuery()) {
@@ -1676,7 +1688,9 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
                 if (te.name() != null) names.add(te.name());
             }
             if (!names.isEmpty()) {
-                tables.addAll(describeListedTables(effectiveSchema, names).values());
+                tables.addAll(describeListedTables(
+                        effectiveSchema, names,
+                        snapshotProperties.oracleColumnQueryTimeoutSeconds()).values());
             }
 
             for (Map<String, Object> row : schemaViewDefinitionsLive(rawSchema)) {

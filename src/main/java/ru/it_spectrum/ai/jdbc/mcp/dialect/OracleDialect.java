@@ -290,11 +290,12 @@ public class OracleDialect implements SqlDialect {
                             WHEN c.default_length IS NULL THEN NULL
                             ELSE EXTRACTVALUE(
                                     DBMS_XMLGEN.GETXMLTYPE(
-                                        'select data_default from user_tab_columns where table_name = '''
-                                        || c.table_name
-                                        || ''' and column_name = '''
-                                        || c.column_name
-                                        || '''' ),
+                                        'select data_default from all_tab_columns where owner = '
+                                        || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.owner, '''', ''''''))
+                                        || ' and table_name = '
+                                        || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.table_name, '''', ''''''))
+                                        || ' and column_name = '
+                                        || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.column_name, '''', '''''')) ),
                                     '//text()' )
                         END AS default_value
                 FROM all_tab_columns c
@@ -317,18 +318,20 @@ public class OracleDialect implements SqlDialect {
     @Override
     public String columnDefaultsQuery() {
         // DATA_DEFAULT is LONG — DBMS_XMLGEN.GETXMLTYPE converts it to XML CLOB, then EXTRACTVALUE
-        // reads it as a VARCHAR string. Safe for all Oracle versions.
+        // reads it as a VARCHAR string. ALL_TAB_COLUMNS plus OWNER supports metadata lookups for
+        // schemas other than the connecting user.
         return """
                 SELECT c.column_name,
                        CASE
                            WHEN c.default_length IS NULL THEN NULL
                            ELSE EXTRACTVALUE(
                                    DBMS_XMLGEN.GETXMLTYPE(
-                                       'select data_default from user_tab_columns where table_name = '''
-                                       || c.table_name
-                                       || ''' and column_name = '''
-                                       || c.column_name
-                                       || '''' ),
+                                       'select data_default from all_tab_columns where owner = '
+                                       || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.owner, '''', ''''''))
+                                       || ' and table_name = '
+                                       || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.table_name, '''', ''''''))
+                                       || ' and column_name = '
+                                       || DBMS_ASSERT.ENQUOTE_LITERAL(REPLACE(c.column_name, '''', '''''')) ),
                                    '//text()' )
                        END AS default_value
                 FROM all_tab_columns c
