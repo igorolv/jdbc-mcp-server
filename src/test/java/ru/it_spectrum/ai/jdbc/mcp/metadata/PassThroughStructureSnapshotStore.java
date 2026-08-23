@@ -6,6 +6,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SequenceEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
+import ru.it_spectrum.ai.jdbc.mcp.model.resource.CatalogSnapshotInfo;
 
 import java.sql.SQLException;
 import java.util.Collection;
@@ -18,6 +19,11 @@ import java.util.Map;
  * Behaviourally equivalent to the old disabled in-memory cache.
  */
 public class PassThroughStructureSnapshotStore implements StructureSnapshotStore {
+
+    @Override
+    public CatalogSnapshotInfo snapshotInfo() {
+        return new CatalogSnapshotInfo(0, 0, null, List.of());
+    }
 
     @Override
     public List<TableEntry> listTables(String schema, String namePattern, String[] types,
@@ -34,6 +40,11 @@ public class PassThroughStructureSnapshotStore implements StructureSnapshotStore
     @Override
     public TableDescription peekDescribeTable(String schema, String table) {
         return null;
+    }
+
+    @Override
+    public List<TableDescription> listSnapshotTableDescriptions() {
+        return List.of();
     }
 
     @Override

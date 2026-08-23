@@ -6,6 +6,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SequenceEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
+import ru.it_spectrum.ai.jdbc.mcp.model.resource.CatalogSnapshotInfo;
 
 import java.sql.SQLException;
 import java.util.Collection;
@@ -37,6 +38,9 @@ public interface StructureSnapshotStore {
         T get() throws SQLException;
     }
 
+    /** Current catalog format, structure version, build time, and covered schema scope. */
+    CatalogSnapshotInfo snapshotInfo() throws SQLException;
+
     // ---------- tables ----------
 
     List<TableEntry> listTables(String schema, String namePattern, String[] types,
@@ -47,6 +51,9 @@ public interface StructureSnapshotStore {
 
     /** Snapshot lookup for a single table without running any loader; {@code null} when absent. */
     TableDescription peekDescribeTable(String schema, String table) throws SQLException;
+
+    /** Full descriptions currently persisted in the snapshot; never queries the live database. */
+    List<TableDescription> listSnapshotTableDescriptions() throws SQLException;
 
     /** Persist (insert-or-replace) full descriptions: detail JSON + flat column/FK projection. */
     void saveAll(Collection<TableDescription> tables) throws SQLException;

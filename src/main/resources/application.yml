@@ -24,8 +24,8 @@ jdbc-mcp:
   # instances, each with its own JDBC_MCP_CATALOG.
   catalog-name: ${JDBC_MCP_CATALOG:default}
   resources:
-    # Expose a catalog-qualified manifest, concrete snapshot tables, and table/column URI templates.
-    enabled: ${JDBC_MCP_RESOURCES_ENABLED:true}
+    # Opt in to a catalog-qualified manifest, concrete snapshot tables, and table/column URI templates.
+    enabled: ${JDBC_MCP_RESOURCES_ENABLED:false}
   # Which tool groups are exposed in the MCP tools/list manifest. All groups are on by default;
   # turn groups off (e.g. JDBC_MCP_TOOLS_STATS=false) to shrink the manifest for small-context
   # (local) models that would otherwise be flooded at session start. Each flag toggles one @Service.

@@ -8,8 +8,9 @@ views, functions, and sequences.
 PostgreSQL, Oracle, and Microsoft SQL Server JDBC drivers are bundled into the fat jar, so no
 extra driver installation is required.
 
-The server exposes 48 MCP tools. They may update the local SQLite catalog, but they never write to
-the inspected PostgreSQL, Oracle, or SQL Server database.
+The server exposes 48 MCP tools and can optionally expose catalog-qualified MCP resources for table
+and column metadata. Tools may update the local SQLite catalog, but they never write to the inspected
+PostgreSQL, Oracle, or SQL Server database.
 
 ## Why This Exists
 
@@ -52,6 +53,38 @@ hints alongside declared FKs. See *Usage Catalog* below.
 ```
 
 The protocol is `stdio` only. The client starts the server as a child process.
+
+## MCP Resources
+
+When `JDBC_MCP_RESOURCES_ENABLED=true`, each server instance exposes a concrete catalog manifest,
+one concrete resource for every table or view already persisted in the structure snapshot, and two
+parameterized resource templates:
+
+```text
+jdbc-mcp://catalog/<catalog>/manifest
+jdbc-mcp://catalog/<catalog>/schemas/SSV/tables/CUSTOMERS
+jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
+jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
+```
+
+`<catalog>` is the percent-encoded resolved `JDBC_MCP_CATALOG`, fixed when the server starts; it is
+not a template variable clients can use to switch databases. This keeps resource URIs unambiguous
+when one MCP harness registers several instances of this jar. The manifest reports database kind,
+snapshot version/build time/covered schemas, and the exact templates for its catalog. Table and
+column reads reuse `MetadataService`, so they have the same persistent-snapshot and live-fallback
+semantics as `describeTable`.
+
+Concrete table resources are loaded from the local SQLite snapshot when the MCP server starts, so
+clients with MCP resource-picker support can offer entries like `SSV.CUSTOMERS` without querying the
+live database. Their compact descriptions contain the database comment when present, the primary-key
+columns, and outgoing foreign-key mappings; column lists and counts are intentionally omitted. After
+running `rebuildCatalog` in an already-running server, restart or reconnect that MCP server instance
+to refresh its concrete resource list.
+
+Column resources include the column definition plus matching PK position, unique constraints,
+indexes, outgoing/incoming foreign keys, and CHECK constraints. URI path segments preserve case
+and use UTF-8 percent encoding. Resources are disabled by default; enabling them leaves the MCP
+tools unchanged.
 
 ## MCP Tools
 
@@ -350,6 +383,8 @@ Configuration:
 
 - `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` - comma-separated schemas to front-load on a full rebuild
   (empty → the default schema).
+- `JDBC_STRUCTURE_SNAPSHOT_ORACLE_COLUMN_QUERY_TIMEOUT_SECONDS` - Oracle-only timeout for the
+  `DBMS_XMLGEN`-backed bulk column/default query during a full rebuild (default `300`; `0` disables).
 
 ### Data Exploration
 
@@ -575,8 +610,10 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_POOL_IDLE_TIMEOUT_MS` | no | Hikari idle connection timeout in milliseconds, default `60000`; idle connections above `JDBC_POOL_MIN_IDLE` are closed after this |
 | `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Shared across catalogs; each catalog gets its own subdirectory under it |
 | `JDBC_MCP_CATALOG` | no | Name of the local catalog for this database. Local data lives under `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/`, and `logs/`. Defaults to `default`. Use a different catalog name for each database |
+| `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest plus concrete table resources and table/column resource templates; default `false` |
 | `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
 | `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` | no | Comma-separated schemas captured by `rebuildCatalog`; empty means the resolved default schema |
+| `JDBC_STRUCTURE_SNAPSHOT_ORACLE_COLUMN_QUERY_TIMEOUT_SECONDS` | no | Oracle-only timeout for the bulk column/default query during `rebuildCatalog`, default `300`; `0` disables. Ordinary tool calls still use `JDBC_QUERY_TIMEOUT_SECONDS` |
 | `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog, default `true`. When `false`, `usageCatalogStatus` reports the disabled state and other usage tools return an `argument` error |
 | `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |
 | `JDBC_USAGE_NATIVE_SCHEMAS` | no | Comma-separated schemas to scan for native usage. When omitted, the resolved default schema is scanned |
@@ -632,7 +669,9 @@ Add this server to the client configuration:
 
 Register one MCP server instance per database, using a unique server key and
 `JDBC_MCP_CATALOG` for each instance. The client namespaces tools by server key, so an agent can
-work with several databases in the same session.
+work with several databases in the same session. MCP resource URIs additionally include the
+catalog name (`jdbc-mcp://catalog/<catalog>/...`), so links and resource caches remain unambiguous
+even when a harness combines resources from several registered servers.
 
 For clients that use an `mcpServers` object:
 

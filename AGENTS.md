@@ -24,6 +24,19 @@ inspected PostgreSQL, Oracle, or SQL Server database:
 The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, and SQL Server JDBC drivers
 are bundled inside the fat jar.
 
+When explicitly enabled, the server exposes a catalog manifest and parameterized table/column MCP
+resources in addition to tools. Every URI is namespaced by the resolved `JDBC_MCP_CATALOG`:
+
+```text
+jdbc-mcp://catalog/<catalog>/manifest
+jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
+jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
+```
+
+The catalog segment is fixed per process and UTF-8 percent-encoded; it is not a client-selectable
+template argument. Resources are disabled by default; set `JDBC_MCP_RESOURCES_ENABLED=true` to
+register them.
+
 ## Code style: typed response models
 
 The project is gradually replacing ad-hoc `Map<String, Object>` response payloads with typed Java
@@ -108,7 +121,8 @@ Optionally:
   at `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/` (catalog source files), and `logs/`
   (e.g. `<data-dir>/default/default.db`, `<data-dir>/ssv/logs/`). Serve
   several databases by launching one server instance per database, each with its own
-  `JDBC_MCP_CATALOG`; the MCP client namespaces their tools by server key.
+  `JDBC_MCP_CATALOG`; the MCP client namespaces their tools by server key, while resources also
+  include the catalog in their URI.
 - **Default schema** for metadata tools (`JDBC_DEFAULT_SCHEMA`). If omitted, the server uses the
   connection's current schema. On Oracle, this defaults to the connecting user's schema (UPPER CASE).
   On SQL Server, this is normally the login user's default schema (often `dbo`).
@@ -122,6 +136,9 @@ Optionally:
   Persists structural metadata in the local SQLite `<catalog>.db` file ("cache forever", no TTL);
   live stats are not cached. SQLite WAL permits multiple local MCP processes to share one catalog.
   Build and checkpoint it with `rebuildCatalog`; clear it only while all processes are stopped.
+  On Oracle, `JDBC_STRUCTURE_SNAPSHOT_ORACLE_COLUMN_QUERY_TIMEOUT_SECONDS` controls the expensive
+  bulk column/default query during a rebuild (default 300, `0` disables) without changing the
+  ordinary `JDBC_QUERY_TIMEOUT_SECONDS` used by interactive tools.
 
 ## Step 2: Build
 

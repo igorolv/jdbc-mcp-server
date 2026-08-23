@@ -76,6 +76,29 @@ class SqliteStructureSnapshotStoreTest {
     }
 
     @Test
+    void snapshotInfoReportsCatalogFormatAndRebuildMetadata() throws Exception {
+        // CatalogTestSupport applies the DDL directly; production bootstrap stamps format_version.
+        assertThat(store.snapshotInfo().formatVersion()).isZero();
+        assertThat(store.snapshotInfo().snapshotVersion()).isZero();
+        assertThat(store.snapshotInfo().coveredSchemas()).isEmpty();
+
+        rebuildWithCustomer();
+
+        assertThat(store.snapshotInfo().snapshotVersion()).isEqualTo(1);
+        assertThat(store.snapshotInfo().builtAt()).isNotBlank();
+        assertThat(store.snapshotInfo().coveredSchemas()).containsExactly("public");
+    }
+
+    @Test
+    void listsPersistedTablesWithoutLiveLoader() throws Exception {
+        assertThat(store.listSnapshotTableDescriptions()).isEmpty();
+
+        store.saveAll(List.of(customer()));
+
+        assertThat(store.listSnapshotTableDescriptions()).containsExactly(customer());
+    }
+
+    @Test
     void describeTableLazyFillsThenServesForever() throws Exception {
         TableDescription original = customer();
         assertThat(store.peekDescribeTable("public", "customer")).isNull();

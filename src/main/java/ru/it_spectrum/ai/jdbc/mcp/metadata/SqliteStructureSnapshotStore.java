@@ -10,6 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.SequenceEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Trigger;
+import ru.it_spectrum.ai.jdbc.mcp.model.resource.CatalogSnapshotInfo;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -45,6 +46,30 @@ public class SqliteStructureSnapshotStore implements StructureSnapshotStore {
                                         ObjectMapper mapper) {
         this.dataSource = dataSource;
         this.mapper = mapper;
+    }
+
+    @Override
+    public CatalogSnapshotInfo snapshotInfo() throws SQLException {
+        int formatVersion = 0;
+        long snapshotVersion = 0L;
+        String builtAt = null;
+        List<String> schemas = List.of();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT meta_key, meta_value FROM catalog_meta "
+                             + "WHERE meta_key IN ('format_version', 'snapshot_version', "
+                             + "'structure_built_at', 'structure_schemas')");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                String key = rs.getString("meta_key");
+                String value = rs.getString("meta_value");
+                if ("format_version".equals(key)) formatVersion = parseInt(value);
+                else if ("snapshot_version".equals(key)) snapshotVersion = parseLong(value);
+                else if ("structure_built_at".equals(key)) builtAt = value;
+                else if ("structure_schemas".equals(key)) schemas = splitCsv(value);
+            }
+        }
+        return new CatalogSnapshotInfo(formatVersion, snapshotVersion, builtAt, schemas);
     }
 
     // ---------- tables ----------
@@ -104,6 +129,20 @@ public class SqliteStructureSnapshotStore implements StructureSnapshotStore {
             }
         }
         return null;
+    }
+
+    @Override
+    public List<TableDescription> listSnapshotTableDescriptions() throws SQLException {
+        List<TableDescription> out = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT detail_json FROM snapshot_table ORDER BY schema, name");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                out.add(parseTable(rs.getString("detail_json")));
+            }
+        }
+        return List.copyOf(out);
     }
 
     @Override
@@ -685,6 +724,22 @@ public class SqliteStructureSnapshotStore implements StructureSnapshotStore {
     private static void setNullableInt(PreparedStatement ps, int index, Integer value) throws SQLException {
         if (value == null) ps.setNull(index, Types.INTEGER);
         else ps.setInt(index, value);
+    }
+
+    private static int parseInt(String value) {
+        try {
+            return value == null ? 0 : Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static long parseLong(String value) {
+        try {
+            return value == null ? 0L : Long.parseLong(value.trim());
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
     }
 
     private static String norm(String schema) {
