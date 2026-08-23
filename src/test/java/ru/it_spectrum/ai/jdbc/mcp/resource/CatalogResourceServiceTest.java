@@ -65,11 +65,11 @@ class CatalogResourceServiceTest {
         assertThat(resource.meta()).containsEntry("catalog", "orders/eu");
         assertThat(resources).hasSize(2);
         assertThat(resources.get(1).resource().name()).isEqualTo("public.customer");
+        assertThat(resources.get(1).resource().title()).isNull();
         assertThat(resources.get(1).resource().uri())
                 .isEqualTo("jdbc-mcp://catalog/orders%2Feu/schemas/public/tables/customer");
         assertThat(resources.get(1).resource().description())
-                .isEqualTo("TABLE public.customer — People we bill; PK: id; "
-                        + "FK: org_id → public.org(id)");
+                .isEqualTo("People we bill; PK: id; FK: org_id → public.org(id)");
         assertThat(resources.get(1).resource().meta())
                 .containsEntry("schema", "public")
                 .containsEntry("table", "customer")

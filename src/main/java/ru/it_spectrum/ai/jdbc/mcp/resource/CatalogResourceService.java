@@ -76,7 +76,6 @@ public final class CatalogResourceService {
                 String qualifiedName = table.schema() + "." + table.name();
                 McpSchema.Resource resource = McpSchema.Resource
                         .builder(uris.table(table.schema(), table.name()), qualifiedName)
-                        .title(qualifiedName)
                         .description(tableDescription(table))
                         .mimeType(JSON_MIME_TYPE)
                         .meta(tableDeclarationMeta(table))
@@ -246,8 +245,6 @@ public final class CatalogResourceService {
     }
 
     private static String tableDescription(TableDescription table) {
-        String type = table.type() == null || table.type().isBlank() ? "table-like object" : table.type();
-        String base = type + " " + table.schema() + "." + table.name();
         List<String> details = new ArrayList<>();
         String remarks = singleLine(table.remarks());
         if (remarks != null) details.add(remarks);
@@ -263,7 +260,7 @@ public final class CatalogResourceService {
             }
             if (!foreignKeys.isEmpty()) details.add("FK: " + String.join(", ", foreignKeys));
         }
-        return details.isEmpty() ? base : base + " — " + String.join("; ", details);
+        return details.isEmpty() ? null : String.join("; ", details);
     }
 
     private static String formatForeignKey(ForeignKey foreignKey) {

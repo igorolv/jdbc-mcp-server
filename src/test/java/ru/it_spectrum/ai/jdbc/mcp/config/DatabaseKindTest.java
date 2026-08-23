@@ -82,5 +82,7 @@ class DatabaseKindTest {
         assertThat(config.getMaximumPoolSize()).isEqualTo(40);
         assertThat(config.getIdleTimeout()).isEqualTo(60_000);
         assertThat(config.getInitializationFailTimeout()).isEqualTo(-1);
+        assertThat(config.getDataSourceProperties())
+                .containsEntry("remarksReporting", "true");
     }
 }

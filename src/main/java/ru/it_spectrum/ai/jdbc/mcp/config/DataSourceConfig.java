@@ -61,6 +61,13 @@ public class DataSourceConfig {
         hikari.setIdleTimeout(Math.max(10_000L, properties.idleTimeoutMs()));
         hikari.setInitializationFailTimeout(-1);
 
+        // Oracle does not populate DatabaseMetaData.getTables().REMARKS unless this driver
+        // property is enabled. Structure snapshot rebuilds rely on that field for table/view
+        // comments; column comments use a separate ALL_COL_COMMENTS query.
+        if (kind == DatabaseKind.ORACLE) {
+            hikari.addDataSourceProperty("remarksReporting", "true");
+        }
+
         if (properties.defaultSchema() != null && !properties.defaultSchema().isBlank()) {
             hikari.setSchema(properties.defaultSchema());
         }
