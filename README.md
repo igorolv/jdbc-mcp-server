@@ -8,9 +8,14 @@ views, functions, and sequences.
 PostgreSQL, Oracle, and Microsoft SQL Server JDBC drivers are bundled into the fat jar, so no
 extra driver installation is required.
 
-The server exposes 48 MCP tools and can optionally expose catalog-qualified MCP resources for table
+The server exposes 49 MCP tools and can optionally expose catalog-qualified MCP resources for table
 and column metadata. Tools may update the local SQLite catalog, but they never write to the inspected
 PostgreSQL, Oracle, or SQL Server database.
+
+One server process can serve several databases: name them in
+[`connections.json`](#serving-several-databases-from-one-server) and pass `connection` to any tool.
+The tool manifest stays a single set regardless of how many databases are configured, and pools are
+opened only for the databases actually used.
 
 ## Why This Exists
 
@@ -45,20 +50,30 @@ hints alongside declared FKs. See *Usage Catalog* below.
 ## Architecture
 
 ```text
-+-------------+     stdio      +------------------+      JDBC      +----------+
-|  AI agent   | <------------> |  jdbc-mcp-       | -------------> | database |
-| (Claude Code|   stdin/stdout |  server (Java)   |  read-only     | PG/OCI/  |
-|  Cursor...) |                |                  |  connection    | SQLServer|
-+-------------+                +------------------+                +----------+
+                                                  +------------+
+                                            +---> | database A |
++-------------+     stdio      +----------+ |     +------------+
+|  AI agent   | <------------> | jdbc-mcp | |     +------------+
+| (Claude Code|  stdin/stdout  |  server  |-+---> | database B |
+|  Cursor...) |                |  (Java)  | |     +------------+
++-------------+                +----------+ |
+                                            +---> ...
+
+                                          read-only JDBC
+                                          PG / Oracle / SQL Server
 ```
 
-The protocol is `stdio` only. The client starts the server as a child process.
+The protocol is `stdio` only. The client starts the server as a child process. One process serves
+one database by default and any number of named ones when a
+[connections file](#serving-several-databases-from-one-server) is present; a connection's pool is
+opened the first time a tool call names it.
 
 ## MCP Resources
 
-When `JDBC_MCP_RESOURCES_ENABLED=true`, each server instance exposes a concrete catalog manifest,
-one concrete resource for every table or view already persisted in the structure snapshot, and two
-parameterized resource templates:
+When `JDBC_MCP_RESOURCES_ENABLED=true`, the server exposes — for every configured connection that
+already has a local catalog file — a concrete catalog manifest, one concrete resource for every table
+or view already persisted in that connection's structure snapshot, and two parameterized resource
+templates:
 
 ```text
 jdbc-mcp://catalog/<catalog>/manifest
@@ -67,16 +82,18 @@ jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
 jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
 ```
 
-`<catalog>` is the percent-encoded resolved `JDBC_MCP_CATALOG`, fixed when the server starts; it is
-not a template variable clients can use to switch databases. This keeps resource URIs unambiguous
-when one MCP harness registers several instances of this jar. The manifest reports database kind,
+`<catalog>` is the percent-encoded connection name (with a single environment-configured database,
+the resolved `JDBC_MCP_CATALOG`). It is fixed per connection when the server starts and is not a
+template variable clients can use to switch databases: a read resolves the connection from the URI it
+was given. This keeps resource URIs unambiguous both across the connections of one server and across
+several registered instances of this jar. The manifest reports database kind,
 snapshot version/build time/covered schemas, and the exact templates for its catalog. Table and
 column reads reuse `MetadataService`, so they have the same persistent-snapshot and live-fallback
 semantics as `describeTable`.
 
-Concrete table resources are loaded from the local SQLite snapshot when the MCP server starts, so
-clients with MCP resource-picker support can offer entries like `SSV.CUSTOMERS` without querying the
-live database. Their compact descriptions contain the database comment when present, the primary-key
+Concrete table resources are loaded from the local SQLite snapshots when the MCP server starts — no
+database is contacted and no JDBC pool is created for this — so clients with MCP resource-picker
+support can offer entries like `SSV.CUSTOMERS` without querying the live database. Their compact descriptions contain the database comment when present, the primary-key
 columns, and outgoing foreign-key mappings; column lists and counts are intentionally omitted. After
 running `rebuildCatalog` in an already-running server, restart or reconnect that MCP server instance
 to refresh its concrete resource list.
@@ -88,7 +105,12 @@ tools unchanged.
 
 ## MCP Tools
 
-The 48 tools are grouped below by purpose.
+The 49 tools are grouped below by purpose.
+
+Every tool takes an optional trailing `connection` argument naming the database to run against.
+Omit it to use `defaultConnection` (or the only configured connection). Installations with a single
+database never need to pass it. See
+[Serving Several Databases from One Server](#serving-several-databases-from-one-server).
 
 ### Tool Groups
 
@@ -109,6 +131,7 @@ the box. Turning groups off shrinks the `tools/list` manifest, which matters for
 | Benchmark | `JDBC_MCP_TOOLS_BENCHMARK` | **on** | `benchmarkQuery`, `timedQuery` |
 | Usage catalog | `JDBC_MCP_TOOLS_USAGE` | **on** | `usageCatalogStatus`, `getQuery`, `listQueries`, `findQueriesByTable`, `findQueriesByColumn`, `observedRelationships`, `listKnownTags`, `listKnownDomains`, `listKnownKinds`, `invalidateUsageCatalogCache` |
 | Schema context | `JDBC_MCP_TOOLS_SCHEMA_CONTEXT` | **on** | `tableContext`, `findJoinPaths`, `schemaLint`, `schemaBrief`, `schemaGraph`, `queryContext`, `schemaGraphDot` |
+| Connections | `JDBC_MCP_TOOLS_CONNECTIONS` | **on** | `listConnections` |
 
 Each flag accepts `true` / `false`. For a small-context local model, turn off the groups you do not
 need — for example keep only Metadata + Query by setting the rest to `false` — to cut the manifest
@@ -354,9 +377,19 @@ marked `ambiguous`, and zero matches stay `unresolved`.
 
 | Tool | Description |
 |---|---|
-| `rebuildCatalog` | Rebuild the persistent structure snapshot and usage index for comma-separated `schemas` (or the configured/default scope), checkpoint SQLite WAL, and return the distributable `<catalog>.db` path |
+| `rebuildCatalog` | Rebuild the persistent structure snapshot and usage index for comma-separated `schemas` (or the configured/default scope), checkpoint SQLite WAL, and return the distributable `<catalog>.db` path and the connection it was built for |
 
 This tool writes only to the local catalog. It does not modify the inspected database.
+
+### Connections
+
+| Tool | Description |
+|---|---|
+| `listConnections` | List the databases this server serves: `name` (the value to pass as `connection`), `description`, engine kind, default schema, which one is the default, whether a local catalog file already exists, and whether the pool has been built in this process |
+
+`listConnections` reads configuration and the local filesystem only — it opens no database
+connection, so it still answers when some of the configured databases are down. In an unfamiliar
+installation it is the first call worth making.
 
 ### Persistent Structure Snapshot
 
@@ -593,11 +626,15 @@ not parse `.env` itself; variables must already be present in the environment wh
 
 ## Configuration
 
+Every setting below is global. With a [connections file](#serving-several-databases-from-one-server)
+the `JDBC_*` settings become the defaults each connection inherits and may override; without one
+they describe the single database the server serves.
+
 | Variable | Required | Description |
 |---|---|---|
-| `JDBC_URL` | yes | JDBC URL, for example `jdbc:postgresql://host:5432/db`, `jdbc:oracle:thin:@//host:1521/service`, or `jdbc:sqlserver://host:1433;databaseName=db;encrypt=true;trustServerCertificate=false` |
-| `JDBC_USERNAME` | yes | Database user, preferably read-only |
-| `JDBC_PASSWORD` | yes | Password |
+| `JDBC_URL` | yes¹ | JDBC URL, for example `jdbc:postgresql://host:5432/db`, `jdbc:oracle:thin:@//host:1521/service`, or `jdbc:sqlserver://host:1433;databaseName=db;encrypt=true;trustServerCertificate=false` |
+| `JDBC_USERNAME` | yes¹ | Database user, preferably read-only |
+| `JDBC_PASSWORD` | yes¹ | Password |
 | `JDBC_DEFAULT_SCHEMA` | no | Default schema for metadata tools. If unset, the current connection schema is used |
 | `JDBC_QUERY_TIMEOUT_SECONDS` | no | Per-query timeout, default `30` |
 | `JDBC_MAX_ROWS` | no | Maximum rows in one response, default `1000`. If exceeded, the response includes `truncated: true` |
@@ -609,7 +646,8 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
 | `JDBC_POOL_IDLE_TIMEOUT_MS` | no | Hikari idle connection timeout in milliseconds, default `60000`; idle connections above `JDBC_POOL_MIN_IDLE` are closed after this |
 | `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Shared across catalogs; each catalog gets its own subdirectory under it |
-| `JDBC_MCP_CATALOG` | no | Name of the local catalog for this database. Local data lives under `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/`, and `logs/`. Defaults to `default`. Use a different catalog name for each database |
+| `JDBC_MCP_CATALOG` | no | Name of the local catalog for the `JDBC_URL` database, and the name that database answers to as `connection`. Local data lives under `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/`, and `logs/`. Defaults to `default` |
+| `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. When the file is absent the server runs on `JDBC_URL` alone. See [Serving Several Databases from One Server](#serving-several-databases-from-one-server) |
 | `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest plus concrete table resources and table/column resource templates; default `false` |
 | `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
 | `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` | no | Comma-separated schemas captured by `rebuildCatalog`; empty means the resolved default schema |
@@ -621,6 +659,10 @@ not parse `.env` itself; variables must already be present in the environment wh
 | `JDBC_USAGE_NATIVE_INCLUDE_ROUTINES` | no | Include functions/procedures in native usage, default `true` |
 | `JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS` | no | Include triggers in native usage, default `true` |
 | `JDBC_USAGE_NATIVE_MAX_OBJECTS` | no | Maximum native usage records to add per index build, default `10000` |
+
+¹ Required only when there is no connections file. With one, the databases are defined there and
+`JDBC_URL` is optional — if set, that database joins the registry as an extra connection named after
+`JDBC_MCP_CATALOG`.
 
 The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL,
 `jdbc:oracle:` for Oracle, and `jdbc:sqlserver:` for SQL Server.
@@ -665,15 +707,130 @@ Add this server to the client configuration:
 }
 ```
 
-### Connecting Multiple Databases
+### Where to Configure It
 
-Register one MCP server instance per database, using a unique server key and
-`JDBC_MCP_CATALOG` for each instance. The client namespaces tools by server key, so an agent can
-work with several databases in the same session. MCP resource URIs additionally include the
-catalog name (`jdbc-mcp://catalog/<catalog>/...`), so links and resource caches remain unambiguous
-even when a harness combines resources from several registered servers.
+| Client | Connection method |
+|---|---|
+| Claude Code | `claude mcp add --scope user -e JDBC_URL=... -e JDBC_USERNAME=... -e JDBC_PASSWORD=... -- jdbc java -jar /path/to/jdbc-mcp-server.jar` |
+| Qwen Code | `~/.qwen/settings.json` -> `"mcpServers"` -> `"jdbc"` |
+| VS Code | `.vscode/mcp.json` -> `"servers"` -> `"jdbc"` |
+| Cursor | `.cursor/mcp.json` -> `"mcpServers"` -> `"jdbc"` |
+| Claude Desktop | `claude_desktop_config.json` -> `"mcpServers"` -> `"jdbc"` |
 
-For clients that use an `mcpServers` object:
+For Claude Code, omitting `--scope user` adds the server only to the current project.
+Check the connection with `claude mcp list`. Restart the client after adding the server.
+
+## Serving Several Databases from One Server
+
+One server process can serve any number of named databases. The tool manifest stays a single set of
+49 tools no matter how many are configured — each tool takes an optional trailing `connection`
+argument — and a database's pool, local catalog and services are created the first time something
+actually asks for that connection.
+
+This matters at scale: registering fifteen MCP server instances puts fifteen tool manifests into the
+agent's context and fifteen JVMs in memory, when the session may end up touching two of the
+databases.
+
+### `connections.json`
+
+Default path `~/.jdbc-mcp-server/connections.json` (`<data-dir>/connections.json`), overridden with
+`JDBC_MCP_CONNECTIONS_FILE`:
+
+```json
+{
+  "defaultConnection": "orders",
+  "connections": {
+    "orders": {
+      "url": "jdbc:postgresql://db.example.com:5432/orders",
+      "username": "ai_readonly",
+      "password": "${ORDERS_DB_PASSWORD}",
+      "defaultSchema": "public",
+      "description": "Order service — customers, orders, shipments",
+      "structureSnapshotSchemas": ["public", "nsi"]
+    },
+    "billing": {
+      "url": "jdbc:oracle:thin:@//oracle.example.com:1521/BILLING",
+      "username": "AI_READONLY",
+      "password": "${BILLING_DB_PASSWORD}",
+      "description": "Legacy billing (Oracle)"
+    }
+  }
+}
+```
+
+The object key is the connection name. It is also the name of the connection's local catalog
+directory (`<data-dir>/<name>/`) and appears in MCP resource URIs, so it must match
+`[A-Za-z0-9._-]{1,64}`.
+
+`url` is the only required field. `description` is free text returned by `listConnections`, so an
+agent can pick a database by meaning rather than by name — worth filling in.
+
+Any string value may reference an environment variable as `${VAR}`. A referenced variable that is
+not set fails startup with a message naming the variable and the field; it never becomes an empty
+password.
+
+Optional per-connection fields override the global environment defaults; anything left out is
+inherited from them:
+
+| Field | Global default |
+|---|---|
+| `defaultSchema` | `JDBC_DEFAULT_SCHEMA` |
+| `queryTimeoutSeconds` | `JDBC_QUERY_TIMEOUT_SECONDS` |
+| `maxRows` | `JDBC_MAX_ROWS` |
+| `fetchSize` | `JDBC_FETCH_SIZE` |
+| `readonlyGuard` | `JDBC_READONLY_GUARD` |
+| `poolMaximumSize`, `poolMinimumIdle`, `poolConnectionTimeoutMs`, `poolValidationTimeoutMs`, `poolIdleTimeoutMs` | `JDBC_POOL_MAX_SIZE`, `JDBC_POOL_MIN_IDLE`, `JDBC_CONNECTION_TIMEOUT_MS`, `JDBC_VALIDATION_TIMEOUT_MS`, `JDBC_POOL_IDLE_TIMEOUT_MS` |
+| `structureSnapshotSchemas`, `structureSnapshotOracleColumnQueryTimeoutSeconds` | `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS`, `JDBC_STRUCTURE_SNAPSHOT_ORACLE_COLUMN_QUERY_TIMEOUT_SECONDS` |
+| `usageCatalogEnabled`, `usageCatalogPaths`, `usageNativeSchemas`, `usageNativeIncludeViews`, `usageNativeIncludeRoutines`, `usageNativeIncludeTriggers`, `usageNativeMaxObjects` | the matching `JDBC_USAGE_*` variables |
+
+The `JDBC_MCP_TOOLS_*` group flags stay global — they shape the manifest, which is shared by all
+connections.
+
+> **Keep the file private.** It holds database credentials: `chmod 600 ~/.jdbc-mcp-server/connections.json`
+> (on Windows, restrict it to your user). Prefer `${VAR}` references over literal passwords so the
+> secrets live in the environment and the file can be reviewed, copied, or backed up safely.
+
+### Choosing a connection
+
+Resolution order for every tool call:
+
+1. the explicit `connection` argument;
+2. `defaultConnection` from the file;
+3. the only configured connection, when there is exactly one.
+
+If none of these applies the call returns an `argument` error listing the available names, as does an
+unknown name. Call `listConnections` to see what exists.
+
+### Backwards compatibility
+
+With no connections file the behaviour is exactly as before: one connection built from `JDBC_URL` /
+`JDBC_USERNAME` / `JDBC_PASSWORD`, named after `JDBC_MCP_CATALOG` (default `default`), used by every
+call that omits `connection`. Existing single-database installations need no changes and never have
+to pass the argument.
+
+If both a connections file and `JDBC_URL` are set, the environment database joins the registry as an
+extra connection named after `JDBC_MCP_CATALOG`; a name clash with a file entry fails startup with a
+message naming it.
+
+### Isolation
+
+- Configuring a connection costs nothing until it is used: no pool, no catalog file, no connection.
+- Reaching database `X` opens pools for `X` only.
+- A database that is down, or an entry whose URL is not a supported JDBC URL, fails the calls made
+  against it and leaves the other connections working. `listConnections` reports the reason in
+  `configError`.
+- Each connection keeps its own local catalog at `<data-dir>/<name>/<name>.db`, so structure
+  snapshots and usage indexes never mix.
+- MCP resources (when `JDBC_MCP_RESOURCES_ENABLED=true`) are published for every configured
+  connection that already has a local catalog file; URIs were catalog-qualified already.
+
+Log files remain shared per process, under `<data-dir>/<JDBC_MCP_CATALOG>/logs/`.
+
+### One instance per database (the earlier approach)
+
+Registering one server instance per database still works and remains a reasonable choice for one or
+two databases. The client namespaces tools by server key, at the cost of one tool manifest and one
+JVM per database:
 
 ```json
 {
@@ -702,21 +859,8 @@ For clients that use an `mcpServers` object:
 }
 ```
 
-Do not point different databases at the same `JDBC_MCP_CATALOG`: their usage index and persistent
-structure snapshot would share the same `<catalog>.db` file.
-
-Where to configure it:
-
-| Client | Connection method |
-|---|---|
-| Claude Code | `claude mcp add --scope user -e JDBC_URL=... -e JDBC_USERNAME=... -e JDBC_PASSWORD=... -- jdbc java -jar /path/to/jdbc-mcp-server.jar` |
-| Qwen Code | `~/.qwen/settings.json` -> `"mcpServers"` -> `"jdbc"` |
-| VS Code | `.vscode/mcp.json` -> `"servers"` -> `"jdbc"` |
-| Cursor | `.cursor/mcp.json` -> `"mcpServers"` -> `"jdbc"` |
-| Claude Desktop | `claude_desktop_config.json` -> `"mcpServers"` -> `"jdbc"` |
-
-For Claude Code, omitting `--scope user` adds the server only to the current project.
-Check the connection with `claude mcp list`. Restart the client after adding the server.
+Do not point different databases at the same `JDBC_MCP_CATALOG`, in either setup: their usage index
+and structure snapshot would share one `<catalog>.db` file.
 
 ## Project Structure
 
@@ -729,7 +873,17 @@ Check the connection with `claude mcp list`. Restart the client after adding the
 |   |   +-- UsageProperties.java        - usage-catalog sources and native-object settings
 |   |   +-- StructureSnapshotProperties.java - schemas captured by rebuildCatalog
 |   |   +-- DatabaseKind.java           - PG/Oracle/SQL Server autodetection from URL
-|   |   +-- DataSourceConfig.java       - Hikari + connection-level read-only mode
+|   |   +-- DataSourceConfig.java       - Hikari pool builder + connection-level read-only mode
+|   |   +-- ConnectionsConfig.java      - global defaults and the connection registry bean
+|   +-- connection/
+|   |   +-- ConnectionsFile.java        - connections.json shape
+|   |   +-- ConnectionsLoader.java      - file + env defaults -> connection definitions
+|   |   +-- EnvironmentPlaceholders.java - ${ENV_VAR} substitution
+|   |   +-- ConnectionDefinition.java   - one named database and its effective settings
+|   |   +-- ConnectionRegistry.java     - configured connections, lazily built, closed on shutdown
+|   |   +-- ConnectionContext.java      - the service graph of one connection
+|   |   +-- SpringConnectionContextFactory.java - builds it as a lazy child ApplicationContext
+|   |   +-- ConnectionScopeConfig.java  - per-connection DataSource and DatabaseKind beans
 |   +-- dialect/
 |   |   +-- SqlDialect.java             - dialect interface
 |   |   +-- PostgresDialect.java        - EXPLAIN, pg_catalog, pg_get_viewdef

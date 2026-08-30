@@ -8,7 +8,7 @@
 > - Full build: `./gradlew build`
 
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
-It exposes 48 tools across nine groups. Tools may update the local SQLite catalog, but never the
+It exposes 49 tools across ten groups. Tools may update the local SQLite catalog, but never the
 inspected PostgreSQL, Oracle, or SQL Server database:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarized plans.
@@ -20,6 +20,7 @@ inspected PostgreSQL, Oracle, or SQL Server database:
 - **Schema context** — high-level snapshots, table neighborhoods, FK join paths, schema lint, ERD/DOT export.
 - **Usage catalog** — indexed known SQL queries with business context, observed joins, and semantic evidence.
 - **Catalog administration** — rebuild the persistent structure snapshot and usage index into a distributable SQLite catalog.
+- **Connections** — list the databases this server serves and which one answers by default.
 
 The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, and SQL Server JDBC drivers
 are bundled inside the fat jar.
@@ -33,9 +34,10 @@ jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
 jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
 ```
 
-The catalog segment is fixed per process and UTF-8 percent-encoded; it is not a client-selectable
-template argument. Resources are disabled by default; set `JDBC_MCP_RESOURCES_ENABLED=true` to
-register them.
+The catalog segment is the connection name, UTF-8 percent-encoded and fixed per connection; it is not
+a client-selectable template argument, and a read resolves the connection from the URI it was given.
+Resources are published for every configured connection that already has a local catalog file. They
+are disabled by default; set `JDBC_MCP_RESOURCES_ENABLED=true` to register them.
 
 ## Code style: typed response models
 
@@ -117,12 +119,13 @@ Optionally:
 - **Data directory** — `JDBC_MCP_DATA_DIR` (default `~/.jdbc-mcp-server`). Shared root for all
   server-local data; each catalog gets its own subdirectory under it.
 - **Catalog name** — `JDBC_MCP_CATALOG` (default `default`). Names the local catalog (knowledge
-  store) for this database — the slot key under which everything kept about it lives, all rooted
-  at `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/` (catalog source files), and `logs/`
-  (e.g. `<data-dir>/default/default.db`, `<data-dir>/ssv/logs/`). Serve
-  several databases by launching one server instance per database, each with its own
-  `JDBC_MCP_CATALOG`; the MCP client namespaces their tools by server key, while resources also
-  include the catalog in their URI.
+  store) for the `JDBC_URL` database — the slot key under which everything kept about it lives, all
+  rooted at `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/` (catalog source files), and `logs/`
+  (e.g. `<data-dir>/default/default.db`, `<data-dir>/ssv/logs/`). It is also the name that database
+  answers to as `connection`.
+- **Connections file** — `JDBC_MCP_CONNECTIONS_FILE` (default `<data-dir>/connections.json`). Serves
+  several databases from one process; see [Choosing a connection](#choosing-a-connection). Without
+  the file the server runs on `JDBC_URL` alone, exactly as before.
 - **Default schema** for metadata tools (`JDBC_DEFAULT_SCHEMA`). If omitted, the server uses the
   connection's current schema. On Oracle, this defaults to the connecting user's schema (UPPER CASE).
   On SQL Server, this is normally the login user's default schema (often `dbo`).
@@ -190,6 +193,34 @@ Add the server to the client's MCP configuration:
 | Cursor | `.cursor/mcp.json` → `"mcpServers"` | `"jdbc"` |
 | Claude Desktop | `claude_desktop_config.json` → `"mcpServers"` | `"jdbc"` |
 
+**Several databases in one server.** Instead of registering one instance per database, write
+`~/.jdbc-mcp-server/connections.json` and register the server once — the manifest stays a single set
+of tools, and each call picks its database with `connection`:
+
+```json
+{
+  "defaultConnection": "orders",
+  "connections": {
+    "orders": {
+      "url": "jdbc:postgresql://db.example.com:5432/orders",
+      "username": "ai_readonly",
+      "password": "${ORDERS_DB_PASSWORD}",
+      "defaultSchema": "public",
+      "description": "Order service — customers, orders, shipments"
+    },
+    "billing": {
+      "url": "jdbc:oracle:thin:@//oracle.example.com:1521/BILLING",
+      "username": "AI_READONLY",
+      "password": "${BILLING_DB_PASSWORD}",
+      "description": "Legacy billing (Oracle)"
+    }
+  }
+}
+```
+
+Keep passwords in `${ENV_VAR}` references and the file readable only by its owner — it holds
+database credentials. The README documents every per-connection field.
+
 **Example for Claude Code (`~/.claude/settings.json`):**
 ```json
 {
@@ -211,9 +242,10 @@ After updating the config, restart the client so it picks up the new MCP server.
 
 ## Available tools
 
-The server exposes **48 MCP tools**, all read-only with respect to the inspected database. Which
-ones appear in `tools/list` depends on the `JDBC_MCP_TOOLS_*` group flags. **All groups are on by
-default**, so the full set is available out of the box. To shrink the manifest for a small-context
+The server exposes **49 MCP tools**, all read-only with respect to the inspected database. Every tool
+takes an optional trailing `connection` argument — see [Choosing a connection](#choosing-a-connection).
+Which tools appear in `tools/list` depends on the `JDBC_MCP_TOOLS_*` group flags. **All groups are on
+by default**, so the full set is available out of the box. To shrink the manifest for a small-context
 (local) model, turn groups off — e.g. keep only Metadata + Query by setting the other flags to
 `false` (`JDBC_MCP_TOOLS_ANALYSIS=false`, `JDBC_MCP_TOOLS_STATS=false`, …); see the README "Tool
 Groups" table for the full mapping. The sections below document every tool.
@@ -302,7 +334,13 @@ keep the response compact; raise the caps when needed.
 
 | Tool | Description |
 |---|---|
-| `rebuildCatalog` | Rebuild the persistent structure snapshot and usage index for comma-separated `schemas` (or the configured/default scope), checkpoint SQLite WAL, and return the `<catalog>.db` path. Writes only to the local catalog |
+| `rebuildCatalog` | Rebuild the persistent structure snapshot and usage index for comma-separated `schemas` (or the configured/default scope), checkpoint SQLite WAL, and return the `<catalog>.db` path plus the connection it was built for. Writes only to the local catalog |
+
+### Connection tools
+
+| Tool | Description |
+|---|---|
+| `listConnections` | The databases this server serves: `name` (what to pass as `connection`), `description`, engine kind, default schema, which one is the default, whether a local catalog exists, and whether its pool has been built. Opens no database connection |
 
 ### Structure snapshot
 
@@ -381,10 +419,44 @@ All tools share one error shape — a JSON object with at minimum `error` and `k
 {"valid": false, "stage": "guard|params|driver", "error": "..."}
 ```
 
+## Choosing a connection
+
+One server process may serve several databases, named in
+`<data-dir>/connections.json` (override with `JDBC_MCP_CONNECTIONS_FILE`). Every tool takes an
+optional trailing `connection` argument naming the database to run against.
+
+**In an unfamiliar installation, `listConnections` is the first call to make.** It is cheap — it
+opens no database connection — and it tells you what exists, what each database is for
+(`description`, written by the operator), which one answers when `connection` is omitted
+(`isDefault` / `defaultConnection`), and which already have a local catalog (`snapshotAvailable`,
+a hint that `describeTable`, `schemaBrief` and friends will answer from the snapshot).
+
+Rules:
+
+- Pass `connection` on every call once you know which database the question is about. Passing it
+  explicitly is never wrong, and it is what keeps a multi-database session from silently reading the
+  default database.
+- Omit it only when you mean the default: with a single configured database — the usual setup — it
+  is the only one, and nothing needs to be passed at all.
+- The name is resolved as: explicit `connection` → `defaultConnection` → the only connection.
+  If none applies, or the name is unknown, the call returns an `argument` error listing the
+  available names. Do not guess names; call `listConnections`.
+- Do not mix databases in one query: there are no cross-connection queries or joins. Read from each
+  database separately and combine the results yourself.
+- Each connection has its own local catalog, usage index and structure snapshot. `rebuildCatalog`,
+  the usage tools and the stats tools all act on the connection you name, and `listConnections`,
+  `usageCatalogStatus` and `rebuildCatalog` echo the connection name back so a response cannot be
+  mistaken for another database's.
+- A database being down affects only calls made against it. If one connection errors, the others
+  keep working; `configError` in `listConnections` reports a connection that is misconfigured rather
+  than unreachable.
+
 ## How an agent should use these tools
 
 Recommended flow when the user asks a data question:
 
+0. If you have not yet established which database the question is about, call `listConnections`
+   and pick one by `description`; pass its `name` as `connection` on every call below.
 1. If the agent does not already know the schema, prefer the high-level context tools over
    manual chaining. `queryContext` (natural-language terms or explicit table list) returns the
    tables, columns, constraints, allowed values, relationships and join paths in one call.
