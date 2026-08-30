@@ -27,6 +27,10 @@ abstract class AbstractToolsIntegrationTest {
 
     protected abstract IntegrationTestContext context();
 
+    protected final String connection() {
+        return context().connection();
+    }
+
     protected final String schema() {
         return context().schema();
     }

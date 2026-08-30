@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
+import ru.it_spectrum.ai.jdbc.mcp.connection.TestConnections;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.OracleDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
@@ -35,6 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("live-oracle")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LiveOracleIntegrationSchemaTest {
+
+    private static final String CONNECTION = "live-oracle";
 
     private String schema;
     private MetadataService metadata;
@@ -69,7 +73,9 @@ class LiveOracleIntegrationSchemaTest {
         StatsService stats = new StatsService(executor, dialect, props);
         schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
         JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
-        schemaContextTools = new SchemaContextTools(schemaContext, json, new ToolErrors(json));
+        ConnectionRegistry connections = TestConnections.registry(
+                CONNECTION, props, dialect, executor, guard, store, metadata, stats, schemaContext);
+        schemaContextTools = new SchemaContextTools(connections, json, new ToolErrors(json));
     }
 
     private DataSource buildPool(JdbcProperties p) {
@@ -110,7 +116,7 @@ class LiveOracleIntegrationSchemaTest {
     @Test
     void measureSchemaBriefFirstCall() throws Exception {
         long t0 = System.currentTimeMillis();
-        String brief = schemaContextTools.schemaBrief(schema, null, 2000);
+        String brief = schemaContextTools.schemaBrief(CONNECTION, schema, null, 2000);
         long t1 = System.currentTimeMillis();
         System.out.printf("[TIMING] schemaBrief (first call, via tools): %d ms%n", (t1 - t0));
         System.out.printf("[TIMING] response length: %d chars%n", brief.length());
@@ -216,7 +222,7 @@ class LiveOracleIntegrationSchemaTest {
 
     @Test
     void schemaBriefProducesText() {
-        String brief = schemaContextTools.schemaBrief(schema, null, 2000);
+        String brief = schemaContextTools.schemaBrief(CONNECTION, schema, null, 2000);
         assertThat(brief)
                 .contains("Schema brief")
                 .contains("Tables")

@@ -6,6 +6,8 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
@@ -30,11 +32,11 @@ public class QueryTools {
 
     private static final Logger log = LoggerFactory.getLogger(QueryTools.class);
 
-    private final SqlExecutor executor;
+    private final ConnectionRegistry connections;
     private final ToolErrors errors;
 
-    public QueryTools(SqlExecutor executor, ToolErrors errors) {
-        this.executor = executor;
+    public QueryTools(ConnectionRegistry connections, ToolErrors errors) {
+        this.connections = connections;
         this.errors = errors;
     }
 
@@ -47,6 +49,7 @@ public class QueryTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryResult executeQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
@@ -54,10 +57,11 @@ public class QueryTools {
             @McpToolParam(description = "Timeout in seconds (default JDBC_QUERY_TIMEOUT_SECONDS).", required = false) Integer timeoutSeconds
     ) {
         log.info("Tool call: executeQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
             String normalizedSql = QueryToolSupport.normalizeSql(sql);
-            QueryResult result = query(normalizedSql, params, namedParams, limit, timeoutSeconds);
+            QueryResult result = query(ctx.executor(), normalizedSql, params, namedParams, limit, timeoutSeconds);
             ToolLogger.completed(log, "executeQuery", start);
             return result;
         } catch (SqlNotAllowedException e) {
@@ -72,8 +76,9 @@ public class QueryTools {
         }
     }
 
-    private QueryResult query(String sql, List<Object> params, Map<String, Object> namedParams,
-                              Integer limit, Integer timeoutSeconds) throws SQLException {
+    private QueryResult query(SqlExecutor executor, String sql, List<Object> params,
+                              Map<String, Object> namedParams, Integer limit, Integer timeoutSeconds)
+            throws SQLException {
         SqlParameterBindingResolver.Binding binding = SqlParameterBindingResolver.resolve(sql, params, namedParams);
         if (binding.namedParams() != null) {
             return executor.queryNamed(sql, binding.namedParams(), limit, timeoutSeconds);

@@ -8,6 +8,8 @@ import java.util.List;
 @Schema(description = "Outcome of a full catalog rebuild: the persistent structure snapshot plus the "
         + "usage index, both written into the local <catalog>.db so the file can be distributed.")
 public record RebuildCatalogResult(
+        @Schema(description = "Name of the connection whose catalog was rebuilt.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        String connection,
         @Schema(description = "Absolute path of the built catalog file on disk; copy this file to distribute the catalog.", requiredMode = Schema.RequiredMode.REQUIRED)
         String catalogFile,
         @Schema(description = "Schemas captured into the structure snapshot.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
@@ -26,8 +28,9 @@ public record RebuildCatalogResult(
      * schema stays small (this tool is in the default {@code admin} group). Callers pass the full
      * status; only a few summary values are surfaced.
      */
-    public RebuildCatalogResult(String catalogFile, List<String> structureSchemas, UsageCatalogStatus usage) {
-        this(catalogFile, structureSchemas, structureSchemas == null ? 0 : structureSchemas.size(),
+    public RebuildCatalogResult(String connection, String catalogFile, List<String> structureSchemas,
+                                UsageCatalogStatus usage) {
+        this(connection, catalogFile, structureSchemas, structureSchemas == null ? 0 : structureSchemas.size(),
                 usage != null && usage.catalogEnabled(),
                 usage == null ? null : usage.state(),
                 usage == null || usage.sources() == null ? 0 : usage.sources().size());

@@ -7,24 +7,18 @@ import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
-import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
-import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.model.lineage.QueryLineageResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.plan.PlanAnalysisSummary;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanAnalyzer;
-import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryInspection;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryLintResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryValidationResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
-import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
-import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLineageService;
-import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
-import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParameterBindingResolver;
-import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlNotAllowedException;
 
 import java.sql.Connection;
@@ -39,8 +33,8 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * MCP tools that analyse SQL without being the primary execution path: execution plans
  * (explain / analyzePlan), pre-flight validation, AST inspection, metadata-aware lint and lineage.
- * All are strictly read-only — write statements are rejected by {@link ReadOnlyGuard} before
- * reaching the database.
+ * All are strictly read-only — write statements are rejected by the connection's read-only guard
+ * before reaching the database.
  *
  * <p>Belongs to the {@code analysis} tool group. The hot path {@code executeQuery} lives in
  * {@link QueryTools} ({@code query} group). All tool groups are on by default and can be turned off
@@ -52,31 +46,11 @@ public class QueryAnalysisTools {
 
     private static final Logger log = LoggerFactory.getLogger(QueryAnalysisTools.class);
 
-    private final SqlExecutor executor;
-    private final SqlDialect dialect;
-    private final JdbcProperties properties;
-    private final ReadOnlyGuard guard;
-    private final PlanParser planParser;
-    private final QueryAnalysisService analysis;
-    private final QueryLineageService lineage;
-    private final QueryLintService lint;
+    private final ConnectionRegistry connections;
     private final ToolErrors errors;
 
-    public QueryAnalysisTools(SqlExecutor executor, SqlDialect dialect,
-                              JdbcProperties properties, ReadOnlyGuard guard,
-                              PlanParser planParser,
-                              QueryAnalysisService analysis,
-                              QueryLineageService lineage,
-                              QueryLintService lint,
-                              ToolErrors errors) {
-        this.executor = executor;
-        this.dialect = dialect;
-        this.properties = properties;
-        this.guard = guard;
-        this.planParser = planParser;
-        this.analysis = analysis;
-        this.lineage = lineage;
-        this.lint = lint;
+    public QueryAnalysisTools(ConnectionRegistry connections, ToolErrors errors) {
+        this.connections = connections;
         this.errors = errors;
     }
 
@@ -88,28 +62,30 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String explainQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze
     ) {
         log.info("Tool call: explainQuery (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
             String normalizedSql = QueryToolSupport.normalizeSql(sql);
-            guard.check(normalizedSql);
+            ctx.guard().check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
-            if (dialect.kind() == DatabaseKind.MSSQL) {
-                String result = explainSqlServer(normalizedSql, params, namedParams);
+            if (ctx.dialect().kind() == DatabaseKind.MSSQL) {
+                String result = explainSqlServer(ctx, normalizedSql, params, namedParams);
                 ToolLogger.completed(log, "explainQuery", start);
                 return result;
             }
             String statementId = newExplainStatementId();
-            String explainSql = dialect.buildExplain(normalizedSql, doAnalyze, statementId);
-            String displaySql = dialect.explainDisplayQuery(statementId);
+            String explainSql = ctx.dialect().buildExplain(normalizedSql, doAnalyze, statementId);
+            String displaySql = ctx.dialect().explainDisplayQuery(statementId);
             List<Object> displayParams = displaySql == null ? Collections.emptyList() : List.of(statementId);
 
-            String result = executor.withConnection(conn -> {
+            String result = ctx.executor().withConnection(conn -> {
                 SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
                 String preparedExplainSql;
                 List<Object> preparedParams;
@@ -126,11 +102,11 @@ public class QueryAnalysisTools {
                 // Two-step plan flow for Oracle (EXPLAIN PLAN FOR ... ; SELECT * FROM DBMS_XPLAN.DISPLAY).
                 // For PostgreSQL displaySql is null — the EXPLAIN itself yields the plan rows.
                 if (displaySql != null) {
-                    runUpdate(conn, preparedExplainSql, preparedParams);
-                    QueryResult planRows = queryWithParams(conn, displaySql, displayParams);
+                    runUpdate(ctx, conn, preparedExplainSql, preparedParams);
+                    QueryResult planRows = queryWithParams(ctx, conn, displaySql, displayParams);
                     return rowsAsText(planRows);
                 }
-                QueryResult planRows = queryWithParams(conn, preparedExplainSql, preparedParams);
+                QueryResult planRows = queryWithParams(ctx, conn, preparedExplainSql, preparedParams);
                 return rowsAsText(planRows);
             }, displaySql == null);
             ToolLogger.completed(log, "explainQuery", start);
@@ -156,29 +132,31 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public PlanAnalysisSummary analyzePlan(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze
     ) {
         log.info("Tool call: analyzePlan (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
             String normalizedSql = QueryToolSupport.normalizeSql(sql);
-            guard.check(normalizedSql);
+            ctx.guard().check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
-            if (dialect.kind() == DatabaseKind.MSSQL) {
-                ParsedPlan parsed = structuredSqlServerPlan(normalizedSql, params, namedParams);
+            if (ctx.dialect().kind() == DatabaseKind.MSSQL) {
+                ParsedPlan parsed = structuredSqlServerPlan(ctx, normalizedSql, params, namedParams);
                 PlanAnalysisSummary result = PlanAnalyzer.summarize(parsed);
                 ToolLogger.completed(log, "analyzePlan", start);
                 return result;
             }
             String statementId = newExplainStatementId();
-            String explainSql = dialect.buildStructuredExplain(normalizedSql, doAnalyze, statementId);
-            String displaySql = dialect.structuredPlanQuery(statementId);
+            String explainSql = ctx.dialect().buildStructuredExplain(normalizedSql, doAnalyze, statementId);
+            String displaySql = ctx.dialect().structuredPlanQuery(statementId);
             List<Object> displayParams = displaySql == null ? Collections.emptyList() : List.of(statementId);
 
-            ParsedPlan parsed = executor.withConnection(conn -> {
+            ParsedPlan parsed = ctx.executor().withConnection(conn -> {
                 SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
                 String preparedExplainSql;
                 List<Object> preparedParams;
@@ -195,13 +173,13 @@ public class QueryAnalysisTools {
                 QueryResult planRows;
                 if (displaySql != null) {
                     // Oracle: populate PLAN_TABLE, then read the typed columns back.
-                    runUpdate(conn, preparedExplainSql, preparedParams);
-                    planRows = queryWithParams(conn, displaySql, displayParams);
+                    runUpdate(ctx, conn, preparedExplainSql, preparedParams);
+                    planRows = queryWithParams(ctx, conn, displaySql, displayParams);
                 } else {
                     // PostgreSQL: FORMAT JSON EXPLAIN returns one row with the plan document.
-                    planRows = queryWithParams(conn, preparedExplainSql, preparedParams);
+                    planRows = queryWithParams(ctx, conn, preparedExplainSql, preparedParams);
                 }
-                return planParser.parse(planRows, doAnalyze);
+                return ctx.planParser().parse(planRows, doAnalyze);
             }, displaySql == null);
             PlanAnalysisSummary result = PlanAnalyzer.summarize(parsed);
             ToolLogger.completed(log, "analyzePlan", start);
@@ -230,18 +208,20 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryValidationResult validateQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
             @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams
     ) {
         log.info("Tool call: validateQuery (sql={}, params={}, namedParams={})", sql, params, namedParams);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         String normalizedSql = QueryToolSupport.normalizeSql(sql);
         try {
-            guard.check(normalizedSql);
+            ctx.guard().check(normalizedSql);
         } catch (SqlNotAllowedException e) {
             ToolLogger.failed(log, "validateQuery", start, e.getMessage());
-            return validationFailure("guard", e.getMessage(), analysis.inspect(normalizedSql));
+            return validationFailure("guard", e.getMessage(), ctx.analysis().inspect(normalizedSql));
         }
         try {
             SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
@@ -255,7 +235,7 @@ public class QueryAnalysisTools {
             }
             final String finalPreparedSql = preparedSql;
             final List<Object> finalPreparedParams = preparedParams;
-            QueryValidationResult result = executor.withConnection(conn -> {
+            QueryValidationResult result = ctx.executor().withConnection(conn -> {
                 try (PreparedStatement ps = conn.prepareStatement(finalPreparedSql)) {
                     bind(ps, finalPreparedParams);
                     int paramCount = ps.getParameterMetaData().getParameterCount();
@@ -265,17 +245,17 @@ public class QueryAnalysisTools {
                     } catch (SQLException ignore) {
                         // some drivers can't describe a prepared SELECT without execution
                     }
-                    return QueryValidationResult.valid(paramCount, colCount, analysis.inspect(normalizedSql));
+                    return QueryValidationResult.valid(paramCount, colCount, ctx.analysis().inspect(normalizedSql));
                 }
             });
             ToolLogger.completed(log, "validateQuery", start);
             return result;
         } catch (RuntimeException e) {
             ToolLogger.failed(log, "validateQuery", start, e.getMessage());
-            return validationFailure("params", e.getMessage(), analysis.inspect(normalizedSql));
+            return validationFailure("params", e.getMessage(), ctx.analysis().inspect(normalizedSql));
         } catch (SQLException e) {
             ToolLogger.failed(log, "validateQuery", start, e.getMessage());
-            return validationFailure("driver", e.getMessage(), analysis.inspect(normalizedSql));
+            return validationFailure("driver", e.getMessage(), ctx.analysis().inspect(normalizedSql));
         }
     }
 
@@ -286,11 +266,13 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryInspection inspectQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql
     ) {
         log.info("Tool call: inspectQuery (sql={})", sql);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
-        QueryInspection result = analysis.inspect(QueryToolSupport.normalizeSql(sql));
+        QueryInspection result = ctx.analysis().inspect(QueryToolSupport.normalizeSql(sql));
         ToolLogger.completed(log, "inspectQuery", start);
         return result;
     }
@@ -303,13 +285,15 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryLintResult queryLint(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "", required = false) String schema
     ) {
         log.info("Tool call: queryLint (sql={}, schema={})", sql, schema);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            QueryLintResult result = lint.lint(QueryToolSupport.normalizeSql(sql), schema);
+            QueryLintResult result = ctx.lint().lint(QueryToolSupport.normalizeSql(sql), schema);
             ToolLogger.completed(log, "queryLint", start);
             return result;
         } catch (SQLException e) {
@@ -328,6 +312,7 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryLineageResult resolveQueryLineage(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Default schema for unqualified names", required = false) String schema,
             @McpToolParam(description = "Expand database views and materialized views recursively. Default true.", required = false) Boolean expandViews,
@@ -335,9 +320,10 @@ public class QueryAnalysisTools {
             @McpToolParam(description = "Maximum recursive expansion depth. Default 5, max 20.", required = false) Integer maxDepth
     ) {
         log.info("Tool call: resolveQueryLineage (sql={}, schema={}, expandViews={}, expandRoutines={}, maxDepth={})", sql, schema, expandViews, expandRoutines, maxDepth);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            QueryLineageResult result = lineage.resolve(QueryToolSupport.normalizeSql(sql), schema, expandViews, expandRoutines, maxDepth);
+            QueryLineageResult result = ctx.lineage().resolve(QueryToolSupport.normalizeSql(sql), schema, expandViews, expandRoutines, maxDepth);
             ToolLogger.completed(log, "resolveQueryLineage", start);
             return result;
         } catch (SQLException e) {
@@ -360,9 +346,11 @@ public class QueryAnalysisTools {
         return SqlParameterBindingResolver.resolve(sql, params, namedParams);
     }
 
-    private QueryResult queryWithParams(Connection conn, String sql, List<Object> params) throws SQLException {
+    private QueryResult queryWithParams(ConnectionContext ctx, Connection conn, String sql,
+                                        List<Object> params) throws SQLException {
+        int timeout = ctx.jdbcProperties().queryTimeoutSeconds();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            if (properties.queryTimeoutSeconds() > 0) ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            if (timeout > 0) ps.setQueryTimeout(timeout);
             bind(ps, params);
             try (var rs = ps.executeQuery()) {
                 return readAll(rs);
@@ -370,9 +358,11 @@ public class QueryAnalysisTools {
         }
     }
 
-    private void runUpdate(Connection conn, String sql, List<Object> params) throws SQLException {
+    private void runUpdate(ConnectionContext ctx, Connection conn, String sql, List<Object> params)
+            throws SQLException {
+        int timeout = ctx.jdbcProperties().queryTimeoutSeconds();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            if (properties.queryTimeoutSeconds() > 0) ps.setQueryTimeout(properties.queryTimeoutSeconds());
+            if (timeout > 0) ps.setQueryTimeout(timeout);
             bind(ps, params);
             ps.execute();
         }
@@ -415,30 +405,30 @@ public class QueryAnalysisTools {
         return sb.toString();
     }
 
-    private String explainSqlServer(String sql, List<Object> params, Map<String, Object> namedParams)
-            throws SQLException {
-        return executor.withConnection(conn -> {
+    private String explainSqlServer(ConnectionContext ctx, String sql, List<Object> params,
+                                    Map<String, Object> namedParams) throws SQLException {
+        return ctx.executor().withConnection(conn -> {
             String planSql = sqlServerPlanSql(sql, params, namedParams);
-            runStatement(conn, "SET SHOWPLAN_TEXT ON");
+            runStatement(ctx, conn, "SET SHOWPLAN_TEXT ON");
             try {
-                QueryResult planRows = queryWithStatement(conn, planSql);
+                QueryResult planRows = queryWithStatement(ctx, conn, planSql);
                 return rowsAsText(planRows);
             } finally {
-                runStatement(conn, "SET SHOWPLAN_TEXT OFF");
+                runStatement(ctx, conn, "SET SHOWPLAN_TEXT OFF");
             }
         });
     }
 
-    private ParsedPlan structuredSqlServerPlan(String sql, List<Object> params, Map<String, Object> namedParams)
-            throws SQLException {
-        return executor.withConnection(conn -> {
+    private ParsedPlan structuredSqlServerPlan(ConnectionContext ctx, String sql, List<Object> params,
+                                               Map<String, Object> namedParams) throws SQLException {
+        return ctx.executor().withConnection(conn -> {
             String planSql = sqlServerPlanSql(sql, params, namedParams);
-            runStatement(conn, "SET SHOWPLAN_XML ON");
+            runStatement(ctx, conn, "SET SHOWPLAN_XML ON");
             try {
-                QueryResult planRows = queryWithStatement(conn, planSql);
-                return planParser.parse(planRows, false);
+                QueryResult planRows = queryWithStatement(ctx, conn, planSql);
+                return ctx.planParser().parse(planRows, false);
             } finally {
-                runStatement(conn, "SET SHOWPLAN_XML OFF");
+                runStatement(ctx, conn, "SET SHOWPLAN_XML OFF");
             }
         });
     }
@@ -453,18 +443,21 @@ public class QueryAnalysisTools {
         return inlinePositionalParams(sql, binding.params());
     }
 
-    private QueryResult queryWithStatement(Connection conn, String sql) throws SQLException {
+    private QueryResult queryWithStatement(ConnectionContext ctx, Connection conn, String sql)
+            throws SQLException {
+        int timeout = ctx.jdbcProperties().queryTimeoutSeconds();
         try (Statement st = conn.createStatement()) {
-            if (properties.queryTimeoutSeconds() > 0) st.setQueryTimeout(properties.queryTimeoutSeconds());
+            if (timeout > 0) st.setQueryTimeout(timeout);
             try (var rs = st.executeQuery(sql)) {
                 return readAll(rs);
             }
         }
     }
 
-    private void runStatement(Connection conn, String sql) throws SQLException {
+    private void runStatement(ConnectionContext ctx, Connection conn, String sql) throws SQLException {
+        int timeout = ctx.jdbcProperties().queryTimeoutSeconds();
         try (Statement st = conn.createStatement()) {
-            if (properties.queryTimeoutSeconds() > 0) st.setQueryTimeout(properties.queryTimeoutSeconds());
+            if (timeout > 0) st.setQueryTimeout(timeout);
             st.execute(sql);
         }
     }

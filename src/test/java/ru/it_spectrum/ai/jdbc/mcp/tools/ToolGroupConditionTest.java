@@ -5,10 +5,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
-import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -30,7 +27,17 @@ class ToolGroupConditionTest {
             assertThat(ctx).hasSingleBean(QueryTools.class);
             assertThat(ctx).hasSingleBean(SampleTools.class);
             assertThat(ctx).hasSingleBean(DistributionTools.class);
+            assertThat(ctx).hasSingleBean(ConnectionTools.class);
         });
+    }
+
+    @Test
+    void connectionDiscoveryCanBeTurnedOff() {
+        runner.withPropertyValues("jdbc-mcp.tools.connections=false")
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(ConnectionTools.class);
+                    assertThat(ctx).hasSingleBean(MetadataTools.class);
+                });
     }
 
     @Test
@@ -56,16 +63,14 @@ class ToolGroupConditionTest {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @Import({MetadataTools.class, QueryTools.class, SampleTools.class, DistributionTools.class})
+    @Import({MetadataTools.class, QueryTools.class, SampleTools.class, DistributionTools.class,
+            ConnectionTools.class})
     static class Tools {
     }
 
     @Configuration(proxyBeanMethods = false)
     static class Mocks {
-        @Bean MetadataService metadataService() { return mock(MetadataService.class); }
-        @Bean DistributionService distributionService() { return mock(DistributionService.class); }
-        @Bean SqlExecutor sqlExecutor() { return mock(SqlExecutor.class); }
-        @Bean SqlDialect sqlDialect() { return mock(SqlDialect.class); }
+        @Bean ConnectionRegistry connectionRegistry() { return mock(ConnectionRegistry.class); }
         @Bean JsonResponses jsonResponses() { return mock(JsonResponses.class); }
         @Bean ToolErrors toolErrors() { return mock(ToolErrors.class); }
     }

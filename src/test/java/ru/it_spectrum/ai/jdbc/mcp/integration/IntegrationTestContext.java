@@ -10,6 +10,7 @@ import ru.it_spectrum.ai.jdbc.mcp.tools.SchemaContextTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.StatsTools;
 
 record IntegrationTestContext(
+        String connection,
         String schema,
         QueryTools queryTools,
         QueryAnalysisTools queryAnalysisTools,

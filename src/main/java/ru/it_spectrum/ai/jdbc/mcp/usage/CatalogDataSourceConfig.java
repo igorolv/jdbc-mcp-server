@@ -6,12 +6,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteDataSource;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
-import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 
 import javax.sql.DataSource;
@@ -41,7 +39,6 @@ import java.util.List;
  * immediately with {@code SQLITE_BUSY}.
  */
 @Configuration
-@EnableConfigurationProperties({UsageProperties.class, StructureSnapshotProperties.class})
 public class CatalogDataSourceConfig {
 
     private static final Logger log = LoggerFactory.getLogger(CatalogDataSourceConfig.class);

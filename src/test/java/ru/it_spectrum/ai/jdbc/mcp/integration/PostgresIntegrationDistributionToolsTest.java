@@ -13,7 +13,7 @@ class PostgresIntegrationDistributionToolsTest extends AbstractPostgresToolsInte
 
     @Test
     void columnStatsReturnsBasicExtremes() {
-        ObjectNode result = object(distributionTools().columnStats("public", "orders", "total"));
+        ObjectNode result = object(distributionTools().columnStats(connection(), "public", "orders", "total"));
         assertThat(field(result, "totalRows").asInt()).isEqualTo(3);
         assertThat(field(result, "nonNullRows").asInt()).isEqualTo(3);
         assertThat(field(result, "distinctValues").asInt()).isEqualTo(3);
@@ -21,14 +21,14 @@ class PostgresIntegrationDistributionToolsTest extends AbstractPostgresToolsInte
 
     @Test
     void distributionAndHistogramExposeSkew() {
-        ObjectNode distribution = object(distributionTools().columnDistribution("public", "events", "status", 5));
+        ObjectNode distribution = object(distributionTools().columnDistribution(connection(), "public", "events", "status", 5));
         assertThat(field(distribution, "totalRows").asInt()).isEqualTo(100);
         ObjectNode ok = (ObjectNode) findByField((ArrayNode) field(distribution, "values"), "value", "OK");
         assertThat(ok).isNotNull();
         assertThat(field(ok, "frequency").asInt()).isEqualTo(90);
         assertThat(field(ok, "ratio").asDouble()).isCloseTo(0.9, within(1e-6));
 
-        ObjectNode histogram = object(distributionTools().columnHistogram("public", "events", "amount"));
+        ObjectNode histogram = object(distributionTools().columnHistogram(connection(), "public", "events", "amount"));
         assertThat(field(histogram, "percentileFunction").asText()).isEqualTo("percentile_cont");
         assertThat(field(histogram, "p50").asDouble())
                 .isBetween(field(histogram, "min").asDouble(), field(histogram, "max").asDouble());
@@ -36,18 +36,18 @@ class PostgresIntegrationDistributionToolsTest extends AbstractPostgresToolsInte
 
     @Test
     void nullRatioSelectivityAndJoinCardinalityReturnPlannerSignals() {
-        ObjectNode nullRatio = object(distributionTools().nullRatio("public", "events"));
+        ObjectNode nullRatio = object(distributionTools().nullRatio(connection(), "public", "events"));
         ObjectNode category = (ObjectNode) findByField((ArrayNode) field(nullRatio, "columns"), "column", "category");
         assertThat(category).isNotNull();
         assertThat(field(category, "nullRows").asInt()).isEqualTo(10);
 
-        ObjectNode selectivity = object(distributionTools().estimateSelectivity(
+        ObjectNode selectivity = object(distributionTools().estimateSelectivity(connection(),
                 "public", "events", "status = 'FAIL'"));
         assertThat(field(selectivity, "estimatedRows").asLong())
                 .isLessThan(field(selectivity, "baselineRows").asLong());
         assertThat(field(selectivity, "selectivity").asDouble()).isBetween(0.0, 1.0);
 
-        ObjectNode join = object(distributionTools().joinCardinality(
+        ObjectNode join = object(distributionTools().joinCardinality(connection(),
                 "public", "customers", "id",
                 "public", "orders", "customer_id", "INNER"));
         assertThat(field(join, "joinType").asText()).isEqualTo("INNER");
@@ -57,7 +57,7 @@ class PostgresIntegrationDistributionToolsTest extends AbstractPostgresToolsInte
     @Test
     void selectivityRejectsMultipleStatementsAtToolBoundary() {
         assertInvalidArgument(() ->
-                distributionTools().estimateSelectivity("public", "events", "status = 'OK'; DROP TABLE events"),
+                distributionTools().estimateSelectivity(connection(), "public", "events", "status = 'OK'; DROP TABLE events"),
                 "single boolean expression");
     }
 }
