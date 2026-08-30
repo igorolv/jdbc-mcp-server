@@ -19,7 +19,7 @@ class JdbcMcpPropertiesTest {
             assertThat(props.usageCatalogDir())
                     .isEqualTo(props.resolvedDataDir().resolve("default").resolve("usage-catalog"));
             assertThat(props.logsDir())
-                    .isEqualTo(props.resolvedDataDir().resolve("default").resolve("logs"));
+                    .isEqualTo(props.resolvedDataDir().resolve("logs"));
             assertThat(props.catalogDbFile())
                     .isEqualTo(props.resolvedDataDir().resolve("default").resolve("default.db"));
         }
@@ -36,7 +36,7 @@ class JdbcMcpPropertiesTest {
     }
 
     @Test
-    void namedCatalogRootsEverythingUnderItsOwnDir() {
+    void namedCatalogRootsCatalogDataUnderItsOwnDirAndKeepsProcessLogsShared() {
         JdbcMcpProperties props = new JdbcMcpProperties(DATA_DIR, "ssv");
 
         assertThat(props.resolvedCatalogName()).isEqualTo("ssv");
@@ -45,7 +45,7 @@ class JdbcMcpPropertiesTest {
         assertThat(props.usageCatalogDir())
                 .isEqualTo(props.resolvedDataDir().resolve("ssv").resolve("usage-catalog"));
         assertThat(props.logsDir())
-                .isEqualTo(props.resolvedDataDir().resolve("ssv").resolve("logs"));
+                .isEqualTo(props.resolvedDataDir().resolve("logs"));
         assertThat(props.catalogDbFile())
                 .isEqualTo(props.resolvedDataDir().resolve("ssv").resolve("ssv.db"));
         assertThat(props.legacyH2CatalogDbFile())

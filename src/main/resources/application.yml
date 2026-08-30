@@ -16,7 +16,8 @@ spring:
       - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
 
 # Top-level server data directory — all local storage is rooted here. Each connection gets its own
-# slot under <data-dir>/<connection>/ (usage-catalog/, logs/, the persisted snapshot).
+# slot under <data-dir>/<connection>/ (usage-catalog/ and the persisted snapshot); the one server
+# process writes its shared log under <data-dir>/logs/.
 jdbc-mcp:
   data-dir: ${JDBC_MCP_DATA_DIR:${user.home}/.jdbc-mcp-server}
   # JSON file describing the named connections this server serves — the only place databases,

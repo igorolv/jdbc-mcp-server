@@ -13,7 +13,7 @@ import java.nio.file.Paths;
  *                    Defaults to {@code ~/.jdbc-mcp-server} when blank.
  * @param catalogName name of the local catalog (knowledge store) for one connection: the slot key
  *                    under which everything we keep about that database lives
- *                    ({@code usage-catalog/}, {@code logs/}, the persisted snapshot), all rooted at
+ *                    ({@code usage-catalog/} and the persisted snapshot), all rooted at
  *                    {@code <data-dir>/<name>/}. Always equals the connection name; blank only for
  *                    the root context, which has no single database.
  * @param connectionsFile path of the JSON file describing the named connections this server serves.
@@ -101,8 +101,8 @@ public record JdbcMcpProperties(String dataDir, String catalogName, String conne
         return Paths.get(path).normalize();
     }
 
-    /** Log directory for this catalog: {@code <data-dir>/<name>/logs}. */
+    /** Shared process log directory: {@code <data-dir>/logs}. */
     public Path logsDir() {
-        return catalogDir().resolve("logs");
+        return resolvedDataDir().resolve("logs");
     }
 }

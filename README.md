@@ -902,7 +902,9 @@ Nothing changes for one database: a `connections.json` with a single entry, and 
 - MCP resources (when `JDBC_MCP_RESOURCES_ENABLED=true`) are published for every configured
   connection that already has a local catalog file; URIs were catalog-qualified already.
 
-Each connection keeps its logs under `<data-dir>/<name>/logs/`.
+The single server process keeps its shared rolling log under
+`<data-dir>/logs/jdbc-mcp-server.log`. Log entries emitted while handling a tool call include its
+`connection` name; process-level entries use `connection=server`.
 
 ### One instance per database (the earlier approach)
 
