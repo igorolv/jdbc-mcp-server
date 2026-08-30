@@ -4,14 +4,11 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 import javax.sql.DataSource;
 
 /**
- * Builds a read-only HikariCP-backed {@link DataSource} and exposes the detected {@link DatabaseKind}.
+ * Builds a read-only HikariCP-backed {@link DataSource} for one connection.
  *
  * <p>Read-only enforcement at the connection layer:
  * <ul>
@@ -23,30 +20,31 @@ import javax.sql.DataSource;
  *       pooled connections are still marked read-only as a best-effort JDBC hint.</li>
  * </ul>
  */
-@Configuration
-@EnableConfigurationProperties({JdbcProperties.class, JdbcMcpProperties.class})
-public class DataSourceConfig {
+public final class DataSourceConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);
 
-    @Bean
-    public DatabaseKind databaseKind(JdbcProperties properties) {
-        DatabaseKind kind = DatabaseKind.fromUrl(properties.url());
-        log.info("Detected database kind: {}", kind);
-        return kind;
+    private DataSourceConfig() {
     }
 
-    @Bean(destroyMethod = "close")
-    public DataSource dataSource(JdbcProperties properties, DatabaseKind kind) {
+    /**
+     * @param connectionName names the pool after the connection it serves, so Hikari's own log
+     *                       lines say which database they are about
+     */
+    public static HikariDataSource createDataSource(JdbcProperties properties, DatabaseKind kind,
+                                                    String connectionName) {
         HikariConfig hikari = buildHikariConfig(properties, kind);
+        if (connectionName != null && !connectionName.isBlank()) {
+            hikari.setPoolName("jdbc-mcp-pool-" + connectionName);
+        }
 
-        log.info("Creating lazy read-only JDBC pool (url={}, user={}, maxSize={}, minIdle={})",
-                maskUrl(hikari.getJdbcUrl()), properties.username(),
+        log.info("Creating lazy read-only JDBC pool (connection={}, url={}, user={}, maxSize={}, minIdle={})",
+                connectionName, maskUrl(hikari.getJdbcUrl()), properties.username(),
                 hikari.getMaximumPoolSize(), hikari.getMinimumIdle());
         return new HikariDataSource(hikari);
     }
 
-    static HikariConfig buildHikariConfig(JdbcProperties properties, DatabaseKind kind) {
+    public static HikariConfig buildHikariConfig(JdbcProperties properties, DatabaseKind kind) {
         HikariConfig hikari = new HikariConfig();
         hikari.setPoolName("jdbc-mcp-pool");
         hikari.setJdbcUrl(applyDialectUrlTweaks(properties.url(), kind));
@@ -91,7 +89,8 @@ public class DataSourceConfig {
         return url + (url.contains("?") ? "&" : "?") + extra;
     }
 
-    private static String maskUrl(String url) {
+    /** Masks a {@code password=} parameter so a JDBC URL is safe to log or return to a client. */
+    public static String maskUrl(String url) {
         if (url == null) return "";
         return url.replaceAll("(?i)(password=)[^&]*", "$1***");
     }

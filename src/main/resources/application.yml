@@ -8,12 +8,12 @@ spring:
         name: jdbc-mcp-server
         version: 0.1.0
         stdio: true
-  # Disable Spring Boot's default DataSource autoconfiguration — we build
-  # the DataSource ourselves in DataSourceConfig so we can apply dialect-aware
-  # read-only settings and auto-detect the driver from the JDBC URL.
+  # Disable Spring Boot's default DataSource autoconfiguration. The root context has no
+  # DataSource at all — each connection builds its own read-only, dialect-aware pool inside its
+  # per-connection context, with the driver detected from the JDBC URL.
   autoconfigure:
     exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
 
 # Top-level server data directory — all local storage is rooted here.
 jdbc-mcp:
@@ -23,6 +23,10 @@ jdbc-mcp:
   # future persisted snapshot). Defaults to "default". Run several DBs by launching several server
   # instances, each with its own JDBC_MCP_CATALOG.
   catalog-name: ${JDBC_MCP_CATALOG:default}
+  # JSON file describing the named connections this server serves. Defaults to
+  # <data-dir>/connections.json; when it is missing the server runs on the single JDBC_URL
+  # connection below, exactly as it did before multi-connection support.
+  connections-file: ${JDBC_MCP_CONNECTIONS_FILE:}
   resources:
     # Opt in to a catalog-qualified manifest, concrete snapshot tables, and table/column URI templates.
     enabled: ${JDBC_MCP_RESOURCES_ENABLED:false}
@@ -40,7 +44,10 @@ jdbc-mcp:
     benchmark: ${JDBC_MCP_TOOLS_BENCHMARK:true}          # benchmarkQuery/timedQuery
     usage: ${JDBC_MCP_TOOLS_USAGE:true}                  # usage-catalog lookups
     schema-context: ${JDBC_MCP_TOOLS_SCHEMA_CONTEXT:true} # tableContext/joinPaths/schemaGraph/lint
+    connections: ${JDBC_MCP_TOOLS_CONNECTIONS:true}      # listConnections
 
+# Global connection defaults. With no connections file these describe the single database the
+# server serves; with one they are the fallback for every field an entry does not set.
 jdbc:
   url: ${JDBC_URL:}
   username: ${JDBC_USERNAME:}
