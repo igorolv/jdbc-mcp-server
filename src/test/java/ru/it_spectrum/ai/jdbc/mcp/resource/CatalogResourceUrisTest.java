@@ -33,6 +33,27 @@ class CatalogResourceUrisTest {
     }
 
     @Test
+    void serviceAtStandCatalogSurvivesTheUriRoundTrip() {
+        CatalogResourceUris uris = new CatalogResourceUris("ssj@dev");
+
+        assertThat(uris.manifest()).isEqualTo("jdbc-mcp://catalog/ssj%40dev/manifest");
+        assertThat(uris.tableTemplate())
+                .isEqualTo("jdbc-mcp://catalog/ssj%40dev/schemas/{schema}/tables/{table}");
+        assertThat(uris.table("public", "customers"))
+                .isEqualTo("jdbc-mcp://catalog/ssj%40dev/schemas/public/tables/customers");
+
+        uris.requireManifest(uris.manifest());
+        CatalogResourceUris.TableRef table = uris.parseTable(uris.table("public", "customers"));
+        assertThat(table.schema()).isEqualTo("public");
+        assertThat(table.table()).isEqualTo("customers");
+
+        assertThatThrownBy(() -> uris.parseTable(
+                "jdbc-mcp://catalog/ssj%40tst/schemas/public/tables/customers"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("another JDBC catalog");
+    }
+
+    @Test
     void rejectsAResourceBelongingToAnotherCatalog() {
         CatalogResourceUris uris = new CatalogResourceUris("orders");
 

@@ -8,6 +8,8 @@ import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.regex.Pattern;
 
 /**
@@ -39,17 +41,46 @@ public record ConnectionDefinition(
         String configError
 ) {
 
-    /** Connection names end up in filesystem paths and in resource URIs, so keep them boring. */
-    public static final Pattern NAME_PATTERN = Pattern.compile("[A-Za-z0-9._-]{1,64}");
+    /**
+     * Connection names end up in filesystem paths and in resource URIs, so keep them boring. One
+     * optional {@code @} splits the name into "what" and "where" — {@code ssj@dev} reads as the
+     * {@code ssj} service on the {@code dev} stand — and cannot lead or trail, because an empty
+     * half names nothing.
+     */
+    public static final Pattern NAME_PATTERN =
+            Pattern.compile("[A-Za-z0-9._-]+(@[A-Za-z0-9._-]+)?");
+
+    /** Longest accepted connection name. */
+    public static final int MAX_NAME_LENGTH = 64;
 
     /** Validates a connection name, returning it unchanged. */
     public static String requireValidName(String name, String origin) {
-        if (name == null || !NAME_PATTERN.matcher(name).matches()) {
+        if (name == null || name.length() > MAX_NAME_LENGTH
+                || !NAME_PATTERN.matcher(name).matches()
+                || !isSingleDirectoryName(name)) {
             throw new IllegalStateException("Invalid connection name '" + name + "' (" + origin
                     + "). Names must match " + NAME_PATTERN.pattern()
+                    + ", be at most " + MAX_NAME_LENGTH + " characters, and not be '.' or '..'"
                     + " — they are used as directory names and in MCP resource URIs.");
         }
         return name;
+    }
+
+    /**
+     * True when the name denotes one plain directory entry. The pattern already excludes separators,
+     * but {@code .} and {@code ..} slip through it and would resolve {@code <data-dir>/<name>/}
+     * onto the data directory itself or its parent.
+     */
+    private static boolean isSingleDirectoryName(String name) {
+        if (".".equals(name) || "..".equals(name)) {
+            return false;
+        }
+        try {
+            Path path = Path.of(name);
+            return path.getNameCount() == 1 && name.equals(path.getFileName().toString());
+        } catch (InvalidPathException e) {
+            return false;
+        }
     }
 
     /** True when this connection can be opened at all. */

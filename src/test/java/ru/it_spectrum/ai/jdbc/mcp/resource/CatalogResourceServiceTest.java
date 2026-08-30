@@ -141,6 +141,37 @@ class CatalogResourceServiceTest {
     }
 
     @Test
+    void aServiceAtStandCatalogPublishesAndReadsItsOwnResources() throws Exception {
+        when(metadata.describeTable("public", "customer")).thenReturn(customer());
+        CatalogResourceService atName = new CatalogResourceService(
+                () -> metadata, snapshotStore, MAPPER,
+                new JdbcMcpProperties("build/test-resource-data", "ssj@dev"),
+                DatabaseKind.POSTGRESQL);
+
+        String tableUri = "jdbc-mcp://catalog/ssj%40dev/schemas/public/tables/customer";
+        List<SyncResourceSpecification> resources = atName.resources();
+        assertThat(resources.getFirst().resource().uri())
+                .isEqualTo("jdbc-mcp://catalog/ssj%40dev/manifest");
+        assertThat(resources.get(1).resource().uri()).isEqualTo(tableUri);
+        assertThat(atName.resourceTemplates())
+                .extracting(t -> t.resourceTemplate().uriTemplate())
+                .containsExactly(
+                        "jdbc-mcp://catalog/ssj%40dev/schemas/{schema}/tables/{table}",
+                        "jdbc-mcp://catalog/ssj%40dev/schemas/{schema}/tables/{table}/columns/{column}");
+
+        ReadResourceResult manifestResult = resources.getFirst().readHandler().apply(null,
+                McpSchema.ReadResourceRequest.builder(resources.getFirst().resource().uri()).build());
+        assertThat(MAPPER.readValue(text(manifestResult), CatalogResourceManifest.class).catalog())
+                .isEqualTo("ssj@dev");
+
+        ReadResourceResult tableResult = atName.resourceTemplates().getFirst().readHandler()
+                .apply(null, McpSchema.ReadResourceRequest.builder(tableUri).build());
+        assertThat(MAPPER.readValue(text(tableResult), TableResourceDocument.class).catalog())
+                .isEqualTo("ssj@dev");
+        assertThat(tableResult.meta()).containsEntry("catalog", "ssj@dev");
+    }
+
+    @Test
     void aTemplateCannotReadAnotherCatalog() {
         SyncResourceTemplateSpecification spec = service.resourceTemplates().getFirst();
 

@@ -103,7 +103,14 @@ Default path `~/.jdbc-mcp-server/connections.json` (`<data-dir>/connections.json
 
 The object key is the connection name. It is also the name of the connection's local catalog
 directory (`<data-dir>/<name>/`) and appears in MCP resource URIs, so it must match
-`[A-Za-z0-9._-]{1,64}`.
+`[A-Za-z0-9._-]+(@[A-Za-z0-9._-]+)?`, be at most 64 characters, and not be `.` or `..`.
+
+The optional `@` is there to name the two axes separately: `<service>@<stand>`, as in `ssj@dev`,
+`nsi@dev`, `ssj@tst`. A dash cannot do that job, because dashes already occur inside service names
+(`ssj-ws`, `ssj-ek-export`, `ais-ui`), so `ssj-ws-dev` is ambiguous to a human and to a model alike.
+`@` never occurs in a service name and reads as "what, where" the way `user@host` does. It is
+percent-encoded to `%40` in resource URIs; nothing else about the name changes — the directory on
+disk is the name as written.
 
 `url` is the only required field; the engine is detected from its prefix (`jdbc:postgresql:`,
 `jdbc:oracle:`, `jdbc:sqlserver:`). `description` is free text returned by `listConnections`, so an

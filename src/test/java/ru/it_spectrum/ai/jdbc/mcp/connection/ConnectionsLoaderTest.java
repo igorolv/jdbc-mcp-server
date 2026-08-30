@@ -126,6 +126,33 @@ class ConnectionsLoaderTest {
     }
 
     @Test
+    void serviceAtStandNamesGetTheirOwnLocalCatalogDirectory() throws IOException {
+        List<ConnectionDefinition> loaded = load("""
+                {
+                  "connections": {
+                    "ssj@dev": {"url": "jdbc:postgresql://h/ssj"},
+                    "ssj@tst": {"url": "jdbc:postgresql://h/ssj"}
+                  }
+                }
+                """);
+
+        assertThat(loaded.getFirst().name()).isEqualTo("ssj@dev");
+        assertThat(loaded.getFirst().catalog().catalogDbFile())
+                .isEqualTo(dataDir.resolve("ssj@dev").resolve("ssj@dev.db"));
+        assertThat(loaded.get(1).catalog().catalogDbFile())
+                .isEqualTo(dataDir.resolve("ssj@tst").resolve("ssj@tst.db"));
+    }
+
+    @Test
+    void dotDotIsRejectedInsteadOfEscapingTheDataDirectory() {
+        assertThatThrownBy(() -> load("""
+                {"connections": {"..": {"url": "jdbc:postgresql://h/x"}}}
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Invalid connection name '..'");
+    }
+
+    @Test
     void invalidConnectionNameIsRejected() {
         assertThatThrownBy(() -> load("""
                 {"connections": {"bad/name": {"url": "jdbc:postgresql://h/x"}}}

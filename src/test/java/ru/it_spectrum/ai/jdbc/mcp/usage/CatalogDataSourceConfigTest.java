@@ -53,6 +53,30 @@ class CatalogDataSourceConfigTest {
     }
 
     @Test
+    void opensTheCatalogOfAServiceAtStandConnection() throws Exception {
+        JdbcMcpProperties jdbcMcp = new JdbcMcpProperties(tempDir.toString(), "ssj@dev");
+        CatalogDataSourceConfig config = new CatalogDataSourceConfig();
+
+        try (HikariDataSource dataSource = config.usageDataSource(usageProperties(), jdbcMcp)) {
+            try (Connection conn = dataSource.getConnection();
+                 var statement = conn.createStatement()) {
+                assertThat(queryString(statement, "PRAGMA journal_mode")).isEqualToIgnoringCase("wal");
+                statement.executeUpdate("CREATE TABLE at_name_test(id INTEGER PRIMARY KEY)");
+                statement.executeUpdate("INSERT INTO at_name_test(id) VALUES (1)");
+                assertThat(queryInt(statement, "SELECT COUNT(*) FROM at_name_test")).isEqualTo(1);
+            }
+        }
+
+        assertThat(jdbcMcp.catalogDir()).isEqualTo(tempDir.resolve("ssj@dev"));
+        assertThat(Files.isDirectory(jdbcMcp.catalogDir())).isTrue();
+        assertThat(Files.isRegularFile(jdbcMcp.catalogDbFile())).isTrue();
+        try (var entries = Files.list(tempDir)) {
+            assertThat(entries.map(path -> path.getFileName().toString()).toList())
+                    .containsExactly("ssj@dev");
+        }
+    }
+
+    @Test
     void competingWriterWaitsForTheActiveTransaction() throws Exception {
         JdbcMcpProperties jdbcMcp = new JdbcMcpProperties(tempDir.toString(), "writers");
         CatalogDataSourceConfig config = new CatalogDataSourceConfig();

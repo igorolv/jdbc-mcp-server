@@ -129,6 +129,10 @@ URL shapes: PostgreSQL `jdbc:postgresql://<host>:5432/<database>`, Oracle
 `JDBC_PASSWORD` variables; startup fails when the file is missing or defines no connection. The
 object key is the connection name, the name of the local catalog directory `<data-dir>/<name>/`
 (`<name>.db`, `usage-catalog/`, `logs/`), and the value every tool call passes as `connection`.
+It must match `[A-Za-z0-9._-]+(@[A-Za-z0-9._-]+)?`, be at most 64 characters, and not be `.` or
+`..`. The optional `@` names the two axes separately — `<service>@<stand>`, as in `ssj@dev` or
+`ssj-ek-export@tst` — which a dash cannot do, because service names contain dashes already. In
+resource URIs the `@` appears percent-encoded as `%40`; on disk the directory is the name as written.
 
 Credentials are kept out of the environment on purpose: an agent that can read `JDBC_URL` and
 `JDBC_PASSWORD` — from the MCP client config it edits, or from its own shell — can reach the database

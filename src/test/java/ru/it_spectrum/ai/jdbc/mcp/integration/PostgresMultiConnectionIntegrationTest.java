@@ -41,7 +41,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * End-to-end check of the multi-connection path: one process, one set of tools, two live
  * PostgreSQL databases described by a real {@code connections.json}, plus one connection that
- * points nowhere.
+ * points nowhere. One of the two is named {@code orders@dev} — a {@code <service>@<stand>} name has
+ * to survive the whole way to a catalog directory and a SQLite file on disk — while {@code billing}
+ * keeps the plain form.
  */
 @Tag("integration")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -78,7 +80,7 @@ class PostgresMultiConnectionIntegrationTest {
         Files.writeString(dataDir.resolve("connections.json"), """
                 {
                   "connections": {
-                    "orders": {
+                    "orders@dev": {
                       "url": "%s",
                       "username": "orders",
                       "password": "${ORDERS_PASSWORD}",
@@ -142,7 +144,7 @@ class PostgresMultiConnectionIntegrationTest {
 
     @Test
     void queriesGoToTheDatabaseNamedByTheConnectionArgument() {
-        QueryResult orders = queryTools.executeQuery("orders",
+        QueryResult orders = queryTools.executeQuery("orders@dev",
                 "SELECT current_database() AS db, count(*) AS n FROM orders_only",
                 null, null, null, null);
         assertThat(orders.rows().getFirst()).containsEntry("db", "orders").containsEntry("n", 3L);
@@ -155,7 +157,7 @@ class PostgresMultiConnectionIntegrationTest {
 
     @Test
     void metadataOfOneConnectionDoesNotLeakIntoTheOther() {
-        TableDescription orders = metadataTools.describeTable("orders", "public", "orders_only");
+        TableDescription orders = metadataTools.describeTable("orders@dev", "public", "orders_only");
         assertThat(orders.columns()).extracting("name").contains("sku");
 
         TableDescription missing = metadataTools.describeTable("billing", "public", "orders_only");
@@ -167,17 +169,17 @@ class PostgresMultiConnectionIntegrationTest {
 
     @Test
     void eachConnectionKeepsItsOwnCatalogFile() {
-        RebuildCatalogResult orders = adminTools.rebuildCatalog("orders", "public");
-        assertThat(orders.connection()).isEqualTo("orders");
+        RebuildCatalogResult orders = adminTools.rebuildCatalog("orders@dev", "public");
+        assertThat(orders.connection()).isEqualTo("orders@dev");
         assertThat(orders.catalogFile()).isEqualTo(
-                dataDir.resolve("orders").resolve("orders.db").toAbsolutePath().toString());
+                dataDir.resolve("orders@dev").resolve("orders@dev.db").toAbsolutePath().toString());
 
         RebuildCatalogResult billing = adminTools.rebuildCatalog("billing", "public");
         assertThat(billing.connection()).isEqualTo("billing");
         assertThat(billing.catalogFile()).isEqualTo(
                 dataDir.resolve("billing").resolve("billing.db").toAbsolutePath().toString());
 
-        assertThat(snapshotTables("orders")).contains("orders_only").doesNotContain("billing_only");
+        assertThat(snapshotTables("orders@dev")).contains("orders_only").doesNotContain("billing_only");
         assertThat(snapshotTables("billing")).contains("billing_only").doesNotContain("orders_only");
 
         UsageCatalogStatus status = usageTools.usageCatalogStatus("billing");
@@ -189,7 +191,7 @@ class PostgresMultiConnectionIntegrationTest {
     void anUnreachableConnectionFailsAloneAndListsAsUninitialisedUntilUsed() {
         ListConnectionsResult before = connectionTools.listConnections();
         assertThat(before.connections()).extracting(ConnectionInfo::name)
-                .containsExactly("orders", "billing", "down");
+                .containsExactly("orders@dev", "billing", "down");
         assertThat(byName(before, "down").initialized()).isFalse();
 
         assertThatThrownBy(() -> queryTools.executeQuery("down", "SELECT 1", null, null, null, null))
@@ -208,7 +210,7 @@ class PostgresMultiConnectionIntegrationTest {
         assertThatThrownBy(() -> queryTools.executeQuery("nope", "SELECT 1", null, null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"kind\":\"argument\"")
-                .hasMessageContaining("orders, billing, down");
+                .hasMessageContaining("orders@dev, billing, down");
     }
 
     @Test
@@ -216,7 +218,7 @@ class PostgresMultiConnectionIntegrationTest {
         assertThatThrownBy(() -> queryTools.executeQuery(null, "SELECT 1", null, null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"kind\":\"argument\"")
-                .hasMessageContaining("orders, billing, down");
+                .hasMessageContaining("orders@dev, billing, down");
     }
 
     private static ConnectionInfo byName(ListConnectionsResult result, String name) {
