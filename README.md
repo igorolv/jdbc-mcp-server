@@ -13,9 +13,182 @@ and column metadata. Tools may update the local SQLite catalog, but they never w
 PostgreSQL, Oracle, or SQL Server database.
 
 One server process can serve several databases: name them in
-[`connections.json`](#serving-several-databases-from-one-server) and pass `connection` to any tool.
-The tool manifest stays a single set regardless of how many databases are configured, and pools are
-opened only for the databases actually used.
+[`connections.json`](#databases-and-credentials) and pass `connection` to any tool. The tool manifest
+stays a single set regardless of how many databases are configured, and pools are opened only for the
+databases actually used.
+
+## Quickstart
+
+**1. Build the jar** (JDK 21+; all JDBC drivers are bundled):
+
+```bash
+./gradlew bootJar
+```
+
+**2. Describe your databases** in `~/.jdbc-mcp-server/connections.json`:
+
+```json
+{
+  "connections": {
+    "myapp": {
+      "url": "jdbc:postgresql://db.example.com:5432/myapp",
+      "username": "ai_readonly",
+      "password": "secret",
+      "description": "Application database — customers, orders, shipments"
+    }
+  }
+}
+```
+
+Use a [read-only database user](#maximum-protection-use-a-read-only-database-user); five minutes
+there outweighs every other protection in this server.
+
+**3. Register the server** with your MCP client — with no database settings in the client config:
+
+```json
+{
+  "command": "java",
+  "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
+  "env": {}
+}
+```
+
+For Claude Code that is one command:
+
+```bash
+claude mcp add --scope user jdbc java -jar /path/to/jdbc-mcp-server.jar
+```
+
+**4. Ask the agent for `listConnections`.** It answers with the databases this server serves; every
+other tool takes that name as its first argument:
+
+```json
+{"connection": "myapp", "sql": "SELECT count(*) FROM orders"}
+```
+
+Full details: [Databases and Credentials](#databases-and-credentials),
+[Connecting an AI Client](#connecting-an-ai-client),
+[Serving Several Databases from One Server](#serving-several-databases-from-one-server).
+
+## Databases and Credentials
+
+Every database this server serves is described in one JSON file. Nothing about a database — URL,
+credentials, schema, timeouts, limits — comes from the environment.
+
+### The connections file
+
+Default path `~/.jdbc-mcp-server/connections.json` (`<data-dir>/connections.json`), overridden with
+`JDBC_MCP_CONNECTIONS_FILE`. Startup fails when the file is missing or defines no connection.
+
+```json
+{
+  "connections": {
+    "orders": {
+      "url": "jdbc:postgresql://db.example.com:5432/orders",
+      "username": "ai_readonly",
+      "password": "secret",
+      "defaultSchema": "public",
+      "description": "Order service — customers, orders, shipments",
+      "structureSnapshotSchemas": ["public", "nsi"]
+    },
+    "billing": {
+      "url": "jdbc:oracle:thin:@//oracle.example.com:1521/BILLING",
+      "username": "AI_READONLY",
+      "password": "${BILLING_DB_PASSWORD}",
+      "description": "Legacy billing (Oracle)"
+    }
+  }
+}
+```
+
+The object key is the connection name. It is also the name of the connection's local catalog
+directory (`<data-dir>/<name>/`) and appears in MCP resource URIs, so it must match
+`[A-Za-z0-9._-]{1,64}`.
+
+`url` is the only required field; the engine is detected from its prefix (`jdbc:postgresql:`,
+`jdbc:oracle:`, `jdbc:sqlserver:`). `description` is free text returned by `listConnections`, so an
+agent can pick a database by meaning rather than by name — worth filling in.
+
+Any string value may reference an environment variable as `${VAR}`. A referenced variable that is
+not set fails startup with a message naming the variable and the field; it never becomes an empty
+password. Read the next section before reaching for it.
+
+### Why credentials live in a file, not in environment variables
+
+The point of this server is that the agent reaches the database *only* through it: every statement
+goes through the read-only guard, every result is capped by `maxRows`, and nothing but
+`SELECT` / `WITH` / `EXPLAIN` gets through.
+
+Credentials in environment variables undermine exactly that. They are set on the server process by
+the MCP client, which means they also sit in the client's own configuration — a file agents read and
+edit as a matter of routine — and in the environment of whatever shell launched it. An agent that
+has seen a URL, a user and a password does not need the tools any more: `psql`, `sqlplus`, `sqlcmd`
+or three lines of Python connect straight to the database, with no guard, no row cap and no trace in
+this server's log.
+
+So the server accepts no database credentials from the environment at all — there are no `JDBC_URL`
+/ `JDBC_USERNAME` / `JDBC_PASSWORD` variables. They live in `connections.json`, which only the server
+reads.
+
+Be clear about what that does and does not buy:
+
+- It removes the easy path. Credentials stop being part of the material an agent routinely handles:
+  MCP client configs, shell environment, `env` dumps in logs and bug reports.
+- **It is not a sandbox.** An agent with shell access running as you can read the file; `chmod 600`
+  keeps out other users, not a process running as your user.
+- The guarantee that survives everything is a
+  [read-only database user](#maximum-protection-use-a-read-only-database-user). The file narrows the
+  attack surface; the database's own permissions close it.
+
+For the same reason, prefer a literal password in the file over a `${VAR}` reference whose variable
+would be set in the MCP client's `env` block — that puts the secret straight back where the agent
+looks. `${VAR}` earns its place when the value is injected from outside the agent's reach (a systemd
+unit, a wrapper script, a secret manager), or when the file itself is shared or committed and the
+secret must not be.
+
+### Connection fields
+
+Everything except `url` is optional; a field left out falls back to the built-in default:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `url` | required | JDBC URL; also selects the engine |
+| `username`, `password` | none | Database credentials |
+| `description` | none | Free text returned by `listConnections` |
+| `defaultSchema` | the session schema | Schema used when a metadata tool call omits one |
+| `queryTimeoutSeconds` | `30` | Per-query timeout; `0` disables |
+| `maxRows` | `1000` | Row cap for one response; `truncated: true` when hit |
+| `fetchSize` | `500` | JDBC `fetchSize` hint |
+| `readonlyGuard` | `strict` | `off` disables the client-side SELECT-only check |
+| `poolMaximumSize` | `40` | Hikari maximum pool size |
+| `poolMinimumIdle` | `0` | Hikari minimum idle; `0` keeps the pool lazy |
+| `poolConnectionTimeoutMs` | `10000` | Hikari connection checkout timeout |
+| `poolValidationTimeoutMs` | `5000` | Hikari validation timeout |
+| `poolIdleTimeoutMs` | `60000` | Idle connections above `poolMinimumIdle` are closed after this |
+| `structureSnapshotSchemas` | the default schema | Schemas captured by `rebuildCatalog` |
+| `structureSnapshotOracleColumnQueryTimeoutSeconds` | `300` | Oracle-only timeout for the bulk column query during `rebuildCatalog`; `0` disables |
+| `usageCatalogEnabled` | `true` | When `false`, usage tools report the disabled state |
+| `usageCatalogPaths` | none | Extra directories, JSON files or zip archives with QueryUsage records |
+| `usageNativeSchemas` | the default schema | Schemas scanned for native usage |
+| `usageNativeIncludeViews`, `usageNativeIncludeRoutines`, `usageNativeIncludeTriggers` | `true` | What native usage scanning covers |
+| `usageNativeMaxObjects` | `10000` | Maximum native usage records per index build |
+
+The `JDBC_MCP_TOOLS_*` group flags stay in the environment — they shape the tool manifest, which is
+shared by all connections. See [Configuration](#configuration) for the handful of variables the
+server itself reads.
+
+### URL examples
+
+```text
+jdbc:postgresql://db.example.com:5432/myapp
+jdbc:postgresql://db.example.com:5432/myapp?currentSchema=public&sslmode=require
+
+jdbc:oracle:thin:@//db.example.com:1521/ORCLPDB1
+jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=...)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=...)))
+
+jdbc:sqlserver://db.example.com:1433;databaseName=myapp;encrypt=true;trustServerCertificate=false
+jdbc:sqlserver://db.example.com;databaseName=myapp;integratedSecurity=false
+```
 
 ## Why This Exists
 
@@ -64,9 +237,9 @@ hints alongside declared FKs. See *Usage Catalog* below.
 ```
 
 The protocol is `stdio` only. The client starts the server as a child process. One process serves
-one database by default and any number of named ones when a
-[connections file](#serving-several-databases-from-one-server) is present; a connection's pool is
-opened the first time a tool call names it.
+any number of named databases, all declared in the
+[connections file](#databases-and-credentials); a connection's pool is opened the first time a tool
+call names it.
 
 ## MCP Resources
 
@@ -416,8 +589,7 @@ Configuration:
 - `structureSnapshotOracleColumnQueryTimeoutSeconds` - Oracle-only timeout for the
   `DBMS_XMLGEN`-backed bulk column/default query during a full rebuild (default `300`; `0` disables).
 
-Both are per-connection fields in
-[`connections.json`](#serving-several-databases-from-one-server).
+Both are per-connection fields in [`connections.json`](#connection-fields).
 
 ### Data Exploration
 
@@ -486,7 +658,9 @@ All tools return errors in the same shape: JSON with `error` and `kind` fields.
 
 Protection is layered and is designed primarily for accidental `DELETE` / `DROP` statements from
 an LLM, not for a malicious actor. A malicious actor already has the database URL, username, and
-password.
+password — which is also why the server
+[keeps credentials out of the environment](#why-credentials-live-in-a-file-not-in-environment-variables),
+so that an agent does not casually acquire them.
 
 1. **ReadOnlyGuard in project code.** Before sending SQL to the database, the server first parses it with JSqlParser and checks the AST. Only a single `SELECT`, `WITH`, or `EXPLAIN` is allowed. Write CTEs, `SELECT INTO`, and locking clauses such as `FOR UPDATE` are forbidden. If JSqlParser cannot parse dialect-specific SQL, the guard falls back to the older lexical check: first meaningful token, multi-statement rejection, comment skipping, and write-keyword detection outside strings and quoted identifiers.
 2. **`connection.setReadOnly(true)`.** Set by Hikari and again by this server on each checkout.
@@ -627,8 +801,9 @@ not parse `.env` itself; variables must already be present in the environment wh
 ## Configuration
 
 Databases, credentials and everything that varies per database live in
-[`connections.json`](#serving-several-databases-from-one-server). The environment configures only
-the server process itself:
+[`connections.json`](#databases-and-credentials) — deliberately
+[not in the environment](#why-credentials-live-in-a-file-not-in-environment-variables). The
+environment configures only the server process itself:
 
 | Variable | Required | Description |
 |---|---|---|
@@ -639,49 +814,18 @@ the server process itself:
 
 A connection's own settings — URL, credentials, default schema, timeouts, row caps, pool sizes, the
 read-only guard, snapshot and usage options — are fields of its `connections.json` entry; see
-[the field table](#serving-several-databases-from-one-server). Any of them may reference an
-environment variable as `${VAR}`, so secrets stay out of the file.
-
-The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL,
-`jdbc:oracle:` for Oracle, and `jdbc:sqlserver:` for SQL Server.
-
-### URL Examples
-
-```text
-jdbc:postgresql://db.example.com:5432/myapp
-jdbc:postgresql://db.example.com:5432/myapp?currentSchema=public&sslmode=require
-
-jdbc:oracle:thin:@//db.example.com:1521/ORCLPDB1
-jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=...)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=...)))
-
-jdbc:sqlserver://db.example.com:1433;databaseName=myapp;encrypt=true;trustServerCertificate=false
-jdbc:sqlserver://db.example.com;databaseName=myapp;integratedSecurity=false
-```
+[Connection fields](#connection-fields).
 
 ## Running
 
-Describe at least one database in `~/.jdbc-mcp-server/connections.json`:
-
-```json
-{
-  "connections": {
-    "myapp": {
-      "url": "jdbc:postgresql://db.example.com:5432/myapp",
-      "username": "ai_readonly",
-      "password": "${MYAPP_DB_PASSWORD}"
-    }
-  }
-}
-```
-
-then run:
+With [`connections.json`](#databases-and-credentials) in place:
 
 ```bash
 java -jar build/libs/jdbc-mcp-server.jar
 ```
 
-The server immediately starts listening for MCP over stdin/stdout. Logs are written to stderr.
-Tool calls address this database as `"connection": "myapp"`.
+The server immediately starts listening for MCP over stdin/stdout. Logs are written to stderr. Tool
+calls address a database by the name it has in the file: `"connection": "myapp"`.
 
 ## Connecting an AI Client
 
@@ -691,20 +835,20 @@ Add this server to the client configuration:
 {
   "command": "java",
   "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
-  "env": {
-    "MYAPP_DB_PASSWORD": "secret"
-  }
+  "env": {}
 }
 ```
 
-The databases come from `connections.json`; `env` only carries the secrets its `${VAR}` references
-point at (and, if you keep the file elsewhere, `JDBC_MCP_CONNECTIONS_FILE`).
+There is nothing to put in `env`: the databases come from
+[`connections.json`](#databases-and-credentials), and keeping credentials out of the client config
+is [the point](#why-credentials-live-in-a-file-not-in-environment-variables). Add
+`JDBC_MCP_CONNECTIONS_FILE` only if you keep the file somewhere other than the default path.
 
 ### Where to Configure It
 
 | Client | Connection method |
 |---|---|
-| Claude Code | `claude mcp add --scope user -e MYAPP_DB_PASSWORD=... -- jdbc java -jar /path/to/jdbc-mcp-server.jar` |
+| Claude Code | `claude mcp add --scope user jdbc java -jar /path/to/jdbc-mcp-server.jar` |
 | Qwen Code | `~/.qwen/settings.json` -> `"mcpServers"` -> `"jdbc"` |
 | VS Code | `.vscode/mcp.json` -> `"servers"` -> `"jdbc"` |
 | Cursor | `.cursor/mcp.json` -> `"mcpServers"` -> `"jdbc"` |
@@ -724,73 +868,8 @@ This matters at scale: registering fifteen MCP server instances puts fifteen too
 agent's context and fifteen JVMs in memory, when the session may end up touching two of the
 databases.
 
-### `connections.json`
-
-Default path `~/.jdbc-mcp-server/connections.json` (`<data-dir>/connections.json`), overridden with
-`JDBC_MCP_CONNECTIONS_FILE`:
-
-```json
-{
-  "connections": {
-    "orders": {
-      "url": "jdbc:postgresql://db.example.com:5432/orders",
-      "username": "ai_readonly",
-      "password": "${ORDERS_DB_PASSWORD}",
-      "defaultSchema": "public",
-      "description": "Order service — customers, orders, shipments",
-      "structureSnapshotSchemas": ["public", "nsi"]
-    },
-    "billing": {
-      "url": "jdbc:oracle:thin:@//oracle.example.com:1521/BILLING",
-      "username": "AI_READONLY",
-      "password": "${BILLING_DB_PASSWORD}",
-      "description": "Legacy billing (Oracle)"
-    }
-  }
-}
-```
-
-The object key is the connection name. It is also the name of the connection's local catalog
-directory (`<data-dir>/<name>/`) and appears in MCP resource URIs, so it must match
-`[A-Za-z0-9._-]{1,64}`.
-
-`url` is the only required field. `description` is free text returned by `listConnections`, so an
-agent can pick a database by meaning rather than by name — worth filling in.
-
-Any string value may reference an environment variable as `${VAR}`. A referenced variable that is
-not set fails startup with a message naming the variable and the field; it never becomes an empty
-password.
-
-Everything else is optional; a field left out falls back to the built-in default:
-
-| Field | Default | Meaning |
-|---|---|---|
-| `username`, `password` | none | Database credentials; prefer `${VAR}` references |
-| `description` | none | Free text returned by `listConnections` |
-| `defaultSchema` | the session schema | Schema used when a metadata tool call omits one |
-| `queryTimeoutSeconds` | `30` | Per-query timeout; `0` disables |
-| `maxRows` | `1000` | Row cap for one response; `truncated: true` when hit |
-| `fetchSize` | `500` | JDBC `fetchSize` hint |
-| `readonlyGuard` | `strict` | `off` disables the client-side SELECT-only check |
-| `poolMaximumSize` | `40` | Hikari maximum pool size |
-| `poolMinimumIdle` | `0` | Hikari minimum idle; `0` keeps the pool lazy |
-| `poolConnectionTimeoutMs` | `10000` | Hikari connection checkout timeout |
-| `poolValidationTimeoutMs` | `5000` | Hikari validation timeout |
-| `poolIdleTimeoutMs` | `60000` | Idle connections above `poolMinimumIdle` are closed after this |
-| `structureSnapshotSchemas` | the default schema | Schemas captured by `rebuildCatalog` |
-| `structureSnapshotOracleColumnQueryTimeoutSeconds` | `300` | Oracle-only timeout for the bulk column query during `rebuildCatalog`; `0` disables |
-| `usageCatalogEnabled` | `true` | When `false`, usage tools report the disabled state |
-| `usageCatalogPaths` | none | Extra directories, JSON files or zip archives with QueryUsage records |
-| `usageNativeSchemas` | the default schema | Schemas scanned for native usage |
-| `usageNativeIncludeViews`, `usageNativeIncludeRoutines`, `usageNativeIncludeTriggers` | `true` | What native usage scanning covers |
-| `usageNativeMaxObjects` | `10000` | Maximum native usage records per index build |
-
-The `JDBC_MCP_TOOLS_*` group flags stay in the environment — they shape the manifest, which is
-shared by all connections.
-
-> **Keep the file private.** It holds database credentials: `chmod 600 ~/.jdbc-mcp-server/connections.json`
-> (on Windows, restrict it to your user). Prefer `${VAR}` references over literal passwords so the
-> secrets live in the environment and the file can be reviewed, copied, or backed up safely.
+Each database is one entry in [`connections.json`](#databases-and-credentials); adding a database
+means adding an entry and restarting the server.
 
 ### Choosing a connection
 
@@ -801,8 +880,8 @@ the configured databases are down.
 
 ### A single database
 
-Nothing changes for one database: write a `connections.json` with a single entry and pass its name
-as `connection`. There is no environment-variable shortcut — one file is the whole configuration.
+Nothing changes for one database: a `connections.json` with a single entry, and its name passed as
+`connection`. There is no environment-variable shortcut — one file is the whole configuration.
 
 ### Isolation
 

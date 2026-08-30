@@ -114,7 +114,7 @@ read-only user) and a password, then write `~/.jdbc-mcp-server/connections.json`
     "myapp": {
       "url": "jdbc:postgresql://<host>:5432/<database>",
       "username": "ai_readonly",
-      "password": "${MYAPP_DB_PASSWORD}",
+      "password": "<pw>",
       "description": "What this database is for"
     }
   }
@@ -126,11 +126,17 @@ URL shapes: PostgreSQL `jdbc:postgresql://<host>:5432/<database>`, Oracle
 `jdbc:sqlserver://<host>:1433;databaseName=<database>`. The engine is detected from the prefix.
 
 **This file is the only place a database is configured.** There are no `JDBC_URL` / `JDBC_USERNAME` /
-`JDBC_PASSWORD` variables; startup fails when the file is missing or defines no connection. Any
-string value may reference an environment variable as `${VAR}`, which is how secrets stay out of the
-file. The object key is the connection name, the name of the local catalog directory
-`<data-dir>/<name>/` (`<name>.db`, `usage-catalog/`, `logs/`), and the value every tool call passes
-as `connection`.
+`JDBC_PASSWORD` variables; startup fails when the file is missing or defines no connection. The
+object key is the connection name, the name of the local catalog directory `<data-dir>/<name>/`
+(`<name>.db`, `usage-catalog/`, `logs/`), and the value every tool call passes as `connection`.
+
+Credentials are kept out of the environment on purpose: an agent that can read `JDBC_URL` and
+`JDBC_PASSWORD` — from the MCP client config it edits, or from its own shell — can reach the database
+with `psql` or `sqlplus` and bypass the read-only guard entirely. Write the password into the file
+and `chmod 600` it. String values may reference an environment variable as `${VAR}`, but only use
+that when the value comes from outside the agent's reach (a systemd unit, a wrapper script, a secret
+manager) — never from the MCP client's `env` block, which defeats the purpose. See "Why credentials
+live in a file, not in environment variables" in the README.
 
 Per-connection fields, all optional, with their defaults: `defaultSchema` (session schema; Oracle
 upper-cases, SQL Server usually `dbo`), `queryTimeoutSeconds` (30, `0` disables), `maxRows` (1000;
@@ -183,14 +189,12 @@ Add the server to the client's MCP configuration:
 {
   "command": "java",
   "args": ["-jar", "<absolute-path-to>/jdbc-mcp-server.jar"],
-  "env": {
-    "MYAPP_DB_PASSWORD": "<pw>"
-  }
+  "env": {}
 }
 ```
 
-The databases come from `connections.json`; `env` only carries the secrets its `${VAR}` references
-point at (and `JDBC_MCP_CONNECTIONS_FILE` if the file lives elsewhere).
+The databases come from `connections.json`, so there is nothing to put in `env` — add
+`JDBC_MCP_CONNECTIONS_FILE` only if the file lives somewhere other than the default path.
 
 **Where to put it:**
 
@@ -212,7 +216,7 @@ of tools, and each call picks its database with `connection`:
     "orders": {
       "url": "jdbc:postgresql://db.example.com:5432/orders",
       "username": "ai_readonly",
-      "password": "${ORDERS_DB_PASSWORD}",
+      "password": "secret",
       "defaultSchema": "public",
       "description": "Order service — customers, orders, shipments"
     },
@@ -226,8 +230,8 @@ of tools, and each call picks its database with `connection`:
 }
 ```
 
-Keep passwords in `${ENV_VAR}` references and the file readable only by its owner — it holds
-database credentials. The README documents every per-connection field.
+Keep the file readable only by its owner — it holds database credentials. The README documents
+every per-connection field.
 
 **Example for Claude Code (`~/.claude/settings.json`):**
 ```json
@@ -236,9 +240,7 @@ database credentials. The README documents every per-connection field.
     "jdbc": {
       "command": "java",
       "args": ["-jar", "<absolute-path-to>/jdbc-mcp-server.jar"],
-      "env": {
-        "MYAPP_DB_PASSWORD": "<password>"
-      }
+      "env": {}
     }
   }
 }
