@@ -52,7 +52,7 @@ class CatalogResourceServiceTest {
         when(snapshotStore.snapshotInfo()).thenReturn(SNAPSHOT);
         when(snapshotStore.listSnapshotTableDescriptions()).thenReturn(List.of(customer()));
         service = new CatalogResourceService(
-                metadata, snapshotStore, MAPPER,
+                () -> metadata, snapshotStore, MAPPER,
                 new JdbcMcpProperties("build/test-resource-data", "orders/eu"),
                 DatabaseKind.POSTGRESQL);
     }

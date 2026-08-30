@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /** Builds and serves catalog-qualified MCP resources over the existing metadata service. */
 public final class CatalogResourceService {
@@ -39,14 +40,19 @@ public final class CatalogResourceService {
     static final int RESOURCE_SCHEMA_VERSION = 1;
     static final String JSON_MIME_TYPE = "application/json";
 
-    private final MetadataService metadata;
+    private final Supplier<MetadataService> metadata;
     private final StructureSnapshotStore snapshotStore;
     private final ObjectMapper mapper;
     private final String catalog;
     private final DatabaseKind databaseKind;
     private final CatalogResourceUris uris;
 
-    public CatalogResourceService(MetadataService metadata, StructureSnapshotStore snapshotStore,
+    /**
+     * @param metadata supplied lazily: listing resources reads the local snapshot only, and the
+     *                 live-database fallback behind {@code describeTable} must not be built — nor
+     *                 its pool — until a client actually reads a resource
+     */
+    public CatalogResourceService(Supplier<MetadataService> metadata, StructureSnapshotStore snapshotStore,
                                   ObjectMapper mapper, JdbcMcpProperties jdbcMcpProperties,
                                   DatabaseKind databaseKind) {
         this.metadata = metadata;
@@ -132,7 +138,7 @@ public final class CatalogResourceService {
                                          ReadResourceRequest request) {
         try {
             CatalogResourceUris.TableRef ref = uris.parseTable(request.uri());
-            TableDescription table = metadata.describeTable(ref.schema(), ref.table());
+            TableDescription table = metadata.get().describeTable(ref.schema(), ref.table());
             if (table == null) throw new IllegalArgumentException("Table not found: " + ref.schema() + "." + ref.table());
             return jsonResult(request.uri(),
                     new TableResourceDocument(RESOURCE_SCHEMA_VERSION, catalog, table),
@@ -148,7 +154,7 @@ public final class CatalogResourceService {
                                           ReadResourceRequest request) {
         try {
             CatalogResourceUris.ColumnRef ref = uris.parseColumn(request.uri());
-            TableDescription table = metadata.describeTable(ref.schema(), ref.table());
+            TableDescription table = metadata.get().describeTable(ref.schema(), ref.table());
             if (table == null) throw new IllegalArgumentException("Table not found: " + ref.schema() + "." + ref.table());
             Column column = findColumn(table, ref.column());
             if (column == null) {
