@@ -40,7 +40,9 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Return usage-catalog sources, indexing state, record/parse/duplicate counts and load errors.",
+            description = "Check whether the usage catalog is enabled and ready before relying on observed-query or " +
+            "semantic evidence. Returns configured sources, indexing state, counts and load errors without searching " +
+            "for queries.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -56,8 +58,9 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Invalidate the runtime usage index; the next lookup rebuilds it synchronously from " +
-            "configured files and database objects.",
+            description = "Force the server-local usage index to be rebuilt after its configured sources change. " +
+            "Invalidates only the runtime/local index; the next usage lookup rebuilds it synchronously and no " +
+            "inspected database data is modified.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -79,8 +82,9 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Return one full usage-catalog query record with SQL, parameters, parsed " +
-            "tables/columns/joins, derived outputs and field usages.",
+            description = "Retrieve the complete stored record for one query whose source identity is already known. " +
+            "Returns SQL, parameters, parsed tables/columns/joins, outputs and field usages; use listQueries, " +
+            "findQueriesByTable or findQueriesByColumn to discover matching records first.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -108,7 +112,9 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "List usage-catalog queries, newest ingest first; filters combine.",
+            description = "Browse or search stored usage-catalog queries by source, business metadata, parse status " +
+            "or free text. Returns summaries newest-ingest first; use getQuery for the complete SQL and evidence of " +
+            "one selected record.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -142,8 +148,9 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Find catalog queries referencing a table, matching resolved names case-insensitively; " +
-            "a schema filter also includes unqualified references.",
+            description = "Find stored application/report queries that actually reference one known table. Use to " +
+            "learn observed filters, joins and business usage, not to inspect declared table structure; resolved " +
+            "names are matched case-insensitively.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -170,9 +177,9 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Find catalog queries referencing a column; each match identifies " +
-            "select/where/join/order_by/having context. Filters are case-insensitive; omit schema/table to " +
-            "match all tables.",
+            description = "Find stored application/report queries that actually reference one column and show " +
+            "whether it appears in SELECT, WHERE, JOIN, ORDER BY or HAVING. Use describeTable to discover declared " +
+            "columns; schema/table filters are optional and case-insensitive.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -200,8 +207,9 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "Aggregate observed equi-join column pairs with support counts and query UIDs; excludes " +
-            "non-equi joins.",
+            description = "Discover empirically observed equi-join column pairs from stored queries, with support " +
+            "counts and contributing query IDs. Use findJoinPaths for declared/combined paths between endpoints; " +
+            "non-equi joins are excluded.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -229,7 +237,8 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "List business tags and query counts.",
+            description = "Discover the existing business-tag vocabulary and query counts for reuse in listQueries " +
+            "filters.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -251,7 +260,8 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "List business domains currently used in the catalog with their query counts.",
+            description = "Discover the existing business-domain vocabulary and query counts for reuse in " +
+            "listQueries filters.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -273,7 +283,8 @@ public class UsageTools {
     }
 
     @McpTool(
-            description = "List source kinds and query counts.",
+            description = "Discover valid usage-catalog source-kind values and their query counts for reuse in " +
+            "listQueries filters.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

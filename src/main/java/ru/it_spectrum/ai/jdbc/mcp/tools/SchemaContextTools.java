@@ -36,8 +36,9 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Return a known table, nearby FK parent/child tables and relationship edges for queries " +
-            "that need nearby joins.",
+            description = "Explore the relationship neighborhood of one known table: compact root/nearby table " +
+            "metadata plus declared FK and optional observed join edges. Use when nearby joins are needed; for only " +
+            "the table's own fields or structure, use describeTable.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -68,8 +69,9 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Return FK join paths between two tables, traversing both directions; each edge includes " +
-            "its join condition.",
+            description = "Find join paths when both endpoint tables are known but the intermediate relationships " +
+            "are not. Traverses declared FK and optional observed join edges in both directions; for one table's " +
+            "immediate neighborhood, use tableContext.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -103,8 +105,9 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Audit schema risks: missing PKs, unindexed/mismatched FKs, nullable unique columns, " +
-            "status/type columns without CHECK, orphan *_id columns, missing remarks, isolation and wide tables.",
+            description = "Audit one table or a schema for modeling and indexing risks: missing PKs, unindexed or " +
+            "mismatched FKs, nullable unique columns, missing CHECKs/remarks, orphan *_id columns, isolation and " +
+            "wide tables. Returns findings, not general table metadata.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -134,8 +137,9 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Return a plain-text schema map with table/view column counts, PKs, relationship counts, " +
-            "key-like columns, central/isolated tables and key FK relationships. Use for broad table discovery.",
+            description = "Discover candidate tables and views across a schema when their names are unknown. Returns " +
+            "a broad plain-text map with column counts, PKs and relationship summaries; follow with queryContext for " +
+            "multi-table authoring detail or describeTable for one known object.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -162,8 +166,9 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Return schema graph nodes/edges, central/isolated tables, connected components, cycle " +
-            "hints and an optional shortest path.",
+            description = "Analyze schema-wide relationship topology: graph nodes/edges, central or isolated tables, " +
+            "components, cycle hints and an optional shortest path. Use findJoinPaths when only paths between two " +
+            "known tables are needed.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -193,8 +198,9 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Build SQL-authoring context from terms and/or tables: relevant columns, constraints, " +
-            "allowed values, relationships, join paths and optional samples.",
+            description = "Build multi-table SQL-authoring context from natural-language terms or an explicit table " +
+            "list. Use when relevant tables are unknown or a request spans several tables; for one known table's " +
+            "fields or structure, use describeTable.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -224,7 +230,8 @@ public class SchemaContextTools {
     }
 
     @McpTool(
-            description = "Return a DOT/Graphviz ERD with table columns/types, PK/FK markers and join-condition edges.",
+            description = "Export a schema or selected tables as DOT/Graphviz ERD text with columns, types, PK/FK " +
+            "markers and join edges. Use schemaGraph for graph metrics rather than renderable diagram source.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

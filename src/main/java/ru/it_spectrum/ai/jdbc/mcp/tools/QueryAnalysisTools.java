@@ -55,7 +55,8 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Return a textual execution plan for a SELECT / WITH statement. " +
+            description = "Return the full engine-specific textual execution plan for a SELECT / WITH statement. " +
+            "Use when raw plan detail is needed; prefer analyzePlan for compact performance findings. " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES,
             generateOutputSchema = true,
@@ -124,8 +125,9 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Return compact structured plan findings: expensive nodes, large-table full scans, " +
-            "estimation errors, risky nested loops and disk-sort spills. " +
+            description = "Diagnose query-plan performance with compact structured findings: expensive nodes, " +
+            "large-table full scans, estimation errors, risky nested loops and disk-sort spills. Use explainQuery " +
+            "when the full textual plan is required. " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES,
             generateOutputSchema = true,
@@ -200,8 +202,9 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Validate a SELECT / WITH / EXPLAIN without executing it by preparing it with the driver, " +
-            "checking syntax and referenced objects. " +
+            description = "Check whether the database driver accepts a SELECT / WITH / EXPLAIN without executing " +
+            "it: prepares the statement and validates parameters, syntax and referenced objects. Use inspectQuery " +
+            "for parser-only AST inspection or queryLint for advisory metadata/index warnings. " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES,
             generateOutputSchema = true,
@@ -260,8 +263,9 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Parse SQL without accessing the database and return its AST summary: tables, aliases, " +
-            "select expressions, joins, predicates, order by, columns, parameters, features and parser warnings.",
+            description = "Inspect SQL syntax and structure without accessing a database. Returns a parser-derived " +
+            "AST summary of tables, aliases, expressions, joins, predicates, ordering, columns and parameters; use " +
+            "validateQuery for driver validation or queryLint for metadata-aware advice.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -278,9 +282,9 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Parse SQL and run metadata-aware lint checks without executing it. Reports advisory " +
-            "warnings for unknown tables/columns, SELECT *, conditionless joins, unindexed FKs, and " +
-            "predicate/order-by columns that are not leading index columns.",
+            description = "Review authored SQL for advisory metadata and indexing problems without executing it. " +
+            "Reports unknown objects, SELECT *, conditionless joins, unindexed FKs and non-leading predicate/order " +
+            "columns; use validateQuery when database-driver acceptance is the question.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -306,8 +310,9 @@ public class QueryAnalysisTools {
     }
 
     @McpTool(
-            description = "Resolve SQL lineage from direct FROM/JOIN objects to underlying physical tables. " +
-            "Routine expansion is best-effort (extracts embedded SELECT/WITH from source; may miss dynamic SQL).",
+            description = "Trace a query's data lineage from direct FROM/JOIN objects through views and optionally " +
+            "routines to underlying physical tables. Use inspectQuery for direct AST references only; routine " +
+            "expansion is best-effort and may miss dynamic SQL.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

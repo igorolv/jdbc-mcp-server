@@ -44,7 +44,8 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "List schemas visible to the current user.",
+            description = "Discover schema names visible to the current user when the target schema is unknown. " +
+            "Use listTables next to enumerate objects in one schema.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -66,7 +67,8 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "List tables and views in a schema.",
+            description = "Enumerate table and view names in a known schema, optionally filtered by name or type. " +
+            "Does not return fields/columns; use describeTable for one object's structure.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -91,8 +93,9 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "Return columns, primary/unique keys, indexes, outgoing foreign keys, incoming references, " +
-            "constraints, allowed CHECK values and triggers for a table or view.",
+            description = "Inspect one known table or view. Use for its fields/columns, types, nullability, defaults, " +
+            "comments, keys, indexes, constraints or triggers. Returns full metadata for that object only; use " +
+            "tableContext when nearby relationships or joins are also needed.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -118,7 +121,8 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "Get a trigger definition/body for one table trigger.",
+            description = "Return the full definition/body of one known table trigger. For trigger names and compact " +
+            "metadata, use describeTable first.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -148,7 +152,8 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "Get the SQL definition of a view or materialized view.",
+            description = "Return the SQL text that defines one known view or materialized view. For its exposed " +
+            "fields, keys and other object metadata, use describeTable.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -174,7 +179,8 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "List functions, procedures and packages in a schema; packages are listed once.",
+            description = "Discover function, procedure and package names in a schema, optionally by name pattern. " +
+            "Use getRoutineDefinition when the source of one known routine is needed.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -197,7 +203,8 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "Get the source code of a function / procedure / package (body, where applicable).",
+            description = "Return the source code of one known function, procedure or package, including its body " +
+            "where available. Use listRoutines to discover routine names.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -223,7 +230,8 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "List sequences in a schema (or in all schemas if schema is omitted).",
+            description = "Discover sequence names and metadata in one schema, or across all schemas when schema is " +
+            "omitted.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -245,8 +253,9 @@ public class MetadataTools {
     }
 
     @McpTool(
-            description = "Search non-system tables, views, materialized views, routines, packages, sequences " +
-            "and synonyms by case-insensitive name pattern; returns up to 200 matches.",
+            description = "Find database objects when only a full or partial name is known. Searches non-system " +
+            "tables, views, routines, packages, sequences and synonyms case-insensitively; use describeTable after " +
+            "finding a table or view whose structure is needed.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

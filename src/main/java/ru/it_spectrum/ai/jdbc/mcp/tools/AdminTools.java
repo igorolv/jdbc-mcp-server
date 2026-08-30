@@ -33,8 +33,9 @@ public class AdminTools {
     }
 
     @McpTool(
-            description = "Build a distributable local catalog by capturing schema metadata and rebuilding the "
-                    + "usage index; return file path, captured schemas and usage status.",
+            description = "Create or refresh the persistent local catalog for offline/repeated metadata and usage "
+                    + "lookups. Captures configured schema metadata, rebuilds the usage index and returns the "
+                    + "distributable catalog file; writes only server-local data, never the inspected database.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

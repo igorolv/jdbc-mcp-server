@@ -39,8 +39,9 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "Return estimated rows, storage sizes, dead-tuple ratio, maintenance timestamps and scan " +
-            "counters for a table. Available fields depend on the engine and privileges.",
+            description = "Inspect operational size and activity statistics for one known table: estimated/live " +
+            "rows, storage, dead tuples, maintenance times and scan counters. For fields, keys and constraints, use " +
+            "describeTable; available statistics depend on engine and privileges.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -66,8 +67,9 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "Return index columns, size, uniqueness/primary flags and available usage/cardinality " +
-            "counters for a table or schema.",
+            description = "Inspect index definitions together with operational size, usage and cardinality counters " +
+            "for one table or a schema. Use describeTable for structural metadata of one table without live index " +
+            "statistics.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -90,8 +92,9 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "Return non-PK/non-unique indexes with zero scans. Counters are cumulative since reset and " +
-            "meaningful only after a representative traffic cycle; not supported by every engine.",
+            description = "Find non-PK/non-unique indexes with zero recorded scans as removal candidates. Unlike " +
+            "redundantIndexes, this uses workload counters, which are meaningful only after representative traffic " +
+            "and are not supported by every engine.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -114,8 +117,8 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "Return non-unique indexes whose leading columns are a strict prefix of another same-type " +
-            "index on the same table.",
+            description = "Find structurally overlapping non-unique indexes whose leading columns are a strict " +
+            "prefix of another same-type index. Unlike unusedIndexes, this does not depend on workload scan counters.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -138,8 +141,9 @@ public class StatsTools {
     }
 
     @McpTool(
-            description = "Return child-side foreign keys not covered by an index starting with the FK columns in " +
-            "order, including suggested index columns.",
+            description = "Audit child-side foreign keys for missing supporting indexes. Returns only FKs not " +
+            "covered by an index starting with the FK columns in order, plus suggested index columns; use " +
+            "describeTable to inspect all keys and indexes of one table.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

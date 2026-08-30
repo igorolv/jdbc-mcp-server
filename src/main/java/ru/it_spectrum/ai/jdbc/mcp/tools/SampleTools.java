@@ -35,7 +35,8 @@ public class SampleTools {
     }
 
     @McpTool(
-            description = "Return limited rows from a table or view.",
+            description = "Preview a small number of actual rows from one known table or view to understand data " +
+            "shape and example values. For fields, types and constraints without reading row data, use describeTable.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

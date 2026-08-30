@@ -35,8 +35,9 @@ public class ConnectionTools {
     }
 
     @McpTool(
-            description = "List the databases this server serves: name to pass as 'connection', purpose, engine "
-                    + "and default schema. Every other tool requires one of these names.",
+            description = "Discover the databases served here and the valid name to pass as 'connection'. Call " +
+                    "when the target connection is not already established; returns purpose, engine, default schema " +
+                    "and local-catalog availability without opening a database connection.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

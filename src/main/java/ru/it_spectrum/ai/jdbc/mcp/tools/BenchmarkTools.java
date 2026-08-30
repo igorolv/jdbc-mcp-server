@@ -47,8 +47,9 @@ public class BenchmarkTools {
     }
 
     @McpTool(
-            description = "Repeat a read-only SQL SELECT / WITH / EXPLAIN; report cold runs separately " +
-            "and aggregate warm runs into min/median/max. " +
+            description = "Measure repeatable query latency with separate cold runs and min/median/max warm-run " +
+            "timings. Use for comparing query rewrites, not retrieving data; timedQuery is the one-run alternative " +
+            "that returns rows. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
             "Returns the size of the last result (rows, columns, truncated), not the rows.",
@@ -95,7 +96,9 @@ public class BenchmarkTools {
     }
 
     @McpTool(
-            description = "Run one read-only SQL SELECT / WITH / EXPLAIN and return rows plus elapsed_ms. " +
+            description = "Measure one read-only SQL SELECT / WITH / EXPLAIN while still returning its rows and " +
+            "elapsed time. Use executeQuery when timing is irrelevant or benchmarkQuery for repeated cold/warm " +
+            "measurements. " +
             BINDING_RULES +
             BINDING_EXAMPLES +
             "Adds available per-statement counter deltas (calls, execution time, rows, buffer hits/reads).",

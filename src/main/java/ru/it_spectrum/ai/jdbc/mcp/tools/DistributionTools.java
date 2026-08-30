@@ -40,7 +40,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return total, non-null and distinct row counts plus min/max for one column.",
+            description = "Measure basic extremes and cardinality for one known column: total/non-null rows, " +
+            "distinct count and min/max. Use columnDistribution for frequent values or columnHistogram for " +
+            "percentiles.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -67,8 +69,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return top-N values with counts and shares of total rows. Runs GROUP BY + COUNT and " +
-            "may be expensive on large tables.",
+            description = "Measure value frequency and skew for one known column by returning top-N values, counts " +
+            "and row shares. Use columnStats for only cardinality/extremes; runs GROUP BY + COUNT and may be " +
+            "expensive on large tables.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -96,8 +99,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return min/max, P25/P50/P75/P90/P95/P99 and null counts for a numeric, date, " +
-            "timestamp or text column.",
+            description = "Measure percentile distribution for one orderable numeric, date, timestamp or text " +
+            "column: min/max, P25/P50/P75/P90/P95/P99 and null counts. Use columnDistribution for top frequent " +
+            "values instead.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -124,8 +128,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return null/non-null counts and ratios for every column, sorted by descending null " +
-            "ratio; 'sparse' marks ratios above 50%.",
+            description = "Find sparse or mostly-null fields across every column of one table in a single scan. " +
+            "Returns null/non-null counts and ratios sorted by sparsity; use describeTable when only declared " +
+            "nullability is needed.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -151,8 +156,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return planner-estimated rows, the unfiltered baseline and predicate selectivity " +
-            "without executing the query.",
+            description = "Estimate how selective one proposed table predicate is without executing the query. " +
+            "Returns planner-estimated rows, the unfiltered baseline and their ratio; use when evaluating filters " +
+            "or composite-index column order.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
@@ -179,8 +185,9 @@ public class DistributionTools {
     }
 
     @McpTool(
-            description = "Return planner-estimated equi-join rows, per-side base estimates and selectivity versus " +
-            "the Cartesian product without executing the join.",
+            description = "Estimate the output size and selectivity of a proposed equi-join between two known " +
+            "tables without executing it. Returns planner estimates for both sides and versus the Cartesian product; " +
+            "use findJoinPaths when the join route itself is unknown.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )

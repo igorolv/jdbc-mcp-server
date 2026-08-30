@@ -41,7 +41,8 @@ public class QueryTools {
     }
 
     @McpTool(
-            description = "Execute a read-only SQL SELECT / WITH / EXPLAIN and return rows and columns. " +
+            description = "Run a read-only SQL SELECT / WITH / EXPLAIN when actual result rows are needed. Use " +
+            "timedQuery for one timed execution or benchmarkQuery for repeated latency measurements. " +
             QueryToolSupport.BINDING_RULES +
             QueryToolSupport.BINDING_EXAMPLES +
             "Sets 'truncated' when the row cap is hit.",
