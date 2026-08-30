@@ -6,7 +6,8 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnDistribution;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnHistogram;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnStats;
@@ -28,12 +29,12 @@ public class DistributionTools {
 
     private static final Logger log = LoggerFactory.getLogger(DistributionTools.class);
 
-    private final DistributionService distribution;
+    private final ConnectionRegistry connections;
     private final JsonResponses json;
     private final ToolErrors errors;
 
-    public DistributionTools(DistributionService distribution, JsonResponses json, ToolErrors errors) {
-        this.distribution = distribution;
+    public DistributionTools(ConnectionRegistry connections, JsonResponses json, ToolErrors errors) {
+        this.connections = connections;
         this.json = json;
         this.errors = errors;
     }
@@ -46,12 +47,14 @@ public class DistributionTools {
     public ColumnStats columnStats(
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "") String column
+            @McpToolParam(description = "") String column,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: columnStats (schema={}, table={}, column={})", schema, table, column);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            ColumnStats r = distribution.columnStats(schema, table, column);
+            ColumnStats r = ctx.distribution().columnStats(schema, table, column);
             ToolLogger.completed(log, "columnStats", start);
             return r;
         } catch (SQLException e) {
@@ -73,12 +76,14 @@ public class DistributionTools {
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
             @McpToolParam(description = "") String column,
-            @McpToolParam(description = "Top values to return (default 20, max 1000).", required = false) Integer topN
+            @McpToolParam(description = "Top values to return (default 20, max 1000).", required = false) Integer topN,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: columnDistribution (schema={}, table={}, column={})", schema, table, column);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            var r = distribution.columnDistribution(schema, table, column, topN);
+            var r = ctx.distribution().columnDistribution(schema, table, column, topN);
             ToolLogger.completed(log, "columnDistribution", start);
             return r;
         } catch (SQLException e) {
@@ -99,12 +104,14 @@ public class DistributionTools {
     public ColumnHistogram columnHistogram(
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "") String column
+            @McpToolParam(description = "") String column,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: columnHistogram (schema={}, table={}, column={})", schema, table, column);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            var r = distribution.columnHistogram(schema, table, column);
+            var r = ctx.distribution().columnHistogram(schema, table, column);
             ToolLogger.completed(log, "columnHistogram", start);
             return r;
         } catch (SQLException e) {
@@ -124,12 +131,14 @@ public class DistributionTools {
     )
     public NullRatio nullRatio(
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String table
+            @McpToolParam(description = "") String table,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: nullRatio (schema={}, table={})", schema, table);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            var r = distribution.nullRatio(schema, table);
+            var r = ctx.distribution().nullRatio(schema, table);
             ToolLogger.completed(log, "nullRatio", start);
             return r;
         } catch (SQLException e) {
@@ -150,12 +159,14 @@ public class DistributionTools {
     public SelectivityEstimate estimateSelectivity(
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "Raw boolean SQL without WHERE or ';'.") String predicate
+            @McpToolParam(description = "Raw boolean SQL without WHERE or ';'.") String predicate,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: estimateSelectivity (schema={}, table={})", schema, table);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            var r = distribution.estimateSelectivity(schema, table, predicate);
+            var r = ctx.distribution().estimateSelectivity(schema, table, predicate);
             ToolLogger.completed(log, "estimateSelectivity", start);
             return r;
         } catch (SQLException e) {
@@ -180,12 +191,14 @@ public class DistributionTools {
             @McpToolParam(description = "", required = false) String toSchema,
             @McpToolParam(description = "") String toTable,
             @McpToolParam(description = "Column in toTable.") String rightColumn,
-            @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType
+            @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: joinCardinality ({}.{} <-> {}.{})", fromTable, leftColumn, toTable, rightColumn);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            var r = distribution.joinCardinality(fromSchema, fromTable, leftColumn,
+            var r = ctx.distribution().joinCardinality(fromSchema, fromTable, leftColumn,
                     toSchema, toTable, rightColumn, joinType);
             ToolLogger.completed(log, "joinCardinality", start);
             return r;

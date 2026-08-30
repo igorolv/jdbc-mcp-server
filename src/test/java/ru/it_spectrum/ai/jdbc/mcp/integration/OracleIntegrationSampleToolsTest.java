@@ -11,7 +11,7 @@ class OracleIntegrationSampleToolsTest extends AbstractOracleToolsIntegrationTes
 
     @Test
     void sampleRowsReturnsLimitedJsonResult() {
-        ObjectNode result = object(sampleTools().sampleRows(schema(), "CUSTOMERS", 1));
+        ObjectNode result = object(sampleTools().sampleRows(schema(), "CUSTOMERS", 1, null));
         assertThat(field(result, "rowCount").asInt()).isEqualTo(1);
         assertThat(field(result, "truncated").asBoolean()).isFalse();
         assertThat(field(row(result, 0), "NAME").asText()).isEqualTo("Alice");

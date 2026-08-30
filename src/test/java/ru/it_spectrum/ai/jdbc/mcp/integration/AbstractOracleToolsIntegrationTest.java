@@ -5,6 +5,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.testcontainers.oracle.OracleContainer;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
+import ru.it_spectrum.ai.jdbc.mcp.connection.TestConnections;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.OracleDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
@@ -37,6 +39,8 @@ import java.sql.DriverManager;
 
 abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrationTest {
 
+    private static final String CONNECTION_NAME = "oracle";
+
     private static final OracleContainer ORACLE = new OracleContainer("gvenzl/oracle-free:23-slim-faststart")
             .withUsername("jdbcmcp")
             .withPassword("jdbcmcp");
@@ -65,8 +69,9 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
             MetadataService metadata = new MetadataService(executor, dialect, properties, store);
             StatsService stats = new StatsService(executor, dialect, properties);
             SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
+            OraclePlanParser planParser = new OraclePlanParser();
             DistributionService distribution = new DistributionService(
-                    executor, dialect, properties, new OraclePlanParser());
+                    executor, dialect, properties, planParser);
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
             QueryAnalysisService analysis = new QueryAnalysisService();
             QueryLineageService lineage = new QueryLineageService(analysis, metadata, new ProceduralSqlExtractor());
@@ -74,16 +79,22 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
             JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
             ToolErrors errors = new ToolErrors(json);
 
+            ConnectionRegistry connections = TestConnections.registry(
+                    CONNECTION_NAME, properties,
+                    dialect, executor, guard, planParser, store,
+                    metadata, stats, schemaContext, distribution, benchmarks,
+                    analysis, lineage, lint);
+
             return new IntegrationTestContext(
                     schema,
-                    new QueryTools(executor, errors),
-                    new QueryAnalysisTools(executor, dialect, properties, guard, new OraclePlanParser(), analysis, lineage, lint, errors),
-                    new MetadataTools(metadata, json, errors),
-                    new SampleTools(executor, dialect, json, errors),
-                    new StatsTools(stats, json, errors),
-                    new SchemaContextTools(schemaContext, json, errors),
-                    new DistributionTools(distribution, json, errors),
-                    new BenchmarkTools(benchmarks, json, errors)
+                    new QueryTools(connections, errors),
+                    new QueryAnalysisTools(connections, errors),
+                    new MetadataTools(connections, json, errors),
+                    new SampleTools(connections, json, errors),
+                    new StatsTools(connections, json, errors),
+                    new SchemaContextTools(connections, json, errors),
+                    new DistributionTools(connections, json, errors),
+                    new BenchmarkTools(connections, json, errors)
             );
         } catch (Exception e) {
             throw new ExceptionInInitializerError(e);

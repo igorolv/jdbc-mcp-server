@@ -7,9 +7,10 @@ import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
-import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
 
 import java.sql.SQLException;
 import java.util.Collections;
@@ -23,14 +24,12 @@ public class SampleTools {
 
     private static final Logger log = LoggerFactory.getLogger(SampleTools.class);
 
-    private final SqlExecutor executor;
-    private final SqlDialect dialect;
+    private final ConnectionRegistry connections;
     private final JsonResponses json;
     private final ToolErrors errors;
 
-    public SampleTools(SqlExecutor executor, SqlDialect dialect, JsonResponses json, ToolErrors errors) {
-        this.executor = executor;
-        this.dialect = dialect;
+    public SampleTools(ConnectionRegistry connections, JsonResponses json, ToolErrors errors) {
+        this.connections = connections;
         this.json = json;
         this.errors = errors;
     }
@@ -43,19 +42,22 @@ public class SampleTools {
     public QueryResult sampleRows(
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "Rows to return (default 10, max 100).", required = false) Integer limit
+            @McpToolParam(description = "Rows to return (default 10, max 100).", required = false) Integer limit,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: sampleRows (schema={}, table={})", schema, table);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         if (table == null || table.isBlank()) {
             ToolLogger.failed(log, "sampleRows", start, "table must be provided");
             throw errors.argumentException("table must be provided");
         }
         int n = limit == null ? 10 : Math.clamp(limit, 1, 100);
-        String qualified = qualify(schema, table);
+        SqlDialect dialect = ctx.dialect();
+        String qualified = qualify(dialect, schema, table);
         String sql = dialect.limitQuery("SELECT * FROM " + qualified, n);
         try {
-            QueryResult r = executor.queryInternal(sql, Collections.emptyList(), n);
+            QueryResult r = ctx.executor().queryInternal(sql, Collections.emptyList(), n);
             ToolLogger.completed(log, "sampleRows", start);
             return r;
         } catch (SQLException e) {
@@ -69,11 +71,11 @@ public class SampleTools {
 
     // ---------------- helpers ----------------
 
-    private String qualify(String schema, String table) {
+    private String qualify(SqlDialect dialect, String schema, String table) {
         if (schema == null || schema.isBlank()) {
-            return quoteIdent(table);
+            return quoteIdent(dialect, table);
         }
-        return quoteIdent(schema) + "." + quoteIdent(table);
+        return quoteIdent(dialect, schema) + "." + quoteIdent(dialect, table);
     }
 
     /**
@@ -81,7 +83,7 @@ public class SampleTools {
      * (letters/digits/underscores) here — the tool parameters come from an LLM and we do
      * not want to allow arbitrary injection via a "quoted identifier".
      */
-    private String quoteIdent(String id) {
+    private String quoteIdent(SqlDialect dialect, String id) {
         if (!id.matches("[A-Za-z_][A-Za-z0-9_$#]*")) {
             throw new IllegalArgumentException("Illegal identifier: '" + id + "'");
         }

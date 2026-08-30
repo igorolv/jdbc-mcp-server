@@ -13,7 +13,7 @@ class SqlServerIntegrationDistributionToolsTest extends AbstractSqlServerToolsIn
 
     @Test
     void columnStatsReturnsBasicExtremes() {
-        ObjectNode result = object(distributionTools().columnStats("dbo", "orders", "total"));
+        ObjectNode result = object(distributionTools().columnStats("dbo", "orders", "total", null));
         assertThat(field(result, "totalRows").asInt()).isEqualTo(3);
         assertThat(field(result, "nonNullRows").asInt()).isEqualTo(3);
         assertThat(field(result, "distinctValues").asInt()).isEqualTo(3);
@@ -21,14 +21,14 @@ class SqlServerIntegrationDistributionToolsTest extends AbstractSqlServerToolsIn
 
     @Test
     void distributionAndHistogramExposeSkew() {
-        ObjectNode distribution = object(distributionTools().columnDistribution("dbo", "events", "status", 5));
+        ObjectNode distribution = object(distributionTools().columnDistribution("dbo", "events", "status", 5, null));
         assertThat(field(distribution, "totalRows").asInt()).isEqualTo(100);
         ObjectNode ok = (ObjectNode) findByField((ArrayNode) field(distribution, "values"), "value", "OK");
         assertThat(ok).isNotNull();
         assertThat(field(ok, "frequency").asInt()).isEqualTo(90);
         assertThat(field(ok, "ratio").asDouble()).isCloseTo(0.9, within(1e-6));
 
-        ObjectNode histogram = object(distributionTools().columnHistogram("dbo", "events", "amount"));
+        ObjectNode histogram = object(distributionTools().columnHistogram("dbo", "events", "amount", null));
         assertThat(field(histogram, "percentileFunction").asText()).isEqualTo("percentile_cont");
         assertThat(field(histogram, "p50").asDouble())
                 .isBetween(field(histogram, "min").asDouble(), field(histogram, "max").asDouble());
@@ -36,20 +36,20 @@ class SqlServerIntegrationDistributionToolsTest extends AbstractSqlServerToolsIn
 
     @Test
     void nullRatioSelectivityAndJoinCardinalityReturnPlannerSignals() {
-        ObjectNode nullRatio = object(distributionTools().nullRatio("dbo", "events"));
+        ObjectNode nullRatio = object(distributionTools().nullRatio("dbo", "events", null));
         ObjectNode category = (ObjectNode) findByField((ArrayNode) field(nullRatio, "columns"), "column", "category");
         assertThat(category).isNotNull();
         assertThat(field(category, "nullRows").asInt()).isEqualTo(10);
 
         ObjectNode selectivity = object(distributionTools().estimateSelectivity(
-                "dbo", "events", "status = 'FAIL'"));
+                "dbo", "events", "status = 'FAIL'", null));
         assertThat(field(selectivity, "estimatedRows").asLong())
                 .isLessThan(field(selectivity, "baselineRows").asLong());
         assertThat(field(selectivity, "selectivity").asDouble()).isBetween(0.0, 1.0);
 
         ObjectNode join = object(distributionTools().joinCardinality(
                 "dbo", "customers", "id",
-                "dbo", "orders", "customer_id", "INNER"));
+                "dbo", "orders", "customer_id", "INNER", null));
         assertThat(field(join, "joinType").asText()).isEqualTo("INNER");
         assertThat(field(join, "estimatedRows").asLong()).isGreaterThan(0L);
     }

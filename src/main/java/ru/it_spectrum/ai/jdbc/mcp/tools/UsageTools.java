@@ -6,6 +6,8 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByColumnResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.FindQueriesByTableResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.KnownDomainsResult;
@@ -15,7 +17,6 @@ import ru.it_spectrum.ai.jdbc.mcp.model.usage.ListQueriesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.ObservedRelationshipsResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.QueryDetail;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.UsageCatalogStatus;
-import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 /**
  * MCP tools for the local usage catalog: a file-backed set of known SQL queries used by
@@ -28,12 +29,12 @@ public class UsageTools {
 
     private static final Logger log = LoggerFactory.getLogger(UsageTools.class);
 
-    private final UsageCatalogService service;
+    private final ConnectionRegistry connections;
     private final JsonResponses json;
     private final ToolErrors errors;
 
-    public UsageTools(UsageCatalogService service, JsonResponses json, ToolErrors errors) {
-        this.service = service;
+    public UsageTools(ConnectionRegistry connections, JsonResponses json, ToolErrors errors) {
+        this.connections = connections;
         this.json = json;
         this.errors = errors;
     }
@@ -43,10 +44,13 @@ public class UsageTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public UsageCatalogStatus usageCatalogStatus() {
+    public UsageCatalogStatus usageCatalogStatus(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+    ) {
         log.info("Tool call: usageCatalogStatus");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
-        UsageCatalogStatus result = service.status();
+        UsageCatalogStatus result = ctx.usageCatalog().status().withConnection(ctx.name());
         ToolLogger.completed(log, "usageCatalogStatus", start);
         return result;
     }
@@ -57,12 +61,15 @@ public class UsageTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public UsageCatalogStatus invalidateUsageCatalogCache() {
+    public UsageCatalogStatus invalidateUsageCatalogCache(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+    ) {
         log.info("Tool call: invalidateUsageCatalogCache");
-        if (!service.enabled()) throw disabledException("invalidateUsageCatalogCache");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("invalidateUsageCatalogCache");
         long start = System.nanoTime();
         try {
-            UsageCatalogStatus result = service.invalidateIndex();
+            UsageCatalogStatus result = ctx.usageCatalog().invalidateIndex().withConnection(ctx.name());
             ToolLogger.completed(log, "invalidateUsageCatalogCache", start);
             return result;
         } catch (RuntimeException e) {
@@ -80,13 +87,15 @@ public class UsageTools {
     public QueryDetail getQuery(
             @McpToolParam(description = "Source kind, e.g. dao, report, database-view.") String sourceKind,
             @McpToolParam(description = "Stable source path, e.g. file path.") String sourcePath,
-            @McpToolParam(description = "Optional sub-unit, e.g. method name.", required = false) String sourceUnit
+            @McpToolParam(description = "Optional sub-unit, e.g. method name.", required = false) String sourceUnit,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: getQuery (kind={}, path={}, unit={})", sourceKind, sourcePath, sourceUnit);
-        if (!service.enabled()) throw disabledException("getQuery");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("getQuery");
         long start = System.nanoTime();
         try {
-            QueryDetail result = service.getQuery(sourceKind, sourcePath, sourceUnit);
+            QueryDetail result = ctx.usageCatalog().getQuery(sourceKind, sourcePath, sourceUnit);
             ToolLogger.completed(log, "getQuery", start);
             return result;
         } catch (IllegalArgumentException e) {
@@ -111,13 +120,15 @@ public class UsageTools {
             @McpToolParam(description = "Parse status: parsed or failed.", required = false) String parseStatus,
             @McpToolParam(description = "Case-insensitive full-text search over SQL, labels, domains and source paths.", required = false) String searchText,
             @McpToolParam(description = "Rows to return (default 100, max 1000).", required = false) Integer limit,
-            @McpToolParam(description = "Paging offset (default 0).", required = false) Integer offset
+            @McpToolParam(description = "Paging offset (default 0).", required = false) Integer offset,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: listQueries (searchText={})", searchText);
-        if (!service.enabled()) throw disabledException("listQueries");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("listQueries");
         long start = System.nanoTime();
         try {
-            ListQueriesResult result = service.listQueries(
+            ListQueriesResult result = ctx.usageCatalog().listQueries(
                     sourcePath, sourceKind, businessDomain, tag, parseStatus, searchText, limit, offset);
             ToolLogger.completed(log, "listQueries", start);
             return result;
@@ -138,13 +149,15 @@ public class UsageTools {
     )
     public FindQueriesByTableResult findQueriesByTable(
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String table
+            @McpToolParam(description = "") String table,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: findQueriesByTable (schema={}, table={})", schema, table);
-        if (!service.enabled()) throw disabledException("findQueriesByTable");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("findQueriesByTable");
         long start = System.nanoTime();
         try {
-            FindQueriesByTableResult result = service.findQueriesByTable(schema, table);
+            FindQueriesByTableResult result = ctx.usageCatalog().findQueriesByTable(schema, table);
             ToolLogger.completed(log, "findQueriesByTable", start);
             return result;
         } catch (IllegalArgumentException e) {
@@ -166,13 +179,15 @@ public class UsageTools {
     public FindQueriesByColumnResult findQueriesByColumn(
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "", required = false) String table,
-            @McpToolParam(description = "") String column
+            @McpToolParam(description = "") String column,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: findQueriesByColumn (schema={}, table={}, column={})", schema, table, column);
-        if (!service.enabled()) throw disabledException("findQueriesByColumn");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("findQueriesByColumn");
         long start = System.nanoTime();
         try {
-            FindQueriesByColumnResult result = service.findQueriesByColumn(schema, table, column);
+            FindQueriesByColumnResult result = ctx.usageCatalog().findQueriesByColumn(schema, table, column);
             ToolLogger.completed(log, "findQueriesByColumn", start);
             return result;
         } catch (IllegalArgumentException e) {
@@ -193,13 +208,15 @@ public class UsageTools {
     public ObservedRelationshipsResult observedRelationships(
             @McpToolParam(description = "Case-insensitive filter.", required = false) String schema,
             @McpToolParam(description = "Require either join side to use this table.", required = false) String table,
-            @McpToolParam(description = "Minimum supporting queries (default 1).", required = false) Integer minSupport
+            @McpToolParam(description = "Minimum supporting queries (default 1).", required = false) Integer minSupport,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: observedRelationships (schema={}, table={})", schema, table);
-        if (!service.enabled()) throw disabledException("observedRelationships");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("observedRelationships");
         long start = System.nanoTime();
         try {
-            ObservedRelationshipsResult result = service.observedRelationships(schema, table, minSupport == null ? 1 : minSupport);
+            ObservedRelationshipsResult result = ctx.usageCatalog().observedRelationships(schema, table, minSupport == null ? 1 : minSupport);
             ToolLogger.completed(log, "observedRelationships", start);
             return result;
         } catch (IllegalArgumentException e) {
@@ -216,12 +233,15 @@ public class UsageTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public KnownTagsResult listKnownTags() {
+    public KnownTagsResult listKnownTags(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+    ) {
         log.info("Tool call: listKnownTags");
-        if (!service.enabled()) throw disabledException("listKnownTags");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("listKnownTags");
         long start = System.nanoTime();
         try {
-            KnownTagsResult result = service.listKnownTags();
+            KnownTagsResult result = ctx.usageCatalog().listKnownTags();
             ToolLogger.completed(log, "listKnownTags", start);
             return result;
         } catch (RuntimeException e) {
@@ -235,12 +255,15 @@ public class UsageTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public KnownDomainsResult listKnownDomains() {
+    public KnownDomainsResult listKnownDomains(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+    ) {
         log.info("Tool call: listKnownDomains");
-        if (!service.enabled()) throw disabledException("listKnownDomains");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("listKnownDomains");
         long start = System.nanoTime();
         try {
-            KnownDomainsResult result = service.listKnownDomains();
+            KnownDomainsResult result = ctx.usageCatalog().listKnownDomains();
             ToolLogger.completed(log, "listKnownDomains", start);
             return result;
         } catch (RuntimeException e) {
@@ -254,12 +277,15 @@ public class UsageTools {
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
-    public KnownSourceKindsResult listKnownKinds() {
+    public KnownSourceKindsResult listKnownKinds(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+    ) {
         log.info("Tool call: listKnownKinds");
-        if (!service.enabled()) throw disabledException("listKnownKinds");
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
+        if (!ctx.usageCatalog().enabled()) throw disabledException("listKnownKinds");
         long start = System.nanoTime();
         try {
-            KnownSourceKindsResult result = service.listKnownSourceKinds();
+            KnownSourceKindsResult result = ctx.usageCatalog().listKnownSourceKinds();
             ToolLogger.completed(log, "listKnownKinds", start);
             return result;
         } catch (RuntimeException e) {

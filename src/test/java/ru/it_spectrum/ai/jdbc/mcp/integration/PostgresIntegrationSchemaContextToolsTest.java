@@ -14,7 +14,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void returnsTableNeighborhood() {
         ObjectNode context = object(schemaContextTools().tableContext(
-                "public", "orders", 1, true, false, false));
+                "public", "orders", 1, true, false, false, null));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         assertThat(findByField(tables, "name", "orders")).isNotNull();
@@ -29,7 +29,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void findsFkJoinPath() {
         ObjectNode result = object(schemaContextTools().findJoinPaths(
-                "public", "line_items", "public", "customers", 4, 5, 100, false));
+                "public", "line_items", "public", "customers", 4, 5, 100, false, null));
 
         assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
         ArrayNode paths = (ArrayNode) field(result, "paths");
@@ -42,7 +42,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void lintsSchemaForSqlAuthoringRisks() {
         ObjectNode result = object(schemaContextTools().schemaLint(
-                "public", null, null, 100, 200));
+                "public", null, null, 100, 200, null));
 
         ArrayNode findings = (ArrayNode) field(result, "findings");
         assertThat(finding(findings, "fkWithoutIndex", "orders", "customer_id")).isNotNull();
@@ -52,7 +52,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsCompactSchemaBrief() {
-        String brief = schemaContextTools().schemaBrief("public", null, 100);
+        String brief = schemaContextTools().schemaBrief("public", null, 100, null);
 
         assertThat(brief).contains("Schema brief");
         assertThat(brief).contains("Tables");
@@ -66,7 +66,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void returnsRelationshipGraphMetrics() {
         ObjectNode graph = object(schemaContextTools().schemaGraph(
-                "public", 100, "line_items", "customers", 4));
+                "public", 100, "line_items", "customers", 4, null));
 
         assertThat(field(graph, "nodeCount").asInt()).isGreaterThanOrEqualTo(5);
         assertThat(field(graph, "declaredEdgeCount").asInt()).isEqualTo(2);
@@ -85,7 +85,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
     @Test
     void returnsQueryAuthoringContext() {
         ObjectNode context = object(schemaContextTools().queryContext(
-                "public", "customer orders total", "customers,orders", true, 10));
+                "public", "customer orders total", "customers,orders", true, 10, null));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         ObjectNode customers = (ObjectNode) findByField(tables, "name", "customers");
@@ -105,7 +105,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsSchemaGraphDot() {
-        String dot = schemaContextTools().schemaGraphDot("public", null);
+        String dot = schemaContextTools().schemaGraphDot("public", null, null);
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("customers");
@@ -117,7 +117,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsSchemaGraphDotFiltered() {
-        String dot = schemaContextTools().schemaGraphDot("public", "customers,orders");
+        String dot = schemaContextTools().schemaGraphDot("public", "customers,orders", null);
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("customers");

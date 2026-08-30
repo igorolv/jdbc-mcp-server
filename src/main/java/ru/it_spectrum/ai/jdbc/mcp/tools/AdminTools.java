@@ -6,12 +6,10 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.model.admin.RebuildCatalogResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.usage.UsageCatalogStatus;
-import ru.it_spectrum.ai.jdbc.mcp.usage.CatalogStorageService;
-import ru.it_spectrum.ai.jdbc.mcp.usage.UsageCatalogService;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -26,19 +24,11 @@ public class AdminTools {
 
     private static final Logger log = LoggerFactory.getLogger(AdminTools.class);
 
-    private final MetadataService metadata;
-    private final UsageCatalogService usageCatalog;
-    private final CatalogStorageService catalogStorage;
-    private final JdbcMcpProperties jdbcMcpProperties;
+    private final ConnectionRegistry connections;
     private final ToolErrors errors;
 
-    public AdminTools(MetadataService metadata, UsageCatalogService usageCatalog,
-                      CatalogStorageService catalogStorage,
-                      JdbcMcpProperties jdbcMcpProperties, ToolErrors errors) {
-        this.metadata = metadata;
-        this.usageCatalog = usageCatalog;
-        this.catalogStorage = catalogStorage;
-        this.jdbcMcpProperties = jdbcMcpProperties;
+    public AdminTools(ConnectionRegistry connections, ToolErrors errors) {
+        this.connections = connections;
         this.errors = errors;
     }
 
@@ -49,20 +39,22 @@ public class AdminTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public RebuildCatalogResult rebuildCatalog(
-            @McpToolParam(description = "Schemas to capture (CSV); omit for configured/default scope.", required = false) String schemas
+            @McpToolParam(description = "Schemas to capture (CSV); omit for configured/default scope.", required = false) String schemas,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: rebuildCatalog (schemas={})", schemas);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
             String[] parsed = parseSchemas(schemas);
             List<String> covered = parsed == null
-                    ? metadata.rebuildStructureSnapshot()
-                    : metadata.rebuildStructureSnapshot(List.of(parsed));
-            UsageCatalogStatus usage = usageCatalog.rebuildFromSources();
-            catalogStorage.checkpointForDistribution();
-            String catalogFile = jdbcMcpProperties.catalogDbFile().toAbsolutePath().toString();
+                    ? ctx.metadata().rebuildStructureSnapshot()
+                    : ctx.metadata().rebuildStructureSnapshot(List.of(parsed));
+            UsageCatalogStatus usage = ctx.usageCatalog().rebuildFromSources();
+            ctx.catalogStorage().checkpointForDistribution();
+            String catalogFile = ctx.catalogProperties().catalogDbFile().toAbsolutePath().toString();
             ToolLogger.completed(log, "rebuildCatalog", start);
-            return new RebuildCatalogResult(catalogFile, covered, usage);
+            return new RebuildCatalogResult(ctx.name(), catalogFile, covered, usage);
         } catch (SQLException e) {
             ToolLogger.failed(log, "rebuildCatalog", start, e.getMessage());
             throw errors.sqlException(e);

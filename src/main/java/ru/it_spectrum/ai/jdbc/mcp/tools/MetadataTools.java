@@ -6,7 +6,8 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListSchemasResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListTablesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListRoutinesResult;
@@ -32,12 +33,12 @@ public class MetadataTools {
 
     private static final Logger log = LoggerFactory.getLogger(MetadataTools.class);
 
-    private final MetadataService metadata;
+    private final ConnectionRegistry connections;
     private final JsonResponses json;
     private final ToolErrors errors;
 
-    public MetadataTools(MetadataService metadata, JsonResponses json, ToolErrors errors) {
-        this.metadata = metadata;
+    public MetadataTools(ConnectionRegistry connections, JsonResponses json, ToolErrors errors) {
+        this.connections = connections;
         this.json = json;
         this.errors = errors;
     }
@@ -48,12 +49,14 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListSchemasResult listSchemas(
-            @McpToolParam(description = "Include system schemas. Default false.", required = false) Boolean includeSystem
+            @McpToolParam(description = "Include system schemas. Default false.", required = false) Boolean includeSystem,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: listSchemas (includeSystem={})", includeSystem);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            List<String> schemas = metadata.listSchemas(Boolean.TRUE.equals(includeSystem));
+            List<String> schemas = ctx.metadata().listSchemas(Boolean.TRUE.equals(includeSystem));
             ToolLogger.completed(log, "listSchemas", start);
             return new ListSchemasResult(schemas);
         } catch (SQLException e) {
@@ -70,13 +73,15 @@ public class MetadataTools {
     public ListTablesResult listTables(
             @McpToolParam(description = "Omit to use JDBC_DEFAULT_SCHEMA or the current schema.", required = false) String schema,
             @McpToolParam(description = "JDBC pattern ('%' any, '_' one character).", required = false) String namePattern,
-            @McpToolParam(description = "JDBC table types CSV (default TABLE,VIEW,MATERIALIZED VIEW): TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM", required = false) String types
+            @McpToolParam(description = "JDBC table types CSV (default TABLE,VIEW,MATERIALIZED VIEW): TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM", required = false) String types,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: listTables (schema={}, pattern={})", schema, namePattern);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
             String[] typeArr = parseTypes(types);
-            List<TableEntry> entries = metadata.listTables(schema, namePattern, typeArr);
+            List<TableEntry> entries = ctx.metadata().listTables(schema, namePattern, typeArr);
             ToolLogger.completed(log, "listTables", start);
             return new ListTablesResult(entries);
         } catch (SQLException e) {
@@ -93,12 +98,14 @@ public class MetadataTools {
     )
     public TableDescription describeTable(
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String table
+            @McpToolParam(description = "") String table,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: describeTable (schema={}, table={})", schema, table);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            TableDescription info = metadata.describeTable(schema, table);
+            TableDescription info = ctx.metadata().describeTable(schema, table);
             ToolLogger.completed(log, "describeTable", start);
             return info;
         } catch (SQLException e) {
@@ -118,12 +125,14 @@ public class MetadataTools {
     public String getTriggerDefinition(
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "") String trigger
+            @McpToolParam(description = "") String trigger,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: getTriggerDefinition (schema={}, table={}, trigger={})", schema, table, trigger);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            String def = metadata.triggerDefinition(schema, table, trigger);
+            String def = ctx.metadata().triggerDefinition(schema, table, trigger);
             ToolLogger.completed(log, "getTriggerDefinition", start);
             if (def == null || def.isBlank()) {
                 throw errors.notFoundException("trigger", trigger);
@@ -145,12 +154,14 @@ public class MetadataTools {
     )
     public String getViewDefinition(
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String name
+            @McpToolParam(description = "") String name,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: getViewDefinition (schema={}, name={})", schema, name);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            String def = metadata.viewDefinition(schema, name);
+            String def = ctx.metadata().viewDefinition(schema, name);
             ToolLogger.completed(log, "getViewDefinition", start);
             if (def == null) {
                 throw errors.notFoundException("view", name);
@@ -169,12 +180,14 @@ public class MetadataTools {
     )
     public ListRoutinesResult listRoutines(
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "JDBC name pattern, e.g. '%calculate%'.", required = false) String namePattern
+            @McpToolParam(description = "JDBC name pattern, e.g. '%calculate%'.", required = false) String namePattern,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: listRoutines (schema={}, pattern={})", schema, namePattern);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            List<RoutineEntry> r = metadata.listRoutines(schema, namePattern);
+            List<RoutineEntry> r = ctx.metadata().listRoutines(schema, namePattern);
             ToolLogger.completed(log, "listRoutines", start);
             return new ListRoutinesResult(r);
         } catch (SQLException e) {
@@ -190,12 +203,14 @@ public class MetadataTools {
     )
     public String getRoutineDefinition(
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String name
+            @McpToolParam(description = "") String name,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: getRoutineDefinition (schema={}, name={})", schema, name);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            String source = metadata.routineSource(schema, name);
+            String source = ctx.metadata().routineSource(schema, name);
             ToolLogger.completed(log, "getRoutineDefinition", start);
             if (source == null || source.isEmpty()) {
                 throw errors.notFoundException("routine", name);
@@ -213,12 +228,14 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListSequencesResult listSequences(
-            @McpToolParam(description = "", required = false) String schema
+            @McpToolParam(description = "", required = false) String schema,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: listSequences (schema={})", schema);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            List<SequenceEntry> r = metadata.listSequences(schema);
+            List<SequenceEntry> r = ctx.metadata().listSequences(schema);
             ToolLogger.completed(log, "listSequences", start);
             return new ListSequencesResult(r);
         } catch (SQLException e) {
@@ -234,12 +251,14 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SearchObjectsResult searchObjects(
-            @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String namePattern
+            @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String namePattern,
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
     ) {
         log.info("Tool call: searchObjects (pattern={})", namePattern);
+        ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            List<SearchObjectEntry> r = metadata.searchObjects(namePattern);
+            List<SearchObjectEntry> r = ctx.metadata().searchObjects(namePattern);
             ToolLogger.completed(log, "searchObjects", start);
             return new SearchObjectsResult(r);
         } catch (SQLException e) {

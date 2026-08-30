@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
+import ru.it_spectrum.ai.jdbc.mcp.connection.TestConnections;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.OracleDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
@@ -95,7 +97,11 @@ class LiveOracleIntegrationTest {
         QueryLintService lint = new QueryLintService(analysis, metadata, stats);
         json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
         ToolErrors errors = new ToolErrors(json);
-        queryAnalysisTools = new QueryAnalysisTools(executor, dialect, props, guard, new OraclePlanParser(), analysis, lineage, lint, errors);
+        ConnectionRegistry connections = TestConnections.registry(
+                "live-oracle", props,
+                dialect, executor, guard, new OraclePlanParser(), metadata, stats,
+                analysis, lineage, lint);
+        queryAnalysisTools = new QueryAnalysisTools(connections, errors);
     }
 
     private DataSource buildPool(JdbcProperties p) {
@@ -194,12 +200,12 @@ class LiveOracleIntegrationTest {
                 "code", "A",
                 "userId", "DUMMY_USER");
 
-        String explainResult = queryAnalysisTools.explainQuery(sql, null, namedParams, null);
+        String explainResult = queryAnalysisTools.explainQuery(sql, null, namedParams, null, null);
         assertThat(explainResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error");
 
-        String analyzeResult = json.write(queryAnalysisTools.analyzePlan(sql, null, namedParams, null));
+        String analyzeResult = json.write(queryAnalysisTools.analyzePlan(sql, null, namedParams, null, null));
         assertThat(analyzeResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error")
@@ -213,7 +219,8 @@ class LiveOracleIntegrationTest {
                 schema,
                 true,
                 true,
-                3));
+                3,
+                null));
 
         assertThat(result)
                 .contains("\"directObjects\"")
