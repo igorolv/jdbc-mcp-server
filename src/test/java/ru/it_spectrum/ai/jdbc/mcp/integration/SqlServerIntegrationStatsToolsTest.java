@@ -12,25 +12,25 @@ class SqlServerIntegrationStatsToolsTest extends AbstractSqlServerToolsIntegrati
 
     @Test
     void tableStatsAndIndexStatsExposeSeededObjects() {
-        ObjectNode table = object(statsTools().tableStats("dbo", "customers", null));
+        ObjectNode table = object(statsTools().tableStats(connection(), "dbo", "customers"));
         assertThat(field(table, "found").asBoolean()).isTrue();
         assertThat(field(table, "table").asText()).isEqualTo("customers");
         assertThat(field(table, "estimatedRows").asLong()).isGreaterThanOrEqualTo(2L);
 
-        ObjectNode indexStats = object(statsTools().indexStats("dbo", "customers", null));
+        ObjectNode indexStats = object(statsTools().indexStats(connection(), "dbo", "customers"));
         ArrayNode indexes = (ArrayNode) field(indexStats, "indexes");
         assertThat(findByField(indexes, "indexName", "idx_customers_name")).isNotNull();
     }
 
     @Test
     void fkCoverageAndRedundantIndexesAreReported() {
-        ObjectNode fkCoverage = object(statsTools().fkIndexCoverage("dbo", "orders", null));
+        ObjectNode fkCoverage = object(statsTools().fkIndexCoverage(connection(), "dbo", "orders"));
         assertThat(field(fkCoverage, "uncoveredCount").asInt()).isGreaterThanOrEqualTo(1);
         ObjectNode uncovered = (ObjectNode) findByField((ArrayNode) field(fkCoverage, "uncovered"), "tableName", "orders");
         assertThat(uncovered).isNotNull();
         assertThat(textValues((ArrayNode) field(uncovered, "fkColumns"))).contains("customer_id");
 
-        ObjectNode redundant = object(statsTools().redundantIndexes("dbo", "line_items", null));
+        ObjectNode redundant = object(statsTools().redundantIndexes(connection(), "dbo", "line_items"));
         ObjectNode finding = (ObjectNode) findByField((ArrayNode) field(redundant, "findings"),
                 "shadowedIndex", "idx_li_order");
         assertThat(finding).isNotNull();
@@ -39,7 +39,7 @@ class SqlServerIntegrationStatsToolsTest extends AbstractSqlServerToolsIntegrati
 
     @Test
     void unusedIndexesReportsUnsupportedForLowPrivilegeSqlServerPath() {
-        ObjectNode unused = object(statsTools().unusedIndexes("dbo", null, null));
+        ObjectNode unused = object(statsTools().unusedIndexes(connection(), "dbo", null));
         assertThat(field(unused, "supported").asBoolean()).isFalse();
         assertThat(field(unused, "note").asText()).contains("SQL Server");
     }

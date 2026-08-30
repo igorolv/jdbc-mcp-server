@@ -11,15 +11,13 @@ import java.nio.file.Paths;
  *
  * @param dataDir     root directory for server-local data (shared across catalogs).
  *                    Defaults to {@code ~/.jdbc-mcp-server} when blank.
- * @param catalogName name of the local catalog (knowledge store) for the inspected database.
- *                    It is the slot key under which everything we keep about a DB lives
- *                    ({@code usage-catalog/}, {@code logs/}, and the future persisted snapshot),
- *                    all rooted at {@code <data-dir>/<name>/}. NOT the JDBC connection. Defaults to
- *                    {@code default} when blank. In the environment-only (single-database) setup it
- *                    also names that connection.
+ * @param catalogName name of the local catalog (knowledge store) for one connection: the slot key
+ *                    under which everything we keep about that database lives
+ *                    ({@code usage-catalog/}, {@code logs/}, the persisted snapshot), all rooted at
+ *                    {@code <data-dir>/<name>/}. Always equals the connection name; blank only for
+ *                    the root context, which has no single database.
  * @param connectionsFile path of the JSON file describing the named connections this server serves.
- *                    Defaults to {@code <data-dir>/connections.json} when blank; a missing file
- *                    means the environment-only setup.
+ *                    Defaults to {@code <data-dir>/connections.json} when blank.
  */
 @ConfigurationProperties(prefix = "jdbc-mcp")
 public record JdbcMcpProperties(String dataDir, String catalogName, String connectionsFile) {

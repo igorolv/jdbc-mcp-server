@@ -11,12 +11,10 @@ import java.util.Map;
  * {@code StructureSnapshotProperties}). String values may reference environment variables as
  * {@code ${VAR}} — see {@link EnvironmentPlaceholders}.
  *
- * @param defaultConnection name of the connection used when a tool call omits {@code connection}
- * @param connections       connection name → definition; the name is also the local catalog
- *                          directory under {@code <data-dir>/}
+ * @param connections connection name → definition; the name is also the local catalog directory
+ *                    under {@code <data-dir>/}
  */
 public record ConnectionsFile(
-        String defaultConnection,
         Map<String, Entry> connections
 ) {
 

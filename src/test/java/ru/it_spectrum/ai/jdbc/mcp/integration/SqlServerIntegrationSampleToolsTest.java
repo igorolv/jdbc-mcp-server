@@ -11,7 +11,7 @@ class SqlServerIntegrationSampleToolsTest extends AbstractSqlServerToolsIntegrat
 
     @Test
     void samplesRowsWithTopLimit() {
-        ObjectNode sample = object(sampleTools().sampleRows("dbo", "customers", 1, null));
+        ObjectNode sample = object(sampleTools().sampleRows(connection(), "dbo", "customers", 1));
 
         assertThat(field(sample, "rowCount").asInt()).isEqualTo(1);
         assertThat(field(sample, "truncated").asBoolean()).isFalse();

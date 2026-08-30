@@ -42,13 +42,13 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableContext tableContext(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
             @McpToolParam(description = "FK depth (default 1).", required = false) Integer depth,
             @McpToolParam(description = "Include child references (default true).", required = false) Boolean includeIncoming,
             @McpToolParam(description = "Include row/size/activity stats (default false).", required = false) Boolean includeStats,
-            @McpToolParam(description = "Include declared/observed/semantic usage evidence (default: catalog enabled).", required = false) Boolean includeObserved,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Include declared/observed/semantic usage evidence (default: catalog enabled).", required = false) Boolean includeObserved
     ) {
         log.info("Tool call: tableContext (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -74,6 +74,7 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FindJoinPaths findJoinPaths(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String fromSchema,
             @McpToolParam(description = "") String fromTable,
             @McpToolParam(description = "", required = false) String toSchema,
@@ -81,8 +82,7 @@ public class SchemaContextTools {
             @McpToolParam(description = "Maximum FK hops. Default 4.", required = false) Integer maxDepth,
             @McpToolParam(description = "Maximum paths to return. Default 5, max 25.", required = false) Integer maxPaths,
             @McpToolParam(description = "Maximum tables to scan (default 300).", required = false) Integer scanLimit,
-            @McpToolParam(description = "Include usage-catalog equi-joins (default: catalog enabled).", required = false) Boolean includeObserved,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Include usage-catalog equi-joins (default: catalog enabled).", required = false) Boolean includeObserved
     ) {
         log.info("Tool call: findJoinPaths ({}.{} -> {}.{})", fromSchema, fromTable, toSchema, toTable);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -109,12 +109,12 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SchemaLint schemaLint(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "Omit to scan the schema.", required = false) String table,
             @McpToolParam(description = "Checks CSV, e.g. missingPrimaryKey,fkWithoutIndex; omit for defaults.", required = false) String checks,
             @McpToolParam(description = "Tables to scan (default 50).", required = false) Integer maxTables,
-            @McpToolParam(description = "Findings to return (default 200).", required = false) Integer maxFindings,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Findings to return (default 200).", required = false) Integer maxFindings
     ) {
         log.info("Tool call: schemaLint (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -140,10 +140,10 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String schemaBrief(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "Terms to narrow discovery; falls back to full schema on no match.", required = false) String terms,
-            @McpToolParam(description = "Tables/views to include (default 2000).", required = false) Integer maxTables,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Tables/views to include (default 2000).", required = false) Integer maxTables
     ) {
         log.info("Tool call: schemaBrief (schema={})", schema);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -168,12 +168,12 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SchemaGraph schemaGraph(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "Tables to scan (default 50).", required = false) Integer maxTables,
             @McpToolParam(description = "Optional shortest-path start.", required = false) String fromTable,
             @McpToolParam(description = "Optional shortest-path target.", required = false) String toTable,
-            @McpToolParam(description = "Shortest-path hops (default 4).", required = false) Integer maxDepth,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Shortest-path hops (default 4).", required = false) Integer maxDepth
     ) {
         log.info("Tool call: schemaGraph (schema={})", schema);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -199,12 +199,12 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryContext queryContext(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "User terms, e.g. 'customers order totals'.", required = false) String terms,
             @McpToolParam(description = "Force-include tables (CSV), e.g. customers,orders.", required = false) String tables,
             @McpToolParam(description = "Include up to 3 rows per table (default false).", required = false) Boolean includeSamples,
-            @McpToolParam(description = "Tables to include (default 12).", required = false) Integer maxTables,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Tables to include (default 12).", required = false) Integer maxTables
     ) {
         log.info("Tool call: queryContext (schema={})", schema);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -229,9 +229,9 @@ public class SchemaContextTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String schemaGraphDot(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "Tables to include (CSV); omit for all.", required = false) String tables,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Tables to include (CSV); omit for all.", required = false) String tables
     ) {
         log.info("Tool call: schemaGraphDot (schema={})", schema);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

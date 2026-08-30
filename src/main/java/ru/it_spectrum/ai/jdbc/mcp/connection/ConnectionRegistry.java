@@ -12,8 +12,8 @@ import java.util.Map;
 /**
  * The connections this server serves, and their lazily created object graphs.
  *
- * <p>Definitions are fixed at startup — the file is re-read only by restarting the server. Contexts
- * are created on first use, one lock per connection, so initialising a slow or unreachable database
+ * <p>Every lookup names its connection — there is no implicit default. Definitions are fixed at
+ * startup — the file is re-read only by restarting the server. Contexts are created on first use, one lock per connection, so initialising a slow or unreachable database
  * never blocks a call to another one. A failed initialisation is not cached: the next call retries.
  */
 public final class ConnectionRegistry implements AutoCloseable {
@@ -23,10 +23,8 @@ public final class ConnectionRegistry implements AutoCloseable {
     private final Map<String, ConnectionDefinition> definitions;
     private final Map<String, Holder> holders;
     private final List<String> orderedNames;
-    private final String defaultConnection;
 
-    public ConnectionRegistry(List<ConnectionDefinition> definitions, String defaultConnection,
-                              ConnectionContextFactory factory) {
+    public ConnectionRegistry(List<ConnectionDefinition> definitions, ConnectionContextFactory factory) {
         Map<String, ConnectionDefinition> byName = new LinkedHashMap<>();
         Map<String, Holder> holders = new LinkedHashMap<>();
         for (ConnectionDefinition definition : definitions) {
@@ -37,13 +35,11 @@ public final class ConnectionRegistry implements AutoCloseable {
         // Map.copyOf loses the configured order; keep the ordered view for listings.
         this.orderedNames = List.copyOf(byName.keySet());
         this.holders = Map.copyOf(holders);
-        this.defaultConnection = defaultConnection;
     }
 
     /** A registry over one already-built connection. For tests and embedders. */
     public static ConnectionRegistry fixed(ConnectionContext context) {
-        return new ConnectionRegistry(List.of(context.definition()), context.name(),
-                definition -> context);
+        return new ConnectionRegistry(List.of(context.definition()), definition -> context);
     }
 
     /** Configured connections, in the order they were declared. */
@@ -59,21 +55,6 @@ public final class ConnectionRegistry implements AutoCloseable {
         return orderedNames;
     }
 
-    /**
-     * The connection a tool call without an explicit {@code connection} lands on: the configured
-     * default, or the only configured connection. {@code null} when neither applies.
-     */
-    public String defaultConnection() {
-        if (defaultConnection != null) {
-            return defaultConnection;
-        }
-        return orderedNames.size() == 1 ? orderedNames.getFirst() : null;
-    }
-
-    public boolean isDefault(String name) {
-        return name != null && name.equals(defaultConnection());
-    }
-
     /** True when this connection's object graph has already been built. */
     public boolean isInitialized(String name) {
         Holder holder = holders.get(name);
@@ -81,29 +62,22 @@ public final class ConnectionRegistry implements AutoCloseable {
     }
 
     /**
-     * Resolves the connection name for a tool call: the explicit argument, else the configured
-     * default, else the only configured connection.
+     * Validates the connection name a tool call named. There is no implicit default: every call
+     * says which database it means.
      *
-     * @throws IllegalArgumentException when the name is unknown or when nothing selects a connection
+     * @throws IllegalArgumentException when the name is missing or unknown
      */
     public String resolveName(String requested) {
-        if (requested != null && !requested.isBlank()) {
-            String name = requested.trim();
-            if (!definitions.containsKey(name)) {
-                throw new IllegalArgumentException("Unknown connection '" + name + "'. Available: "
-                        + String.join(", ", orderedNames));
-            }
-            return name;
+        if (requested == null || requested.isBlank()) {
+            throw new IllegalArgumentException("No connection given. Pass 'connection' (available: "
+                    + String.join(", ", orderedNames) + ").");
         }
-        if (defaultConnection != null) {
-            return defaultConnection;
+        String name = requested.trim();
+        if (!definitions.containsKey(name)) {
+            throw new IllegalArgumentException("Unknown connection '" + name + "'. Available: "
+                    + String.join(", ", orderedNames));
         }
-        if (definitions.size() == 1) {
-            return orderedNames.getFirst();
-        }
-        throw new IllegalArgumentException("No connection selected and no default is configured. "
-                + "Pass 'connection' (available: " + String.join(", ", orderedNames)
-                + ") or set defaultConnection in the connections file.");
+        return name;
     }
 
     public ConnectionDefinition definition(String requested) {

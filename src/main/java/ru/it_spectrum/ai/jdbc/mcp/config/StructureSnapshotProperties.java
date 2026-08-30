@@ -1,7 +1,5 @@
 package ru.it_spectrum.ai.jdbc.mcp.config;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,13 +17,15 @@ import java.util.List;
  * actually made it into the snapshot and drives scope checks for {@code searchObjects} /
  * {@code findTablesByName}.
  */
-@ConfigurationProperties(prefix = "structure-snapshot")
 public record StructureSnapshotProperties(
         List<String> schemas,
         int oracleColumnQueryTimeoutSeconds
 ) {
 
-    @ConstructorBinding
+    /** Values used for every field a {@code connections.json} entry does not set. */
+    public static final StructureSnapshotProperties DEFAULTS =
+            new StructureSnapshotProperties(List.of(), 300);
+
     public StructureSnapshotProperties {
         if (schemas == null) schemas = List.of();
         if (oracleColumnQueryTimeoutSeconds < 0) oracleColumnQueryTimeoutSeconds = 0;

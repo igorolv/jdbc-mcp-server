@@ -45,10 +45,10 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnStats columnStats(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "") String column,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String column
     ) {
         log.info("Tool call: columnStats (schema={}, table={}, column={})", schema, table, column);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -73,11 +73,11 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnDistribution columnDistribution(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
             @McpToolParam(description = "") String column,
-            @McpToolParam(description = "Top values to return (default 20, max 1000).", required = false) Integer topN,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Top values to return (default 20, max 1000).", required = false) Integer topN
     ) {
         log.info("Tool call: columnDistribution (schema={}, table={}, column={})", schema, table, column);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -102,10 +102,10 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ColumnHistogram columnHistogram(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "") String column,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String column
     ) {
         log.info("Tool call: columnHistogram (schema={}, table={}, column={})", schema, table, column);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -130,9 +130,9 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public NullRatio nullRatio(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String table,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String table
     ) {
         log.info("Tool call: nullRatio (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -157,10 +157,10 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SelectivityEstimate estimateSelectivity(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "Raw boolean SQL without WHERE or ';'.") String predicate,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Raw boolean SQL without WHERE or ';'.") String predicate
     ) {
         log.info("Tool call: estimateSelectivity (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -185,14 +185,14 @@ public class DistributionTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public JoinCardinality joinCardinality(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String fromSchema,
             @McpToolParam(description = "") String fromTable,
             @McpToolParam(description = "Column in fromTable.") String leftColumn,
             @McpToolParam(description = "", required = false) String toSchema,
             @McpToolParam(description = "") String toTable,
             @McpToolParam(description = "Column in toTable.") String rightColumn,
-            @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Join type: INNER (default), LEFT, RIGHT, FULL", required = false) String joinType
     ) {
         log.info("Tool call: joinCardinality ({}.{} <-> {}.{})", fromTable, leftColumn, toTable, rightColumn);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

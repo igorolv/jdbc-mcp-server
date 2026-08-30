@@ -45,9 +45,9 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableStats tableStats(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String table,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String table
     ) {
         log.info("Tool call: tableStats (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -72,9 +72,9 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public IndexStats indexStats(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "Omit to scan the schema.", required = false) String table,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Omit to scan the schema.", required = false) String table
     ) {
         log.info("Tool call: indexStats (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -96,9 +96,9 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public UnusedIndexes unusedIndexes(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "Minimum size in bytes; omit tiny indexes.", required = false) Long minSizeBytes,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Minimum size in bytes; omit tiny indexes.", required = false) Long minSizeBytes
     ) {
         log.info("Tool call: unusedIndexes (schema={})", schema);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -120,9 +120,9 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public RedundantIndexes redundantIndexes(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "Omit to scan the schema.", required = false) String table,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Omit to scan the schema.", required = false) String table
     ) {
         log.info("Tool call: redundantIndexes (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -144,9 +144,9 @@ public class StatsTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FkIndexCoverage fkIndexCoverage(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "Omit to scan the schema.", required = false) String table,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Omit to scan the schema.", required = false) String table
     ) {
         log.info("Tool call: fkIndexCoverage (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

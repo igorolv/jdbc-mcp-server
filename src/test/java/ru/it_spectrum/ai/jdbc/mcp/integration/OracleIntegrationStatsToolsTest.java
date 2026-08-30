@@ -12,25 +12,25 @@ class OracleIntegrationStatsToolsTest extends AbstractOracleToolsIntegrationTest
 
     @Test
     void tableStatsAndIndexStatsExposeSeededObjects() {
-        ObjectNode table = object(statsTools().tableStats(schema(), "CUSTOMERS", null));
+        ObjectNode table = object(statsTools().tableStats(connection(), schema(), "CUSTOMERS"));
         assertThat(field(table, "found").asBoolean()).isTrue();
         assertThat(field(table, "table").asText()).isEqualTo("CUSTOMERS");
         assertThat(field(table, "estimatedRows").asLong()).isGreaterThanOrEqualTo(2L);
 
-        ObjectNode indexStats = object(statsTools().indexStats(schema(), "CUSTOMERS", null));
+        ObjectNode indexStats = object(statsTools().indexStats(connection(), schema(), "CUSTOMERS"));
         ArrayNode indexes = (ArrayNode) field(indexStats, "indexes");
         assertThat(findByField(indexes, "indexName", "IDX_CUSTOMERS_NAME")).isNotNull();
     }
 
     @Test
     void fkCoverageAndRedundantIndexesAreReported() {
-        ObjectNode fkCoverage = object(statsTools().fkIndexCoverage(schema(), "ORDERS", null));
+        ObjectNode fkCoverage = object(statsTools().fkIndexCoverage(connection(), schema(), "ORDERS"));
         assertThat(field(fkCoverage, "uncoveredCount").asInt()).isGreaterThanOrEqualTo(1);
         ObjectNode uncovered = (ObjectNode) findByField((ArrayNode) field(fkCoverage, "uncovered"), "tableName", "ORDERS");
         assertThat(uncovered).isNotNull();
         assertThat(textValues((ArrayNode) field(uncovered, "fkColumns"))).contains("CUSTOMER_ID");
 
-        ObjectNode redundant = object(statsTools().redundantIndexes(schema(), "LINE_ITEMS", null));
+        ObjectNode redundant = object(statsTools().redundantIndexes(connection(), schema(), "LINE_ITEMS"));
         ObjectNode finding = (ObjectNode) findByField((ArrayNode) field(redundant, "findings"),
                 "shadowedIndex", "IDX_LI_ORDER");
         assertThat(finding).isNotNull();
@@ -39,7 +39,7 @@ class OracleIntegrationStatsToolsTest extends AbstractOracleToolsIntegrationTest
 
     @Test
     void unusedIndexesReturnsOracleDiagnostic() {
-        ObjectNode unused = object(statsTools().unusedIndexes(schema(), null, null));
+        ObjectNode unused = object(statsTools().unusedIndexes(connection(), schema(), null));
         assertThat(field(unused, "supported").asBoolean()).isFalse();
         assertThat(field(unused, "note").asText()).contains("DBA_INDEX_USAGE");
     }

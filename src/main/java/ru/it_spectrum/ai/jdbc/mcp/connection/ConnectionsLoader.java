@@ -18,14 +18,11 @@ import java.util.Map;
 import java.util.function.UnaryOperator;
 
 /**
- * Turns {@code connections.json} plus the global environment defaults into the list of
- * {@link ConnectionDefinition}s the server serves.
+ * Turns {@code connections.json} into the list of {@link ConnectionDefinition}s the server serves.
  *
- * <p>Backwards compatibility is the first requirement: with no connections file the server behaves
- * exactly as before — one connection built from {@code JDBC_URL} / {@code JDBC_USERNAME} /
- * {@code JDBC_PASSWORD}, named after {@code JDBC_MCP_CATALOG}, and used whenever a tool call omits
- * {@code connection}. When both are present the environment connection is added to the registry
- * alongside the file's entries, and a name clash is a startup error rather than a silent override.
+ * <p>The file is the only place a connection is defined. An entry needs a {@code url}; every other
+ * field falls back to the {@code DEFAULTS} of the properties record it belongs to. String values may
+ * reference environment variables as {@code ${VAR}} — see {@link EnvironmentPlaceholders}.
  *
  * <p>Nothing here opens a database connection or a catalog file.
  */
@@ -36,73 +33,36 @@ public final class ConnectionsLoader {
     private ConnectionsLoader() {
     }
 
-    /**
-     * @param definitions       configured connections, in file order (environment connection last)
-     * @param defaultConnection explicitly configured default, or {@code null}
-     */
-    public record Loaded(List<ConnectionDefinition> definitions, String defaultConnection) {
-    }
+    /** @return configured connections, in file order */
+    public static List<ConnectionDefinition> load(JdbcMcpProperties server, ObjectMapper mapper,
+                                                  UnaryOperator<String> env) {
+        Path connectionsFile = server.resolvedConnectionsFile();
+        if (!Files.exists(connectionsFile)) {
+            throw new IllegalStateException("No database connections configured: there is no file at "
+                    + connectionsFile + ". Create it (or point JDBC_MCP_CONNECTIONS_FILE elsewhere) "
+                    + "with at least one entry under \"connections\".");
+        }
 
-    public static Loaded load(Path connectionsFile,
-                              JdbcProperties globalJdbc,
-                              JdbcMcpProperties globalCatalog,
-                              UsageProperties globalUsage,
-                              StructureSnapshotProperties globalSnapshot,
-                              ObjectMapper mapper,
-                              UnaryOperator<String> env) {
+        ConnectionsFile file = read(connectionsFile, mapper);
+        Map<String, ConnectionsFile.Entry> entries =
+                file.connections() == null ? Map.of() : file.connections();
         Map<String, ConnectionDefinition> definitions = new LinkedHashMap<>();
-        String defaultConnection = null;
-
-        if (connectionsFile != null && Files.exists(connectionsFile)) {
-            ConnectionsFile file = read(connectionsFile, mapper);
-            Map<String, ConnectionsFile.Entry> entries =
-                    file.connections() == null ? Map.of() : file.connections();
-            for (Map.Entry<String, ConnectionsFile.Entry> entry : entries.entrySet()) {
-                String name = ConnectionDefinition.requireValidName(
-                        entry.getKey(), "in " + connectionsFile);
-                if (entry.getValue() == null) {
-                    throw new IllegalStateException("Connection '" + name + "' in " + connectionsFile
-                            + " has no settings");
-                }
-                definitions.put(name, fromFile(name, entry.getValue(), globalJdbc, globalCatalog,
-                        globalUsage, globalSnapshot, env));
-            }
-            defaultConnection = EnvironmentPlaceholders.resolve(
-                    file.defaultConnection(), "defaultConnection", env);
-            if (defaultConnection != null && defaultConnection.isBlank()) {
-                defaultConnection = null;
-            }
-        }
-
-        if (hasEnvironmentConnection(globalJdbc)) {
+        for (Map.Entry<String, ConnectionsFile.Entry> entry : entries.entrySet()) {
             String name = ConnectionDefinition.requireValidName(
-                    globalCatalog.resolvedCatalogName(), "from JDBC_MCP_CATALOG");
-            if (definitions.containsKey(name)) {
-                throw new IllegalStateException("Connection name '" + name + "' is defined both in "
-                        + connectionsFile + " and by the JDBC_URL / JDBC_MCP_CATALOG environment "
-                        + "variables. Rename one of them, or drop the environment variables.");
+                    entry.getKey(), "in " + connectionsFile);
+            if (entry.getValue() == null) {
+                throw new IllegalStateException("Connection '" + name + "' in " + connectionsFile
+                        + " has no settings");
             }
-            definitions.put(name, fromEnvironment(name, globalJdbc, globalCatalog, globalUsage,
-                    globalSnapshot));
+            definitions.put(name, fromFile(name, entry.getValue(), server, env));
         }
-
         if (definitions.isEmpty()) {
-            throw new IllegalStateException("No database connections configured. Set JDBC_URL / "
-                    + "JDBC_USERNAME / JDBC_PASSWORD, or create a connections file at "
-                    + connectionsFile + " (override the path with JDBC_MCP_CONNECTIONS_FILE).");
-        }
-        if (defaultConnection != null && !definitions.containsKey(defaultConnection)) {
-            throw new IllegalStateException("defaultConnection '" + defaultConnection + "' in "
-                    + connectionsFile + " is not one of the configured connections: "
-                    + String.join(", ", definitions.keySet()));
+            throw new IllegalStateException("No database connections configured: " + connectionsFile
+                    + " defines none under \"connections\".");
         }
 
-        logConfiguration(definitions.values(), defaultConnection);
-        return new Loaded(List.copyOf(definitions.values()), defaultConnection);
-    }
-
-    private static boolean hasEnvironmentConnection(JdbcProperties globalJdbc) {
-        return globalJdbc != null && globalJdbc.url() != null && !globalJdbc.url().isBlank();
+        logConfiguration(definitions.values());
+        return List.copyOf(definitions.values());
     }
 
     private static ConnectionsFile read(Path path, ObjectMapper mapper) {
@@ -121,11 +81,12 @@ public final class ConnectionsLoader {
     }
 
     private static ConnectionDefinition fromFile(String name, ConnectionsFile.Entry entry,
-                                                 JdbcProperties globalJdbc,
-                                                 JdbcMcpProperties globalCatalog,
-                                                 UsageProperties globalUsage,
-                                                 StructureSnapshotProperties globalSnapshot,
+                                                 JdbcMcpProperties server,
                                                  UnaryOperator<String> env) {
+        JdbcProperties jdbcDefaults = JdbcProperties.DEFAULTS;
+        UsageProperties usageDefaults = UsageProperties.DEFAULTS;
+        StructureSnapshotProperties snapshotDefaults = StructureSnapshotProperties.DEFAULTS;
+
         String field = "connections." + name;
         String url = EnvironmentPlaceholders.resolve(entry.url(), field + ".url", env);
         if (url == null || url.isBlank()) {
@@ -137,47 +98,40 @@ public final class ConnectionsLoader {
                 EnvironmentPlaceholders.resolve(entry.password(), field + ".password", env),
                 or(blankToNull(EnvironmentPlaceholders.resolve(
                                 entry.defaultSchema(), field + ".defaultSchema", env)),
-                        globalJdbc.defaultSchema()),
-                or(entry.queryTimeoutSeconds(), globalJdbc.queryTimeoutSeconds()),
-                or(entry.maxRows(), globalJdbc.maxRows()),
-                or(entry.fetchSize(), globalJdbc.fetchSize()),
+                        jdbcDefaults.defaultSchema()),
+                or(entry.queryTimeoutSeconds(), jdbcDefaults.queryTimeoutSeconds()),
+                or(entry.maxRows(), jdbcDefaults.maxRows()),
+                or(entry.fetchSize(), jdbcDefaults.fetchSize()),
                 or(blankToNull(EnvironmentPlaceholders.resolve(
                                 entry.readonlyGuard(), field + ".readonlyGuard", env)),
-                        globalJdbc.readonlyGuard()),
-                or(entry.poolMaximumSize(), globalJdbc.poolMaximumSize()),
-                or(entry.poolMinimumIdle(), globalJdbc.poolMinimumIdle()),
-                or(entry.poolConnectionTimeoutMs(), globalJdbc.connectionTimeoutMs()),
-                or(entry.poolValidationTimeoutMs(), globalJdbc.validationTimeoutMs()),
-                or(entry.poolIdleTimeoutMs(), globalJdbc.idleTimeoutMs()));
+                        jdbcDefaults.readonlyGuard()),
+                or(entry.poolMaximumSize(), jdbcDefaults.poolMaximumSize()),
+                or(entry.poolMinimumIdle(), jdbcDefaults.poolMinimumIdle()),
+                or(entry.poolConnectionTimeoutMs(), jdbcDefaults.connectionTimeoutMs()),
+                or(entry.poolValidationTimeoutMs(), jdbcDefaults.validationTimeoutMs()),
+                or(entry.poolIdleTimeoutMs(), jdbcDefaults.idleTimeoutMs()));
         UsageProperties usage = new UsageProperties(
-                or(entry.usageCatalogEnabled(), globalUsage.catalogEnabled()),
+                or(entry.usageCatalogEnabled(), usageDefaults.catalogEnabled()),
                 or(EnvironmentPlaceholders.resolveAll(entry.usageCatalogPaths(),
-                        field + ".usageCatalogPaths", env), globalUsage.catalogPaths()),
+                        field + ".usageCatalogPaths", env), usageDefaults.catalogPaths()),
                 or(EnvironmentPlaceholders.resolveAll(entry.usageNativeSchemas(),
-                        field + ".usageNativeSchemas", env), globalUsage.nativeSchemas()),
-                or(entry.usageNativeIncludeViews(), globalUsage.nativeIncludeViews()),
-                or(entry.usageNativeIncludeRoutines(), globalUsage.nativeIncludeRoutines()),
-                or(entry.usageNativeIncludeTriggers(), globalUsage.nativeIncludeTriggers()),
-                or(entry.usageNativeMaxObjects(), globalUsage.nativeMaxObjects()));
+                        field + ".usageNativeSchemas", env), usageDefaults.nativeSchemas()),
+                or(entry.usageNativeIncludeViews(), usageDefaults.nativeIncludeViews()),
+                or(entry.usageNativeIncludeRoutines(), usageDefaults.nativeIncludeRoutines()),
+                or(entry.usageNativeIncludeTriggers(), usageDefaults.nativeIncludeTriggers()),
+                or(entry.usageNativeMaxObjects(), usageDefaults.nativeMaxObjects()));
         StructureSnapshotProperties snapshot = new StructureSnapshotProperties(
                 or(EnvironmentPlaceholders.resolveAll(entry.structureSnapshotSchemas(),
-                        field + ".structureSnapshotSchemas", env), globalSnapshot.schemas()),
+                        field + ".structureSnapshotSchemas", env), snapshotDefaults.schemas()),
                 or(entry.structureSnapshotOracleColumnQueryTimeoutSeconds(),
-                        globalSnapshot.oracleColumnQueryTimeoutSeconds()));
+                        snapshotDefaults.oracleColumnQueryTimeoutSeconds()));
         String description = blankToNull(EnvironmentPlaceholders.resolve(
                 entry.description(), field + ".description", env));
-        return define(name, description, jdbc, globalCatalog, usage, snapshot);
-    }
-
-    private static ConnectionDefinition fromEnvironment(String name, JdbcProperties globalJdbc,
-                                                        JdbcMcpProperties globalCatalog,
-                                                        UsageProperties globalUsage,
-                                                        StructureSnapshotProperties globalSnapshot) {
-        return define(name, null, globalJdbc, globalCatalog, globalUsage, globalSnapshot);
+        return define(name, description, jdbc, server, usage, snapshot);
     }
 
     private static ConnectionDefinition define(String name, String description, JdbcProperties jdbc,
-                                               JdbcMcpProperties globalCatalog, UsageProperties usage,
+                                               JdbcMcpProperties server, UsageProperties usage,
                                                StructureSnapshotProperties snapshot) {
         DatabaseKind kind = null;
         String configError = null;
@@ -187,21 +141,18 @@ public final class ConnectionsLoader {
             configError = e.getMessage();
         }
         JdbcMcpProperties catalog = new JdbcMcpProperties(
-                globalCatalog.dataDir(), name, globalCatalog.connectionsFile());
+                server.dataDir(), name, server.connectionsFile());
         return new ConnectionDefinition(name, description, jdbc, catalog, usage, snapshot, kind,
                 configError);
     }
 
-    private static void logConfiguration(Iterable<ConnectionDefinition> definitions, String defaultConnection) {
+    private static void logConfiguration(Iterable<ConnectionDefinition> definitions) {
         List<String> described = new ArrayList<>();
         for (ConnectionDefinition definition : definitions) {
             described.add(definition.name() + " -> " + definition.maskedUrl()
                     + (definition.usable() ? "" : " (unusable: " + definition.configError() + ")"));
         }
         log.info("Configured connections: {}", String.join(", ", described));
-        if (defaultConnection != null) {
-            log.info("Default connection: {}", defaultConnection);
-        }
     }
 
     private static String blankToNull(String value) {

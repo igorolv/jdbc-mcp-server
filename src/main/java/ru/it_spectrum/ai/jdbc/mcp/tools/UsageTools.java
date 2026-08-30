@@ -45,7 +45,7 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public UsageCatalogStatus usageCatalogStatus(
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection
     ) {
         log.info("Tool call: usageCatalogStatus");
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -62,7 +62,7 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public UsageCatalogStatus invalidateUsageCatalogCache(
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection
     ) {
         log.info("Tool call: invalidateUsageCatalogCache");
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -85,10 +85,10 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryDetail getQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "Source kind, e.g. dao, report, database-view.") String sourceKind,
             @McpToolParam(description = "Stable source path, e.g. file path.") String sourcePath,
-            @McpToolParam(description = "Optional sub-unit, e.g. method name.", required = false) String sourceUnit,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Optional sub-unit, e.g. method name.", required = false) String sourceUnit
     ) {
         log.info("Tool call: getQuery (kind={}, path={}, unit={})", sourceKind, sourcePath, sourceUnit);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -113,6 +113,7 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListQueriesResult listQueries(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "Source path LIKE pattern ('%'/'_').", required = false) String sourcePath,
             @McpToolParam(description = "Source kind, e.g. bi-publisher-report or dao.", required = false) String sourceKind,
             @McpToolParam(description = "Exact business domain.", required = false) String businessDomain,
@@ -120,8 +121,7 @@ public class UsageTools {
             @McpToolParam(description = "Parse status: parsed or failed.", required = false) String parseStatus,
             @McpToolParam(description = "Case-insensitive full-text search over SQL, labels, domains and source paths.", required = false) String searchText,
             @McpToolParam(description = "Rows to return (default 100, max 1000).", required = false) Integer limit,
-            @McpToolParam(description = "Paging offset (default 0).", required = false) Integer offset,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Paging offset (default 0).", required = false) Integer offset
     ) {
         log.info("Tool call: listQueries (searchText={})", searchText);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -148,9 +148,9 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FindQueriesByTableResult findQueriesByTable(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String table,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String table
     ) {
         log.info("Tool call: findQueriesByTable (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -177,10 +177,10 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public FindQueriesByColumnResult findQueriesByColumn(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "", required = false) String table,
-            @McpToolParam(description = "") String column,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String column
     ) {
         log.info("Tool call: findQueriesByColumn (schema={}, table={}, column={})", schema, table, column);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -206,10 +206,10 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ObservedRelationshipsResult observedRelationships(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "Case-insensitive filter.", required = false) String schema,
             @McpToolParam(description = "Require either join side to use this table.", required = false) String table,
-            @McpToolParam(description = "Minimum supporting queries (default 1).", required = false) Integer minSupport,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Minimum supporting queries (default 1).", required = false) Integer minSupport
     ) {
         log.info("Tool call: observedRelationships (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -234,7 +234,7 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public KnownTagsResult listKnownTags(
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection
     ) {
         log.info("Tool call: listKnownTags");
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -256,7 +256,7 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public KnownDomainsResult listKnownDomains(
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection
     ) {
         log.info("Tool call: listKnownDomains");
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -278,7 +278,7 @@ public class UsageTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public KnownSourceKindsResult listKnownKinds(
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection
     ) {
         log.info("Tool call: listKnownKinds");
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

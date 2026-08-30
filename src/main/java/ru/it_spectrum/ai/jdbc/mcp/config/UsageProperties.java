@@ -1,7 +1,5 @@
 package ru.it_spectrum.ai.jdbc.mcp.config;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -23,7 +21,6 @@ import java.util.List;
  * @param catalogPaths         additional directories, JSON files, or zip archives (on top of the
  *                             default {@code {jdbc-mcp.data-dir}/usage-catalog})
  */
-@ConfigurationProperties(prefix = "usage")
 public record UsageProperties(
         boolean catalogEnabled,
         List<String> catalogPaths,
@@ -34,7 +31,10 @@ public record UsageProperties(
         int nativeMaxObjects
 ) {
 
-    @ConstructorBinding
+    /** Values used for every field a {@code connections.json} entry does not set. */
+    public static final UsageProperties DEFAULTS =
+            new UsageProperties(true, List.of(), List.of(), true, true, true, 10_000);
+
     public UsageProperties {
         if (catalogPaths == null) {
             catalogPaths = List.of();

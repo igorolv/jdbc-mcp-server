@@ -20,7 +20,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * The routing contract the tool classes share: the {@code connection} argument picks the database,
- * omitting it lands on the default, and an unknown name is an argument error that says what exists.
+ * and a missing or unknown name is an argument error that says what exists.
  */
 class ToolConnectionRoutingTest {
 
@@ -41,25 +41,25 @@ class ToolConnectionRoutingTest {
     void anExplicitConnectionSelectsThatDatabaseOnly() throws SQLException {
         when(billingMetadata.listSchemas(false)).thenReturn(List.of("billing_schema"));
 
-        ListSchemasResult result = metadataTools.listSchemas(false, "billing");
+        ListSchemasResult result = metadataTools.listSchemas("billing", false);
 
         assertThat(result.schemas()).containsExactly("billing_schema");
         verifyNoInteractions(ordersMetadata);
     }
 
     @Test
-    void omittingTheConnectionUsesTheDefault() throws SQLException {
-        when(ordersMetadata.listSchemas(false)).thenReturn(List.of("orders_schema"));
-
-        ListSchemasResult result = metadataTools.listSchemas(false, null);
-
-        assertThat(result.schemas()).containsExactly("orders_schema");
-        verifyNoInteractions(billingMetadata);
+    void omittingTheConnectionIsAnArgumentErrorListingTheAvailableOnes() {
+        assertThatThrownBy(() -> metadataTools.listSchemas(null, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("\"kind\":\"argument\"")
+                .hasMessageContaining("No connection given")
+                .hasMessageContaining("orders, billing");
+        verifyNoInteractions(ordersMetadata, billingMetadata);
     }
 
     @Test
     void anUnknownConnectionIsAnArgumentErrorListingTheAvailableOnes() {
-        assertThatThrownBy(() -> metadataTools.listSchemas(false, "orderz"))
+        assertThatThrownBy(() -> metadataTools.listSchemas("orderz", false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"kind\":\"argument\"")
                 .hasMessageContaining("Unknown connection 'orderz'")
@@ -68,14 +68,11 @@ class ToolConnectionRoutingTest {
     }
 
     @Test
-    void listConnectionsDescribesTheRoutingWithoutTouchingAnyDatabase() {
+    void listConnectionsNamesTheDatabasesWithoutTouchingAnyOfThem() {
         ListConnectionsResult result = new ConnectionTools(connections).listConnections();
 
-        assertThat(result.defaultConnection()).isEqualTo("orders");
         assertThat(result.connections()).extracting("name").containsExactly("orders", "billing");
-        assertThat(result.connections().getFirst().isDefault()).isTrue();
         assertThat(result.connections().getFirst().kind()).isEqualTo("PostgreSQL");
-        assertThat(result.connections().get(1).isDefault()).isFalse();
         verifyNoInteractions(ordersMetadata, billingMetadata);
     }
 }

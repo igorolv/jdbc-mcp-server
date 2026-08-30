@@ -15,9 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Discovery for the {@code connection} argument every other tool takes. This is the first call to
- * make against an unfamiliar installation: it answers "which databases does this server serve, and
- * which one do I get if I say nothing?".
+ * Discovery for the {@code connection} argument every other tool requires. This is the first call
+ * to make against an unfamiliar installation: it answers "which databases does this server
+ * serve?".
  *
  * <p>Reads configuration and the local filesystem only — it never opens a database connection, so
  * it stays useful even when some of the configured databases are down.
@@ -35,15 +35,14 @@ public class ConnectionTools {
     }
 
     @McpTool(
-            description = "List the databases this server serves: name to pass as 'connection', purpose, engine, "
-                    + "default schema, and which one is used when 'connection' is omitted.",
+            description = "List the databases this server serves: name to pass as 'connection', purpose, engine "
+                    + "and default schema. Every other tool requires one of these names.",
             generateOutputSchema = true,
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListConnectionsResult listConnections() {
         log.info("Tool call: listConnections");
         long start = System.nanoTime();
-        String defaultConnection = connections.defaultConnection();
         List<ConnectionInfo> infos = new ArrayList<>();
         for (ConnectionDefinition definition : connections.definitions()) {
             infos.add(new ConnectionInfo(
@@ -51,13 +50,12 @@ public class ConnectionTools {
                     definition.description(),
                     displayKind(definition.kind()),
                     blankToNull(definition.jdbc().defaultSchema()),
-                    definition.name().equals(defaultConnection),
                     definition.hasLocalSnapshot(),
                     connections.isInitialized(definition.name()),
                     definition.configError()));
         }
         ToolLogger.completed(log, "listConnections", start);
-        return new ListConnectionsResult(List.copyOf(infos), defaultConnection);
+        return new ListConnectionsResult(List.copyOf(infos));
     }
 
     private static String blankToNull(String value) {

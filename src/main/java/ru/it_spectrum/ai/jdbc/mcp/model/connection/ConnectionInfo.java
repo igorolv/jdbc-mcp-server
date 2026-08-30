@@ -12,8 +12,6 @@ public record ConnectionInfo(
         String kind,
         @Schema(description = "Schema used by metadata tools when a call omits one.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String defaultSchema,
-        @Schema(description = "True for the connection used when a call omits 'connection'.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
-        boolean isDefault,
         @Schema(description = "True when a local catalog file already exists for this connection.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean snapshotAvailable,
         @Schema(description = "True when this connection's pool has already been built in this process.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)

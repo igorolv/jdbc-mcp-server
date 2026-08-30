@@ -38,6 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LiveOracleIntegrationSchemaTest {
 
+    private static final String CONNECTION = "live-oracle";
+
     private String schema;
     private MetadataService metadata;
     private SchemaContextService schemaContext;
@@ -72,7 +74,7 @@ class LiveOracleIntegrationSchemaTest {
         schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
         JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
         ConnectionRegistry connections = TestConnections.registry(
-                "live-oracle", props, dialect, executor, guard, store, metadata, stats, schemaContext);
+                CONNECTION, props, dialect, executor, guard, store, metadata, stats, schemaContext);
         schemaContextTools = new SchemaContextTools(connections, json, new ToolErrors(json));
     }
 
@@ -114,7 +116,7 @@ class LiveOracleIntegrationSchemaTest {
     @Test
     void measureSchemaBriefFirstCall() throws Exception {
         long t0 = System.currentTimeMillis();
-        String brief = schemaContextTools.schemaBrief(schema, null, 2000, null);
+        String brief = schemaContextTools.schemaBrief(CONNECTION, schema, null, 2000);
         long t1 = System.currentTimeMillis();
         System.out.printf("[TIMING] schemaBrief (first call, via tools): %d ms%n", (t1 - t0));
         System.out.printf("[TIMING] response length: %d chars%n", brief.length());
@@ -220,7 +222,7 @@ class LiveOracleIntegrationSchemaTest {
 
     @Test
     void schemaBriefProducesText() {
-        String brief = schemaContextTools.schemaBrief(schema, null, 2000, null);
+        String brief = schemaContextTools.schemaBrief(CONNECTION, schema, null, 2000);
         assertThat(brief)
                 .contains("Schema brief")
                 .contains("Tables")

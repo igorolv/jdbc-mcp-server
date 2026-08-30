@@ -13,8 +13,8 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsTableNeighborhood() {
-        ObjectNode context = object(schemaContextTools().tableContext(
-                "public", "orders", 1, true, false, false, null));
+        ObjectNode context = object(schemaContextTools().tableContext(connection(),
+                "public", "orders", 1, true, false, false));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         assertThat(findByField(tables, "name", "orders")).isNotNull();
@@ -28,8 +28,8 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void findsFkJoinPath() {
-        ObjectNode result = object(schemaContextTools().findJoinPaths(
-                "public", "line_items", "public", "customers", 4, 5, 100, false, null));
+        ObjectNode result = object(schemaContextTools().findJoinPaths(connection(),
+                "public", "line_items", "public", "customers", 4, 5, 100, false));
 
         assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
         ArrayNode paths = (ArrayNode) field(result, "paths");
@@ -41,8 +41,8 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void lintsSchemaForSqlAuthoringRisks() {
-        ObjectNode result = object(schemaContextTools().schemaLint(
-                "public", null, null, 100, 200, null));
+        ObjectNode result = object(schemaContextTools().schemaLint(connection(),
+                "public", null, null, 100, 200));
 
         ArrayNode findings = (ArrayNode) field(result, "findings");
         assertThat(finding(findings, "fkWithoutIndex", "orders", "customer_id")).isNotNull();
@@ -52,7 +52,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsCompactSchemaBrief() {
-        String brief = schemaContextTools().schemaBrief("public", null, 100, null);
+        String brief = schemaContextTools().schemaBrief(connection(), "public", null, 100);
 
         assertThat(brief).contains("Schema brief");
         assertThat(brief).contains("Tables");
@@ -65,8 +65,8 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsRelationshipGraphMetrics() {
-        ObjectNode graph = object(schemaContextTools().schemaGraph(
-                "public", 100, "line_items", "customers", 4, null));
+        ObjectNode graph = object(schemaContextTools().schemaGraph(connection(),
+                "public", 100, "line_items", "customers", 4));
 
         assertThat(field(graph, "nodeCount").asInt()).isGreaterThanOrEqualTo(5);
         assertThat(field(graph, "declaredEdgeCount").asInt()).isEqualTo(2);
@@ -84,8 +84,8 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsQueryAuthoringContext() {
-        ObjectNode context = object(schemaContextTools().queryContext(
-                "public", "customer orders total", "customers,orders", true, 10, null));
+        ObjectNode context = object(schemaContextTools().queryContext(connection(),
+                "public", "customer orders total", "customers,orders", true, 10));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         ObjectNode customers = (ObjectNode) findByField(tables, "name", "customers");
@@ -105,7 +105,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsSchemaGraphDot() {
-        String dot = schemaContextTools().schemaGraphDot("public", null, null);
+        String dot = schemaContextTools().schemaGraphDot(connection(), "public", null);
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("customers");
@@ -117,7 +117,7 @@ class PostgresIntegrationSchemaContextToolsTest extends AbstractPostgresToolsInt
 
     @Test
     void returnsSchemaGraphDotFiltered() {
-        String dot = schemaContextTools().schemaGraphDot("public", "customers,orders", null);
+        String dot = schemaContextTools().schemaGraphDot(connection(), "public", "customers,orders");
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("customers");

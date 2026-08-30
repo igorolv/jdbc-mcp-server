@@ -57,6 +57,8 @@ import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableDescription;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LiveOracleIntegrationTest {
 
+    private static final String CONNECTION = "live-oracle";
+
     private String schema;
 
     private SqlExecutor executor;
@@ -98,7 +100,7 @@ class LiveOracleIntegrationTest {
         json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
         ToolErrors errors = new ToolErrors(json);
         ConnectionRegistry connections = TestConnections.registry(
-                "live-oracle", props,
+                CONNECTION, props,
                 dialect, executor, guard, new OraclePlanParser(), metadata, stats,
                 analysis, lineage, lint);
         queryAnalysisTools = new QueryAnalysisTools(connections, errors);
@@ -200,12 +202,12 @@ class LiveOracleIntegrationTest {
                 "code", "A",
                 "userId", "DUMMY_USER");
 
-        String explainResult = queryAnalysisTools.explainQuery(sql, null, namedParams, null, null);
+        String explainResult = queryAnalysisTools.explainQuery(CONNECTION, sql, null, namedParams, null);
         assertThat(explainResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error");
 
-        String analyzeResult = json.write(queryAnalysisTools.analyzePlan(sql, null, namedParams, null, null));
+        String analyzeResult = json.write(queryAnalysisTools.analyzePlan(CONNECTION, sql, null, namedParams, null));
         assertThat(analyzeResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error")
@@ -214,13 +216,12 @@ class LiveOracleIntegrationTest {
 
     @Test
     void resolveQueryLineageOnDualDoesNotThrow() {
-        String result = json.write(queryAnalysisTools.resolveQueryLineage(
+        String result = json.write(queryAnalysisTools.resolveQueryLineage(CONNECTION,
                 "SELECT 1 AS v FROM dual",
                 schema,
                 true,
                 true,
-                3,
-                null));
+                3));
 
         assertThat(result)
                 .contains("\"directObjects\"")

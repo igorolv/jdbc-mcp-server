@@ -13,14 +13,12 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Root-context wiring for the connection registry.
  *
- * <p>The four properties records bound here are the global defaults: with no connections file they
- * describe the single environment-configured database, and with one they fill in whatever an entry
- * does not override. Everything database-facing lives in the per-connection child contexts the
- * registry creates on demand.
+ * <p>The root context knows only where the server keeps its data and where the connections file is.
+ * Everything database-facing — pools, dialects, services, per-connection settings — lives in the
+ * child contexts the registry creates on demand.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({JdbcProperties.class, JdbcMcpProperties.class,
-        UsageProperties.class, StructureSnapshotProperties.class})
+@EnableConfigurationProperties(JdbcMcpProperties.class)
 public class ConnectionsConfig {
 
     @Bean
@@ -29,16 +27,10 @@ public class ConnectionsConfig {
     }
 
     @Bean(destroyMethod = "close")
-    public ConnectionRegistry connectionRegistry(JdbcProperties jdbcProperties,
-                                                 JdbcMcpProperties jdbcMcpProperties,
-                                                 UsageProperties usageProperties,
-                                                 StructureSnapshotProperties structureSnapshotProperties,
+    public ConnectionRegistry connectionRegistry(JdbcMcpProperties serverProperties,
                                                  ObjectMapper mapper,
                                                  ConnectionContextFactory factory) {
-        ConnectionsLoader.Loaded loaded = ConnectionsLoader.load(
-                jdbcMcpProperties.resolvedConnectionsFile(),
-                jdbcProperties, jdbcMcpProperties, usageProperties, structureSnapshotProperties,
-                mapper, System::getenv);
-        return new ConnectionRegistry(loaded.definitions(), loaded.defaultConnection(), factory);
+        return new ConnectionRegistry(
+                ConnectionsLoader.load(serverProperties, mapper, System::getenv), factory);
     }
 }

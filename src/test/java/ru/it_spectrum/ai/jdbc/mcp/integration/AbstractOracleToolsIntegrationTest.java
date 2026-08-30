@@ -86,6 +86,7 @@ abstract class AbstractOracleToolsIntegrationTest extends AbstractToolsIntegrati
                     analysis, lineage, lint);
 
             return new IntegrationTestContext(
+                    CONNECTION_NAME,
                     schema,
                     new QueryTools(connections, errors),
                     new QueryAnalysisTools(connections, errors),

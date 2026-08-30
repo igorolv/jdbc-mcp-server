@@ -82,8 +82,8 @@ jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
 jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
 ```
 
-`<catalog>` is the percent-encoded connection name (with a single environment-configured database,
-the resolved `JDBC_MCP_CATALOG`). It is fixed per connection when the server starts and is not a
+`<catalog>` is the percent-encoded connection name. It is fixed per connection when the server
+starts and is not a
 template variable clients can use to switch databases: a read resolves the connection from the URI it
 was given. This keeps resource URIs unambiguous both across the connections of one server and across
 several registered instances of this jar. The manifest reports database kind,
@@ -107,10 +107,9 @@ tools unchanged.
 
 The 49 tools are grouped below by purpose.
 
-Every tool takes an optional trailing `connection` argument naming the database to run against.
-Omit it to use `defaultConnection` (or the only configured connection). Installations with a single
-database never need to pass it. See
-[Serving Several Databases from One Server](#serving-several-databases-from-one-server).
+Every tool takes `connection` as its **first, required** argument, naming the database to run
+against — including installations that serve exactly one database. `listConnections` lists the
+names. See [Serving Several Databases from One Server](#serving-several-databases-from-one-server).
 
 ### Tool Groups
 
@@ -311,10 +310,9 @@ java-dao/src/main/java/com/example/shop/OrderDao.java#findByCustomer
 For duplicate source keys, the first record wins for that index build.
 
 **Where the files live.** The default catalog directory is
-`<data-dir>/<JDBC_MCP_CATALOG>/usage-catalog` (with the catalog name defaulting to `default`, i.e.
-`<data-dir>/default/usage-catalog`). Configure `JDBC_USAGE_CATALOG_PATHS` as a comma-separated list
+`<data-dir>/<connection>/usage-catalog`. Configure `usageCatalogPaths` on the connection as a list
 of additional directories, `.json` files, or `.zip` archives. Directories are scanned recursively
-for `*.json`; zip archives are scanned for JSON entries. Set `JDBC_USAGE_CATALOG_ENABLED=false` to
+for `*.json`; zip archives are scanned for JSON entries. Set `usageCatalogEnabled: false` to
 disable the catalog. `usageCatalogStatus` then reports `catalogEnabled: false`; other public usage
 tools return an `argument` error explaining how to enable it.
 
@@ -331,7 +329,7 @@ Views usually contribute fully parsed table, column and join evidence. Routine a
 are engine-specific, so the indexer first uses an ANTLR-based procedural pre-extractor to find
 embedded `SELECT` / `WITH` / `INSERT` / `UPDATE` / `DELETE` / `MERGE` statements, then feeds those
 statements into the existing JSqlParser analysis pipeline. If no embedded statement is found, the
-object is still kept as a provenance record. Use `JDBC_USAGE_NATIVE_SCHEMAS=schema1,schema2` to
+object is still kept as a provenance record. Use `usageNativeSchemas` on the connection to
 scan explicit schemas.
 
 **Persistent index.** The server never builds the usage index on startup. The first usage-catalog
@@ -385,7 +383,7 @@ This tool writes only to the local catalog. It does not modify the inspected dat
 
 | Tool | Description |
 |---|---|
-| `listConnections` | List the databases this server serves: `name` (the value to pass as `connection`), `description`, engine kind, default schema, which one is the default, whether a local catalog file already exists, and whether the pool has been built in this process |
+| `listConnections` | List the databases this server serves: `name` (the value to pass as `connection`), `description`, engine kind, default schema, whether a local catalog file already exists, and whether the pool has been built in this process |
 
 `listConnections` reads configuration and the local filesystem only — it opens no database
 connection, so it still answers when some of the configured databases are down. In an unfamiliar
@@ -414,10 +412,12 @@ server creates a new `<catalog>.db`, logs a warning, and leaves the legacy file 
 
 Configuration:
 
-- `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` - comma-separated schemas to front-load on a full rebuild
-  (empty → the default schema).
-- `JDBC_STRUCTURE_SNAPSHOT_ORACLE_COLUMN_QUERY_TIMEOUT_SECONDS` - Oracle-only timeout for the
+- `structureSnapshotSchemas` - schemas to front-load on a full rebuild (empty → the default schema).
+- `structureSnapshotOracleColumnQueryTimeoutSeconds` - Oracle-only timeout for the
   `DBMS_XMLGEN`-backed bulk column/default query during a full rebuild (default `300`; `0` disables).
+
+Both are per-connection fields in
+[`connections.json`](#serving-several-databases-from-one-server).
 
 ### Data Exploration
 
@@ -537,8 +537,8 @@ GRANT SHOWPLAN TO ai_readonly;        -- for explainQuery/analyzePlan estimated 
 If you need to call, for example, a stored procedure with read-only semantics that the guard does
 not allow, you can disable client-side validation:
 
-```text
-JDBC_READONLY_GUARD=off
+```json
+"readonlyGuard": "off"
 ```
 
 Connection-level protections (`setReadOnly` and, on PostgreSQL, `default_transaction_read_only`)
@@ -626,43 +626,21 @@ not parse `.env` itself; variables must already be present in the environment wh
 
 ## Configuration
 
-Every setting below is global. With a [connections file](#serving-several-databases-from-one-server)
-the `JDBC_*` settings become the defaults each connection inherits and may override; without one
-they describe the single database the server serves.
+Databases, credentials and everything that varies per database live in
+[`connections.json`](#serving-several-databases-from-one-server). The environment configures only
+the server process itself:
 
 | Variable | Required | Description |
 |---|---|---|
-| `JDBC_URL` | yes¹ | JDBC URL, for example `jdbc:postgresql://host:5432/db`, `jdbc:oracle:thin:@//host:1521/service`, or `jdbc:sqlserver://host:1433;databaseName=db;encrypt=true;trustServerCertificate=false` |
-| `JDBC_USERNAME` | yes¹ | Database user, preferably read-only |
-| `JDBC_PASSWORD` | yes¹ | Password |
-| `JDBC_DEFAULT_SCHEMA` | no | Default schema for metadata tools. If unset, the current connection schema is used |
-| `JDBC_QUERY_TIMEOUT_SECONDS` | no | Per-query timeout, default `30` |
-| `JDBC_MAX_ROWS` | no | Maximum rows in one response, default `1000`. If exceeded, the response includes `truncated: true` |
-| `JDBC_FETCH_SIZE` | no | JDBC `fetchSize`, default `500` |
-| `JDBC_READONLY_GUARD` | no | `strict` by default, or `off` |
-| `JDBC_POOL_MAX_SIZE` | no | Hikari maximum pool size, default `40` |
-| `JDBC_POOL_MIN_IDLE` | no | Hikari minimum idle connections, default `0`; with the default lazy pool settings, database connections are opened only when a tool first needs one |
-| `JDBC_CONNECTION_TIMEOUT_MS` | no | Hikari connection checkout timeout in milliseconds, default `10000` |
-| `JDBC_VALIDATION_TIMEOUT_MS` | no | Hikari validation timeout in milliseconds, default `5000` |
-| `JDBC_POOL_IDLE_TIMEOUT_MS` | no | Hikari idle connection timeout in milliseconds, default `60000`; idle connections above `JDBC_POOL_MIN_IDLE` are closed after this |
-| `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Shared across catalogs; each catalog gets its own subdirectory under it |
-| `JDBC_MCP_CATALOG` | no | Name of the local catalog for the `JDBC_URL` database, and the name that database answers to as `connection`. Local data lives under `<data-dir>/<name>/`: `<name>.db`, `usage-catalog/`, and `logs/`. Defaults to `default` |
-| `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. When the file is absent the server runs on `JDBC_URL` alone. See [Serving Several Databases from One Server](#serving-several-databases-from-one-server) |
+| `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. Startup fails when the file is missing or defines no connection |
+| `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Each connection gets its own subdirectory under it |
 | `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest plus concrete table resources and table/column resource templates; default `false` |
 | `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
-| `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS` | no | Comma-separated schemas captured by `rebuildCatalog`; empty means the resolved default schema |
-| `JDBC_STRUCTURE_SNAPSHOT_ORACLE_COLUMN_QUERY_TIMEOUT_SECONDS` | no | Oracle-only timeout for the bulk column/default query during `rebuildCatalog`, default `300`; `0` disables. Ordinary tool calls still use `JDBC_QUERY_TIMEOUT_SECONDS` |
-| `JDBC_USAGE_CATALOG_ENABLED` | no | Toggle the local usage catalog, default `true`. When `false`, `usageCatalogStatus` reports the disabled state and other usage tools return an `argument` error |
-| `JDBC_USAGE_CATALOG_PATHS` | no | Comma-separated directories, JSON files, or zip archives containing canonical QueryUsage JSON records |
-| `JDBC_USAGE_NATIVE_SCHEMAS` | no | Comma-separated schemas to scan for native usage. When omitted, the resolved default schema is scanned |
-| `JDBC_USAGE_NATIVE_INCLUDE_VIEWS` | no | Include views/materialized views in native usage, default `true` |
-| `JDBC_USAGE_NATIVE_INCLUDE_ROUTINES` | no | Include functions/procedures in native usage, default `true` |
-| `JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS` | no | Include triggers in native usage, default `true` |
-| `JDBC_USAGE_NATIVE_MAX_OBJECTS` | no | Maximum native usage records to add per index build, default `10000` |
 
-¹ Required only when there is no connections file. With one, the databases are defined there and
-`JDBC_URL` is optional — if set, that database joins the registry as an extra connection named after
-`JDBC_MCP_CATALOG`.
+A connection's own settings — URL, credentials, default schema, timeouts, row caps, pool sizes, the
+read-only guard, snapshot and usage options — are fields of its `connections.json` entry; see
+[the field table](#serving-several-databases-from-one-server). Any of them may reference an
+environment variable as `${VAR}`, so secrets stay out of the file.
 
 The database type is detected automatically from the URL prefix: `jdbc:postgresql:` for PostgreSQL,
 `jdbc:oracle:` for Oracle, and `jdbc:sqlserver:` for SQL Server.
@@ -682,14 +660,28 @@ jdbc:sqlserver://db.example.com;databaseName=myapp;integratedSecurity=false
 
 ## Running
 
+Describe at least one database in `~/.jdbc-mcp-server/connections.json`:
+
+```json
+{
+  "connections": {
+    "myapp": {
+      "url": "jdbc:postgresql://db.example.com:5432/myapp",
+      "username": "ai_readonly",
+      "password": "${MYAPP_DB_PASSWORD}"
+    }
+  }
+}
+```
+
+then run:
+
 ```bash
-JDBC_URL=jdbc:postgresql://db.example.com:5432/myapp \
-JDBC_USERNAME=ai_readonly \
-JDBC_PASSWORD=secret \
-  java -jar build/libs/jdbc-mcp-server.jar
+java -jar build/libs/jdbc-mcp-server.jar
 ```
 
 The server immediately starts listening for MCP over stdin/stdout. Logs are written to stderr.
+Tool calls address this database as `"connection": "myapp"`.
 
 ## Connecting an AI Client
 
@@ -700,18 +692,19 @@ Add this server to the client configuration:
   "command": "java",
   "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
   "env": {
-    "JDBC_URL": "jdbc:postgresql://db.example.com:5432/myapp",
-    "JDBC_USERNAME": "ai_readonly",
-    "JDBC_PASSWORD": "secret"
+    "MYAPP_DB_PASSWORD": "secret"
   }
 }
 ```
+
+The databases come from `connections.json`; `env` only carries the secrets its `${VAR}` references
+point at (and, if you keep the file elsewhere, `JDBC_MCP_CONNECTIONS_FILE`).
 
 ### Where to Configure It
 
 | Client | Connection method |
 |---|---|
-| Claude Code | `claude mcp add --scope user -e JDBC_URL=... -e JDBC_USERNAME=... -e JDBC_PASSWORD=... -- jdbc java -jar /path/to/jdbc-mcp-server.jar` |
+| Claude Code | `claude mcp add --scope user -e MYAPP_DB_PASSWORD=... -- jdbc java -jar /path/to/jdbc-mcp-server.jar` |
 | Qwen Code | `~/.qwen/settings.json` -> `"mcpServers"` -> `"jdbc"` |
 | VS Code | `.vscode/mcp.json` -> `"servers"` -> `"jdbc"` |
 | Cursor | `.cursor/mcp.json` -> `"mcpServers"` -> `"jdbc"` |
@@ -723,9 +716,9 @@ Check the connection with `claude mcp list`. Restart the client after adding the
 ## Serving Several Databases from One Server
 
 One server process can serve any number of named databases. The tool manifest stays a single set of
-49 tools no matter how many are configured — each tool takes an optional trailing `connection`
-argument — and a database's pool, local catalog and services are created the first time something
-actually asks for that connection.
+49 tools no matter how many are configured — each tool takes `connection` as its first argument —
+and a database's pool, local catalog and services are created the first time something actually asks
+for that connection.
 
 This matters at scale: registering fifteen MCP server instances puts fifteen tool manifests into the
 agent's context and fifteen JVMs in memory, when the session may end up touching two of the
@@ -738,7 +731,6 @@ Default path `~/.jdbc-mcp-server/connections.json` (`<data-dir>/connections.json
 
 ```json
 {
-  "defaultConnection": "orders",
   "connections": {
     "orders": {
       "url": "jdbc:postgresql://db.example.com:5432/orders",
@@ -769,22 +761,32 @@ Any string value may reference an environment variable as `${VAR}`. A referenced
 not set fails startup with a message naming the variable and the field; it never becomes an empty
 password.
 
-Optional per-connection fields override the global environment defaults; anything left out is
-inherited from them:
+Everything else is optional; a field left out falls back to the built-in default:
 
-| Field | Global default |
-|---|---|
-| `defaultSchema` | `JDBC_DEFAULT_SCHEMA` |
-| `queryTimeoutSeconds` | `JDBC_QUERY_TIMEOUT_SECONDS` |
-| `maxRows` | `JDBC_MAX_ROWS` |
-| `fetchSize` | `JDBC_FETCH_SIZE` |
-| `readonlyGuard` | `JDBC_READONLY_GUARD` |
-| `poolMaximumSize`, `poolMinimumIdle`, `poolConnectionTimeoutMs`, `poolValidationTimeoutMs`, `poolIdleTimeoutMs` | `JDBC_POOL_MAX_SIZE`, `JDBC_POOL_MIN_IDLE`, `JDBC_CONNECTION_TIMEOUT_MS`, `JDBC_VALIDATION_TIMEOUT_MS`, `JDBC_POOL_IDLE_TIMEOUT_MS` |
-| `structureSnapshotSchemas`, `structureSnapshotOracleColumnQueryTimeoutSeconds` | `JDBC_STRUCTURE_SNAPSHOT_SCHEMAS`, `JDBC_STRUCTURE_SNAPSHOT_ORACLE_COLUMN_QUERY_TIMEOUT_SECONDS` |
-| `usageCatalogEnabled`, `usageCatalogPaths`, `usageNativeSchemas`, `usageNativeIncludeViews`, `usageNativeIncludeRoutines`, `usageNativeIncludeTriggers`, `usageNativeMaxObjects` | the matching `JDBC_USAGE_*` variables |
+| Field | Default | Meaning |
+|---|---|---|
+| `username`, `password` | none | Database credentials; prefer `${VAR}` references |
+| `description` | none | Free text returned by `listConnections` |
+| `defaultSchema` | the session schema | Schema used when a metadata tool call omits one |
+| `queryTimeoutSeconds` | `30` | Per-query timeout; `0` disables |
+| `maxRows` | `1000` | Row cap for one response; `truncated: true` when hit |
+| `fetchSize` | `500` | JDBC `fetchSize` hint |
+| `readonlyGuard` | `strict` | `off` disables the client-side SELECT-only check |
+| `poolMaximumSize` | `40` | Hikari maximum pool size |
+| `poolMinimumIdle` | `0` | Hikari minimum idle; `0` keeps the pool lazy |
+| `poolConnectionTimeoutMs` | `10000` | Hikari connection checkout timeout |
+| `poolValidationTimeoutMs` | `5000` | Hikari validation timeout |
+| `poolIdleTimeoutMs` | `60000` | Idle connections above `poolMinimumIdle` are closed after this |
+| `structureSnapshotSchemas` | the default schema | Schemas captured by `rebuildCatalog` |
+| `structureSnapshotOracleColumnQueryTimeoutSeconds` | `300` | Oracle-only timeout for the bulk column query during `rebuildCatalog`; `0` disables |
+| `usageCatalogEnabled` | `true` | When `false`, usage tools report the disabled state |
+| `usageCatalogPaths` | none | Extra directories, JSON files or zip archives with QueryUsage records |
+| `usageNativeSchemas` | the default schema | Schemas scanned for native usage |
+| `usageNativeIncludeViews`, `usageNativeIncludeRoutines`, `usageNativeIncludeTriggers` | `true` | What native usage scanning covers |
+| `usageNativeMaxObjects` | `10000` | Maximum native usage records per index build |
 
-The `JDBC_MCP_TOOLS_*` group flags stay global — they shape the manifest, which is shared by all
-connections.
+The `JDBC_MCP_TOOLS_*` group flags stay in the environment — they shape the manifest, which is
+shared by all connections.
 
 > **Keep the file private.** It holds database credentials: `chmod 600 ~/.jdbc-mcp-server/connections.json`
 > (on Windows, restrict it to your user). Prefer `${VAR}` references over literal passwords so the
@@ -792,25 +794,15 @@ connections.
 
 ### Choosing a connection
 
-Resolution order for every tool call:
+There is no default connection: every tool call names the database it means in its first argument.
+A missing or unknown name returns an `argument` error listing the available names. Call
+`listConnections` to see what exists — it reads configuration only, so it works even when some of
+the configured databases are down.
 
-1. the explicit `connection` argument;
-2. `defaultConnection` from the file;
-3. the only configured connection, when there is exactly one.
+### A single database
 
-If none of these applies the call returns an `argument` error listing the available names, as does an
-unknown name. Call `listConnections` to see what exists.
-
-### Backwards compatibility
-
-With no connections file the behaviour is exactly as before: one connection built from `JDBC_URL` /
-`JDBC_USERNAME` / `JDBC_PASSWORD`, named after `JDBC_MCP_CATALOG` (default `default`), used by every
-call that omits `connection`. Existing single-database installations need no changes and never have
-to pass the argument.
-
-If both a connections file and `JDBC_URL` are set, the environment database joins the registry as an
-extra connection named after `JDBC_MCP_CATALOG`; a name clash with a file entry fails startup with a
-message naming it.
+Nothing changes for one database: write a `connections.json` with a single entry and pass its name
+as `connection`. There is no environment-variable shortcut — one file is the whole configuration.
 
 ### Isolation
 
@@ -824,7 +816,7 @@ message naming it.
 - MCP resources (when `JDBC_MCP_RESOURCES_ENABLED=true`) are published for every configured
   connection that already has a local catalog file; URIs were catalog-qualified already.
 
-Log files remain shared per process, under `<data-dir>/<JDBC_MCP_CATALOG>/logs/`.
+Each connection keeps its logs under `<data-dir>/<name>/logs/`.
 
 ### One instance per database (the earlier approach)
 
@@ -838,29 +830,19 @@ JVM per database:
     "jdbc-orders": {
       "command": "java",
       "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
-      "env": {
-        "JDBC_URL": "jdbc:postgresql://db.example.com:5432/orders",
-        "JDBC_USERNAME": "ai_readonly",
-        "JDBC_PASSWORD": "secret",
-        "JDBC_MCP_CATALOG": "orders"
-      }
+      "env": {"JDBC_MCP_CONNECTIONS_FILE": "<absolute-path>/orders-connections.json"}
     },
     "jdbc-billing": {
       "command": "java",
       "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
-      "env": {
-        "JDBC_URL": "jdbc:oracle:thin:@//oracle.example.com:1521/BILLING",
-        "JDBC_USERNAME": "AI_READONLY",
-        "JDBC_PASSWORD": "secret",
-        "JDBC_MCP_CATALOG": "billing"
-      }
+      "env": {"JDBC_MCP_CONNECTIONS_FILE": "<absolute-path>/billing-connections.json"}
     }
   }
 }
 ```
 
-Do not point different databases at the same `JDBC_MCP_CATALOG`, in either setup: their usage index
-and structure snapshot would share one `<catalog>.db` file.
+Do not give two databases the same connection name, in either setup: their usage index and structure
+snapshot would share one `<catalog>.db` file.
 
 ## Project Structure
 
@@ -935,9 +917,9 @@ and structure snapshot would share one `<catalog>.db` file.
 ## Troubleshooting
 
 - **"Cannot find a Java installation ... matching languageVersion=21"** - install JDK 21+ and set `JAVA_HOME`. Gradle toolchains cannot download it without internet access.
-- **Connection refused / ORA-01017 / FATAL / SQL Server login failed** - check `JDBC_URL`, `JDBC_USERNAME`, and `JDBC_PASSWORD`. For PostgreSQL, test with `psql "$JDBC_URL"`; for Oracle, use `sqlplus $JDBC_USERNAME/$JDBC_PASSWORD@...`; for SQL Server, test with `sqlcmd -S host,1433 -d database -U user -P password`.
-- **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** - the guard worked. This is expected for any write operation. If the query is truly read-only, for example a read-only function call through `SELECT func(...)`, it will pass. For fully non-trivial cases, you can disable the guard with `JDBC_READONLY_GUARD=off`.
-- **Oracle write attempt reached the database** - this should normally be blocked by the guard first. If `JDBC_READONLY_GUARD=off`, rely on a read-only Oracle user; JDBC `setReadOnly(true)` is only a best-effort hint for Oracle.
+- **Connection refused / ORA-01017 / FATAL / SQL Server login failed** - check the connection's `url`, `username`, and `password` in `connections.json`. For PostgreSQL, test the URL with `psql`; for Oracle, use `sqlplus user/password@...`; for SQL Server, test with `sqlcmd -S host,1433 -d database -U user -P password`.
+- **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** - the guard worked. This is expected for any write operation. If the query is truly read-only, for example a read-only function call through `SELECT func(...)`, it will pass. For fully non-trivial cases, you can disable the guard with `"readonlyGuard": "off"` on that connection.
+- **Oracle write attempt reached the database** - this should normally be blocked by the guard first. If `readonlyGuard` is `off`, rely on a read-only Oracle user; JDBC `setReadOnly(true)` is only a best-effort hint for Oracle.
 - **Empty `describeTable` / `listTables` result on Oracle** - Oracle stores object names in uppercase. Pass `CUSTOMERS`, not `customers`.
 - **SQL Server certificate errors** - set the JDBC URL encryption options explicitly, for example `encrypt=true;trustServerCertificate=false` with a trusted certificate, or `trustServerCertificate=true` only for local/dev use.
 - **SQL Server `unusedIndexes` unsupported** - this tool intentionally avoids `sys.dm_db_index_usage_stats` because it usually requires elevated state-view permissions. Use `indexStats`, `fkIndexCoverage`, and `redundantIndexes` for low-privilege SQL Server audits.

@@ -62,11 +62,11 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String explainQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze
     ) {
         log.info("Tool call: explainQuery (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -132,11 +132,11 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public PlanAnalysisSummary analyzePlan(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze
     ) {
         log.info("Tool call: analyzePlan (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -208,10 +208,10 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryValidationResult validateQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams
     ) {
         log.info("Tool call: validateQuery (sql={}, params={}, namedParams={})", sql, params, namedParams);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -266,8 +266,8 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryInspection inspectQuery(
-            @McpToolParam(description = "") String sql,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
+            @McpToolParam(description = "") String sql
     ) {
         log.info("Tool call: inspectQuery (sql={})", sql);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -285,9 +285,9 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryLintResult queryLint(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
-            @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "", required = false) String schema
     ) {
         log.info("Tool call: queryLint (sql={}, schema={})", sql, schema);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -312,12 +312,12 @@ public class QueryAnalysisTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryLineageResult resolveQueryLineage(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Default schema for unqualified names", required = false) String schema,
             @McpToolParam(description = "Expand database views and materialized views recursively. Default true.", required = false) Boolean expandViews,
             @McpToolParam(description = "Expand database functions/procedures referenced by the query, best-effort. Default true.", required = false) Boolean expandRoutines,
-            @McpToolParam(description = "Maximum recursive expansion depth. Default 5, max 20.", required = false) Integer maxDepth,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Maximum recursive expansion depth. Default 5, max 20.", required = false) Integer maxDepth
     ) {
         log.info("Tool call: resolveQueryLineage (sql={}, schema={}, expandViews={}, expandRoutines={}, maxDepth={})", sql, schema, expandViews, expandRoutines, maxDepth);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

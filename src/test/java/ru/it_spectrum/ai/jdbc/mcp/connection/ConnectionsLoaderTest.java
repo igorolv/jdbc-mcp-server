@@ -4,10 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
-import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
-import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
-import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -30,41 +27,22 @@ class ConnectionsLoaderTest {
     @TempDir
     Path dataDir;
 
-    private JdbcProperties globalJdbc(String url) {
-        return new JdbcProperties(url, "envuser", "envpass", "", 30, 1000, 500, "strict",
-                40, 0, 10_000, 5_000, 60_000);
+    private JdbcMcpProperties server() {
+        return new JdbcMcpProperties(dataDir.toString(), null,
+                dataDir.resolve("connections.json").toString());
     }
 
-    private JdbcMcpProperties globalCatalog() {
-        return new JdbcMcpProperties(dataDir.toString(), "default");
-    }
-
-    private UsageProperties globalUsage() {
-        return new UsageProperties(true, List.of(), List.of(), true, true, true, 10_000);
-    }
-
-    private StructureSnapshotProperties globalSnapshot() {
-        return new StructureSnapshotProperties(List.of(), 300);
-    }
-
-    private ConnectionsLoader.Loaded load(String json) throws IOException {
-        return load(json, globalJdbc(""));
-    }
-
-    private ConnectionsLoader.Loaded load(String json, JdbcProperties globalJdbc) throws IOException {
-        Path file = dataDir.resolve("connections.json");
+    private List<ConnectionDefinition> load(String json) throws IOException {
         if (json != null) {
-            Files.writeString(file, json);
+            Files.writeString(dataDir.resolve("connections.json"), json);
         }
-        return ConnectionsLoader.load(file, globalJdbc, globalCatalog(), globalUsage(),
-                globalSnapshot(), MAPPER, ENV);
+        return ConnectionsLoader.load(server(), MAPPER, ENV);
     }
 
     @Test
     void readsConnectionsAndSubstitutesEnvironmentPlaceholders() throws IOException {
-        ConnectionsLoader.Loaded loaded = load("""
+        List<ConnectionDefinition> loaded = load("""
                 {
-                  "defaultConnection": "ssj",
                   "connections": {
                     "ssj": {
                       "url": "jdbc:postgresql://db.example.com/ssj",
@@ -83,22 +61,21 @@ class ConnectionsLoaderTest {
                 }
                 """);
 
-        assertThat(loaded.defaultConnection()).isEqualTo("ssj");
-        assertThat(loaded.definitions()).extracting(ConnectionDefinition::name)
+        assertThat(loaded).extracting(ConnectionDefinition::name)
                 .containsExactly("ssj", "legacy");
 
-        ConnectionDefinition ssj = loaded.definitions().getFirst();
+        ConnectionDefinition ssj = loaded.getFirst();
         assertThat(ssj.jdbc().username()).isEqualTo("ssj");
         assertThat(ssj.jdbc().password()).isEqualTo("s3cret");
         assertThat(ssj.description()).isEqualTo("Depositor service");
         assertThat(ssj.kind()).isEqualTo(DatabaseKind.POSTGRESQL);
         assertThat(ssj.structureSnapshot().resolvedSchemas()).containsExactly("public", "nsi");
-        assertThat(loaded.definitions().get(1).kind()).isEqualTo(DatabaseKind.ORACLE);
+        assertThat(loaded.get(1).kind()).isEqualTo(DatabaseKind.ORACLE);
     }
 
     @Test
-    void perConnectionSettingsOverrideGlobalDefaultsAndTheRestIsInherited() throws IOException {
-        ConnectionsLoader.Loaded loaded = load("""
+    void perConnectionSettingsOverrideTheBuiltInDefaultsAndTheRestIsInherited() throws IOException {
+        List<ConnectionDefinition> loaded = load("""
                 {
                   "connections": {
                     "reports": {
@@ -111,11 +88,11 @@ class ConnectionsLoaderTest {
                 }
                 """);
 
-        ConnectionDefinition reports = loaded.definitions().getFirst();
+        ConnectionDefinition reports = loaded.getFirst();
         assertThat(reports.jdbc().maxRows()).isEqualTo(50);
         assertThat(reports.jdbc().guardEnabled()).isFalse();
         assertThat(reports.usage().catalogEnabled()).isFalse();
-        // inherited from the environment defaults
+        // inherited from the built-in defaults
         assertThat(reports.jdbc().queryTimeoutSeconds()).isEqualTo(30);
         assertThat(reports.jdbc().fetchSize()).isEqualTo(500);
         assertThat(reports.structureSnapshot().oracleColumnQueryTimeoutSeconds()).isEqualTo(300);
@@ -123,7 +100,7 @@ class ConnectionsLoaderTest {
 
     @Test
     void eachConnectionGetsItsOwnLocalCatalogDirectory() throws IOException {
-        ConnectionsLoader.Loaded loaded = load("""
+        List<ConnectionDefinition> loaded = load("""
                 {
                   "connections": {
                     "a": {"url": "jdbc:postgresql://h/a"},
@@ -132,9 +109,9 @@ class ConnectionsLoaderTest {
                 }
                 """);
 
-        assertThat(loaded.definitions().getFirst().catalog().catalogDbFile())
+        assertThat(loaded.getFirst().catalog().catalogDbFile())
                 .isEqualTo(dataDir.resolve("a").resolve("a.db"));
-        assertThat(loaded.definitions().get(1).catalog().catalogDbFile())
+        assertThat(loaded.get(1).catalog().catalogDbFile())
                 .isEqualTo(dataDir.resolve("b").resolve("b.db"));
     }
 
@@ -158,16 +135,6 @@ class ConnectionsLoaderTest {
     }
 
     @Test
-    void unknownDefaultConnectionIsRejected() {
-        assertThatThrownBy(() -> load("""
-                {"defaultConnection": "nope", "connections": {"a": {"url": "jdbc:postgresql://h/a"}}}
-                """))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("nope")
-                .hasMessageContaining("a");
-    }
-
-    @Test
     void connectionWithoutUrlIsRejected() {
         assertThatThrownBy(() -> load("""
                 {"connections": {"a": {"username": "u"}}}
@@ -178,7 +145,7 @@ class ConnectionsLoaderTest {
 
     @Test
     void unsupportedUrlIsRecordedOnTheConnectionInsteadOfFailingStartup() throws IOException {
-        ConnectionsLoader.Loaded loaded = load("""
+        List<ConnectionDefinition> loaded = load("""
                 {
                   "connections": {
                     "good": {"url": "jdbc:postgresql://h/good"},
@@ -187,63 +154,35 @@ class ConnectionsLoaderTest {
                 }
                 """);
 
-        assertThat(loaded.definitions().getFirst().usable()).isTrue();
-        ConnectionDefinition broken = loaded.definitions().get(1);
+        assertThat(loaded.getFirst().usable()).isTrue();
+        ConnectionDefinition broken = loaded.get(1);
         assertThat(broken.usable()).isFalse();
         assertThat(broken.configError()).contains("jdbc:mysql://h/broken");
         assertThat(broken.kind()).isNull();
     }
 
     @Test
-    void environmentOnlySetupKeepsWorkingWithoutAConnectionsFile() throws IOException {
-        ConnectionsLoader.Loaded loaded = ConnectionsLoader.load(
-                dataDir.resolve("connections.json"),
-                globalJdbc("jdbc:postgresql://db.example.com/app"),
-                new JdbcMcpProperties(dataDir.toString(), "app"),
-                globalUsage(), globalSnapshot(), MAPPER, ENV);
-
-        assertThat(loaded.definitions()).hasSize(1);
-        ConnectionDefinition app = loaded.definitions().getFirst();
-        assertThat(app.name()).isEqualTo("app");
-        assertThat(app.jdbc().username()).isEqualTo("envuser");
-        assertThat(app.catalog().catalogDbFile()).isEqualTo(dataDir.resolve("app").resolve("app.db"));
-        assertThat(loaded.defaultConnection()).isNull();
-    }
-
-    @Test
-    void environmentConnectionIsAddedAlongsideTheFileEntries() throws IOException {
-        ConnectionsLoader.Loaded loaded = load("""
-                {"connections": {"ssj": {"url": "jdbc:postgresql://h/ssj"}}}
-                """, globalJdbc("jdbc:postgresql://h/env"));
-
-        assertThat(loaded.definitions()).extracting(ConnectionDefinition::name)
-                .containsExactly("ssj", "default");
-    }
-
-    @Test
-    void clashingEnvironmentAndFileConnectionNamesFailStartup() {
-        assertThatThrownBy(() -> load("""
-                {"connections": {"default": {"url": "jdbc:postgresql://h/ssj"}}}
-                """, globalJdbc("jdbc:postgresql://h/env")))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("'default'")
-                .hasMessageContaining("JDBC_MCP_CATALOG");
-    }
-
-    @Test
-    void noFileAndNoUrlIsAClearStartupError() {
+    void aMissingFileIsAClearStartupError() {
         assertThatThrownBy(() -> load(null))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("JDBC_URL")
+                .hasMessageContaining("No database connections configured")
+                .hasMessageContaining("connections.json");
+    }
+
+    @Test
+    void aFileWithoutConnectionsIsAClearStartupError() {
+        assertThatThrownBy(() -> load("""
+                {"connections": {}}
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("No database connections configured")
                 .hasMessageContaining("connections.json");
     }
 
     @Test
     void malformedJsonNamesTheFile() throws IOException {
-        Path file = dataDir.resolve("connections.json");
-        Files.writeString(file, "{ not json");
-        assertThatThrownBy(() -> ConnectionsLoader.load(file, globalJdbc(""), globalCatalog(),
-                globalUsage(), globalSnapshot(), MAPPER, ENV))
+        Files.writeString(dataDir.resolve("connections.json"), "{ not json");
+        assertThatThrownBy(() -> ConnectionsLoader.load(server(), MAPPER, ENV))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("connections.json");
     }

@@ -56,14 +56,14 @@ public class BenchmarkTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public BenchmarkResult benchmarkQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Row limit per run (> 0).") Integer limit,
             @McpToolParam(description = "Timeout per run in seconds (> 0).") Integer timeoutSeconds,
             @McpToolParam(description = "Cold runs (default 1); executed first.", required = false) Integer coldRuns,
-            @McpToolParam(description = "Warm runs (default 3).", required = false) Integer warmRuns,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Warm runs (default 3).", required = false) Integer warmRuns
     ) {
         log.info("Tool call: benchmarkQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={}, coldRuns={}, warmRuns={})", sql, params, namedParams, limit, timeoutSeconds, coldRuns, warmRuns);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -103,12 +103,12 @@ public class BenchmarkTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TimedQueryResult timedQuery(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
             @McpToolParam(description = "Row limit (default JDBC_MAX_ROWS).", required = false) Integer limit,
-            @McpToolParam(description = "Timeout in seconds (default JDBC_QUERY_TIMEOUT_SECONDS).", required = false) Integer timeoutSeconds,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Timeout in seconds (default JDBC_QUERY_TIMEOUT_SECONDS).", required = false) Integer timeoutSeconds
     ) {
         log.info("Tool call: timedQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

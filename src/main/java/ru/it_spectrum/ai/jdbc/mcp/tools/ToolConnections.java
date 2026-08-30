@@ -4,9 +4,9 @@ import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 
 /**
- * Shared routing helper for the tool classes. Every tool takes an optional trailing
- * {@code connection} argument; this turns it into the object graph of one database, reporting an
- * unknown or ambiguous name as an ordinary {@code argument} tool error.
+ * Shared routing helper for the tool classes. Every tool takes a required leading
+ * {@code connection} argument; this turns it into the object graph of one database, reporting a
+ * missing or unknown name as an ordinary {@code argument} tool error.
  */
 final class ToolConnections {
 
@@ -14,7 +14,7 @@ final class ToolConnections {
      * The description attached to every {@code connection} parameter. Kept to one short sentence:
      * it is repeated across ~50 tool schemas, and the manifest is sent on every connect.
      */
-    static final String CONNECTION_PARAM = "Connection name; omit for the default.";
+    static final String CONNECTION_PARAM = "Database to run against; a name from listConnections.";
 
     private ToolConnections() {
     }

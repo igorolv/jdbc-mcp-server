@@ -87,6 +87,7 @@ abstract class AbstractSqlServerToolsIntegrationTest extends AbstractToolsIntegr
                     analysis, lineage, lint);
 
             return new IntegrationTestContext(
+                    CONNECTION_NAME,
                     properties.defaultSchema(),
                     new QueryTools(connections, errors),
                     new QueryAnalysisTools(connections, errors),

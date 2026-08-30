@@ -36,42 +36,42 @@ class ConnectionRegistryTest {
     }
 
     @Test
-    void explicitNameWinsOverTheDefault() {
+    void theNameSelectsTheConnection() {
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("a"), definition("b")), "a", ConnectionRegistryTest::context);
+                List.of(definition("a"), definition("b")), ConnectionRegistryTest::context);
 
         assertThat(registry.resolve("b").name()).isEqualTo("b");
-        assertThat(registry.resolve(null).name()).isEqualTo("a");
-        assertThat(registry.resolve("  ").name()).isEqualTo("a");
-        assertThat(registry.defaultConnection()).isEqualTo("a");
-        assertThat(registry.isDefault("a")).isTrue();
-        assertThat(registry.isDefault("b")).isFalse();
+        assertThat(registry.resolve(" a ").name()).isEqualTo("a");
     }
 
     @Test
-    void aSingleConnectionIsTheDefaultEvenWithoutOneConfigured() {
+    void aMissingNameListsTheAvailableOnes() {
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("only")), null, ConnectionRegistryTest::context);
+                List.of(definition("a"), definition("b")), ConnectionRegistryTest::context);
 
-        assertThat(registry.resolve(null).name()).isEqualTo("only");
-        assertThat(registry.defaultConnection()).isEqualTo("only");
+        for (String requested : new String[]{null, "", "  "}) {
+            assertThatThrownBy(() -> registry.resolve(requested))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("No connection given")
+                    .hasMessageContaining("a, b");
+        }
     }
 
     @Test
-    void severalConnectionsWithoutADefaultRequireAnExplicitName() {
+    void aSingleConnectionIsStillNamedExplicitly() {
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("a"), definition("b")), null, ConnectionRegistryTest::context);
+                List.of(definition("only")), ConnectionRegistryTest::context);
 
-        assertThat(registry.defaultConnection()).isNull();
+        assertThat(registry.resolve("only").name()).isEqualTo("only");
         assertThatThrownBy(() -> registry.resolve(null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("a, b");
+                .hasMessageContaining("only");
     }
 
     @Test
     void unknownNameListsTheAvailableOnes() {
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("orders"), definition("billing")), "orders",
+                List.of(definition("orders"), definition("billing")),
                 ConnectionRegistryTest::context);
 
         assertThatThrownBy(() -> registry.resolve("orderz"))
@@ -84,7 +84,7 @@ class ConnectionRegistryTest {
     void contextsAreBuiltOnFirstUseAndOnlyForTheConnectionAskedFor() {
         List<String> built = new ArrayList<>();
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("a"), definition("b")), "a", definition -> {
+                List.of(definition("a"), definition("b")), definition -> {
             built.add(definition.name());
             return context(definition);
         });
@@ -104,7 +104,7 @@ class ConnectionRegistryTest {
     void aBrokenConnectionDoesNotAffectTheOthersAndIsRetriedNextTime() {
         AtomicInteger attempts = new AtomicInteger();
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("good"), definition("broken")), "good", definition -> {
+                List.of(definition("good"), definition("broken")), definition -> {
             if ("broken".equals(definition.name())) {
                 attempts.incrementAndGet();
                 throw new IllegalStateException("database is down");
@@ -124,7 +124,7 @@ class ConnectionRegistryTest {
         CountDownLatch slowStarted = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("slow"), definition("fast")), "fast", definition -> {
+                List.of(definition("slow"), definition("fast")), definition -> {
             if ("slow".equals(definition.name())) {
                 slowStarted.countDown();
                 try {
@@ -154,7 +154,7 @@ class ConnectionRegistryTest {
     void concurrentCallersShareOneContext() throws Exception {
         AtomicInteger built = new AtomicInteger();
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("a")), "a", definition -> {
+                List.of(definition("a")), definition -> {
             built.incrementAndGet();
             return context(definition);
         });
@@ -167,7 +167,7 @@ class ConnectionRegistryTest {
             new Thread(() -> {
                 try {
                     start.await();
-                    contexts.add(registry.resolve(null));
+                    contexts.add(registry.resolve("a"));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } finally {
@@ -186,7 +186,7 @@ class ConnectionRegistryTest {
     void closingTheRegistryClosesOnlyTheContextsThatWereBuilt() {
         List<String> closed = new ArrayList<>();
         ConnectionRegistry registry = new ConnectionRegistry(
-                List.of(definition("a"), definition("b")), "a",
+                List.of(definition("a"), definition("b")),
                 definition -> ConnectionContext.of(definition, type -> null, () -> true,
                         () -> closed.add(definition.name())));
 

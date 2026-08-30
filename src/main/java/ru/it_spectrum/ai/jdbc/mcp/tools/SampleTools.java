@@ -40,10 +40,10 @@ public class SampleTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public QueryResult sampleRows(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "Rows to return (default 10, max 100).", required = false) Integer limit,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "Rows to return (default 10, max 100).", required = false) Integer limit
     ) {
         log.info("Tool call: sampleRows (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

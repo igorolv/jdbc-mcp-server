@@ -1,12 +1,10 @@
 package ru.it_spectrum.ai.jdbc.mcp.config;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 /**
  * Connection configuration for the read-only JDBC data source.
  *
- * <p>Values come from environment variables via {@code application.yml}
- * ({@code JDBC_URL}, {@code JDBC_USERNAME}, {@code JDBC_PASSWORD}, etc.).
+ * <p>One instance per connection, built by {@link ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionsLoader}
+ * from a {@code connections.json} entry; {@link #DEFAULTS} fills in whatever the entry leaves out.
  *
  * @param url                 JDBC URL, e.g. {@code jdbc:postgresql://host:5432/db}
  *                            or {@code jdbc:oracle:thin:@//host:1521/service}
@@ -24,7 +22,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param validationTimeoutMs Hikari validation timeout in milliseconds
  * @param idleTimeoutMs       Hikari idle connection timeout in milliseconds
  */
-@ConfigurationProperties(prefix = "jdbc")
 public record JdbcProperties(
         String url,
         String username,
@@ -40,6 +37,15 @@ public record JdbcProperties(
         int validationTimeoutMs,
         int idleTimeoutMs
 ) {
+
+    /**
+     * Values used for every field a {@code connections.json} entry does not set. The connection
+     * fields ({@code url}, {@code username}, {@code password}, {@code defaultSchema}) have no
+     * default: they are always per-connection.
+     */
+    public static final JdbcProperties DEFAULTS = new JdbcProperties(
+            null, null, null, null, 30, 1000, 500, "strict", 40, 0, 10_000, 5_000, 60_000);
+
     public boolean guardEnabled() {
         return readonlyGuard == null || !"off".equalsIgnoreCase(readonlyGuard.trim());
     }

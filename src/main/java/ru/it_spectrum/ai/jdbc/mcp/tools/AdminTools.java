@@ -39,8 +39,8 @@ public class AdminTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public RebuildCatalogResult rebuildCatalog(
-            @McpToolParam(description = "Schemas to capture (CSV); omit for configured/default scope.", required = false) String schemas,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
+            @McpToolParam(description = "Schemas to capture (CSV); omit for configured/default scope.", required = false) String schemas
     ) {
         log.info("Tool call: rebuildCatalog (schemas={})", schemas);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

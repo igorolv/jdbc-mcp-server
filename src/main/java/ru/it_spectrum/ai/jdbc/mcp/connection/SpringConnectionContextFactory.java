@@ -23,8 +23,8 @@ import java.util.function.Supplier;
  * {@code List<UsageCatalogSource>} — keeps working unchanged; the services simply become
  * singletons of their own connection instead of the process. The connection's own
  * {@code JdbcProperties}, {@code UsageProperties}, {@code StructureSnapshotProperties} and
- * {@code JdbcMcpProperties} are registered as primary beans so they win over the global
- * environment-bound defaults still present in the parent.
+ * {@code JdbcMcpProperties} are registered as primary beans, so a child sees its own settings
+ * rather than the parent's {@code jdbc-mcp} ones.
  *
  * <p>Every definition is marked lazy: {@link #create} parses bean definitions and returns. No pool,
  * no SQLite file, no database round trip happens until a tool asks for a service — and a database
@@ -84,9 +84,9 @@ public final class SpringConnectionContextFactory implements ConnectionContextFa
     }
 
     /**
-     * Registers a per-connection settings bean. It must be primary: the parent context still binds
-     * the same types from the environment as global defaults, and both show up as autowire
-     * candidates in the child.
+     * Registers a per-connection settings bean. It must be primary: the parent binds
+     * {@code JdbcMcpProperties} for the whole server, and both show up as autowire candidates in
+     * the child.
      */
     private static <T> void registerPrimary(AnnotationConfigApplicationContext context,
                                             Class<T> type, Supplier<T> value) {

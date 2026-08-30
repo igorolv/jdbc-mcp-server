@@ -8,10 +8,8 @@ import org.junit.jupiter.api.TestInstance;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.testcontainers.containers.PostgreSQLContainer;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
-import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
-import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
-import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
+import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionDefinition;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionsLoader;
 import ru.it_spectrum.ai.jdbc.mcp.connection.SpringConnectionContextFactory;
@@ -79,7 +77,6 @@ class PostgresMultiConnectionIntegrationTest {
         dataDir = Files.createTempDirectory("jdbc-mcp-multi-connection");
         Files.writeString(dataDir.resolve("connections.json"), """
                 {
-                  "defaultConnection": "orders",
                   "connections": {
                     "orders": {
                       "url": "%s",
@@ -104,20 +101,13 @@ class PostgresMultiConnectionIntegrationTest {
                 }
                 """.formatted(ORDERS.getJdbcUrl(), BILLING.getJdbcUrl(), UNREACHABLE_URL));
 
-        JdbcMcpProperties catalog = new JdbcMcpProperties(dataDir.toString(), "default");
-        ConnectionsLoader.Loaded loaded = ConnectionsLoader.load(
-                catalog.resolvedConnectionsFile(),
-                new JdbcProperties("", null, null, "", 30, 1000, 500, "strict",
-                        40, 0, 10_000, 5_000, 60_000),
-                catalog,
-                new UsageProperties(true, List.of(), List.of(), true, true, true, 1000),
-                new StructureSnapshotProperties(List.of(), 300),
+        List<ConnectionDefinition> definitions = ConnectionsLoader.load(
+                new JdbcMcpProperties(dataDir.toString()),
                 new JsonConfig().jdbcMcpObjectMapper(),
                 Map.of("ORDERS_PASSWORD", "orders")::get);
 
         parent = new AnnotationConfigApplicationContext(JsonConfig.class, JsonResponses.class);
-        connections = new ConnectionRegistry(loaded.definitions(), loaded.defaultConnection(),
-                new SpringConnectionContextFactory(parent));
+        connections = new ConnectionRegistry(definitions, new SpringConnectionContextFactory(parent));
         ObjectMapper mapper = parent.getBean(ObjectMapper.class);
         JsonResponses json = new JsonResponses(mapper);
         ToolErrors errors = new ToolErrors(json);
@@ -152,42 +142,37 @@ class PostgresMultiConnectionIntegrationTest {
 
     @Test
     void queriesGoToTheDatabaseNamedByTheConnectionArgument() {
-        QueryResult orders = queryTools.executeQuery(
+        QueryResult orders = queryTools.executeQuery("orders",
                 "SELECT current_database() AS db, count(*) AS n FROM orders_only",
-                null, null, null, null, "orders");
+                null, null, null, null);
         assertThat(orders.rows().getFirst()).containsEntry("db", "orders").containsEntry("n", 3L);
 
-        QueryResult billing = queryTools.executeQuery(
+        QueryResult billing = queryTools.executeQuery("billing",
                 "SELECT current_database() AS db, count(*) AS n FROM billing_only",
-                null, null, null, null, "billing");
+                null, null, null, null);
         assertThat(billing.rows().getFirst()).containsEntry("db", "billing").containsEntry("n", 1L);
-
-        // Omitting the connection lands on the configured default.
-        QueryResult byDefault = queryTools.executeQuery(
-                "SELECT current_database() AS db", null, null, null, null, null);
-        assertThat(byDefault.rows().getFirst()).containsEntry("db", "orders");
     }
 
     @Test
     void metadataOfOneConnectionDoesNotLeakIntoTheOther() {
-        TableDescription orders = metadataTools.describeTable("public", "orders_only", "orders");
+        TableDescription orders = metadataTools.describeTable("orders", "public", "orders_only");
         assertThat(orders.columns()).extracting("name").contains("sku");
 
-        TableDescription missing = metadataTools.describeTable("public", "orders_only", "billing");
+        TableDescription missing = metadataTools.describeTable("billing", "public", "orders_only");
         assertThat(missing.columns()).isNullOrEmpty();
 
-        assertThat(metadataTools.listTables("public", null, null, "billing").tables())
+        assertThat(metadataTools.listTables("billing", "public", null, null).tables())
                 .extracting("name").contains("billing_only").doesNotContain("orders_only");
     }
 
     @Test
     void eachConnectionKeepsItsOwnCatalogFile() {
-        RebuildCatalogResult orders = adminTools.rebuildCatalog("public", "orders");
+        RebuildCatalogResult orders = adminTools.rebuildCatalog("orders", "public");
         assertThat(orders.connection()).isEqualTo("orders");
         assertThat(orders.catalogFile()).isEqualTo(
                 dataDir.resolve("orders").resolve("orders.db").toAbsolutePath().toString());
 
-        RebuildCatalogResult billing = adminTools.rebuildCatalog("public", "billing");
+        RebuildCatalogResult billing = adminTools.rebuildCatalog("billing", "public");
         assertThat(billing.connection()).isEqualTo("billing");
         assertThat(billing.catalogFile()).isEqualTo(
                 dataDir.resolve("billing").resolve("billing.db").toAbsolutePath().toString());
@@ -203,17 +188,16 @@ class PostgresMultiConnectionIntegrationTest {
     @Test
     void anUnreachableConnectionFailsAloneAndListsAsUninitialisedUntilUsed() {
         ListConnectionsResult before = connectionTools.listConnections();
-        assertThat(before.defaultConnection()).isEqualTo("orders");
         assertThat(before.connections()).extracting(ConnectionInfo::name)
                 .containsExactly("orders", "billing", "down");
         assertThat(byName(before, "down").initialized()).isFalse();
 
-        assertThatThrownBy(() -> queryTools.executeQuery("SELECT 1", null, null, null, null, "down"))
+        assertThatThrownBy(() -> queryTools.executeQuery("down", "SELECT 1", null, null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"kind\":\"sql\"");
 
         // The healthy connections are unaffected by the broken one.
-        assertThat(queryTools.executeQuery("SELECT 1 AS one", null, null, null, null, "billing")
+        assertThat(queryTools.executeQuery("billing", "SELECT 1 AS one", null, null, null, null)
                 .rows()).hasSize(1);
 
         assertThat(byName(connectionTools.listConnections(), "down").initialized()).isTrue();
@@ -221,7 +205,15 @@ class PostgresMultiConnectionIntegrationTest {
 
     @Test
     void unknownConnectionNamesAreRejectedWithTheAvailableOnes() {
-        assertThatThrownBy(() -> queryTools.executeQuery("SELECT 1", null, null, null, null, "nope"))
+        assertThatThrownBy(() -> queryTools.executeQuery("nope", "SELECT 1", null, null, null, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("\"kind\":\"argument\"")
+                .hasMessageContaining("orders, billing, down");
+    }
+
+    @Test
+    void aMissingConnectionNameIsRejectedWithTheAvailableOnes() {
+        assertThatThrownBy(() -> queryTools.executeQuery(null, "SELECT 1", null, null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"kind\":\"argument\"")
                 .hasMessageContaining("orders, billing, down");

@@ -29,7 +29,7 @@ public final class TestConnections {
                 DatabaseKind.fromUrl(jdbc.url()), null);
     }
 
-    /** A registry over already-built contexts, the first of which is the default. */
+    /** A registry over already-built contexts. */
     public static ConnectionRegistry registry(ConnectionContext... contexts) {
         Map<String, ConnectionContext> byName = new LinkedHashMap<>();
         List<ConnectionDefinition> definitions = new ArrayList<>();
@@ -37,8 +37,7 @@ public final class TestConnections {
             byName.put(context.name(), context);
             definitions.add(context.definition());
         }
-        return new ConnectionRegistry(definitions, definitions.getFirst().name(),
-                definition -> byName.get(definition.name()));
+        return new ConnectionRegistry(definitions, definition -> byName.get(definition.name()));
     }
 
     /** A context over the given services, keyed by their runtime class. */

@@ -49,8 +49,8 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListSchemasResult listSchemas(
-            @McpToolParam(description = "Include system schemas. Default false.", required = false) Boolean includeSystem,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
+            @McpToolParam(description = "Include system schemas. Default false.", required = false) Boolean includeSystem
     ) {
         log.info("Tool call: listSchemas (includeSystem={})", includeSystem);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -71,10 +71,10 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListTablesResult listTables(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "Omit to use JDBC_DEFAULT_SCHEMA or the current schema.", required = false) String schema,
             @McpToolParam(description = "JDBC pattern ('%' any, '_' one character).", required = false) String namePattern,
-            @McpToolParam(description = "JDBC table types CSV (default TABLE,VIEW,MATERIALIZED VIEW): TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM", required = false) String types,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "JDBC table types CSV (default TABLE,VIEW,MATERIALIZED VIEW): TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM", required = false) String types
     ) {
         log.info("Tool call: listTables (schema={}, pattern={})", schema, namePattern);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -97,9 +97,9 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public TableDescription describeTable(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String table,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String table
     ) {
         log.info("Tool call: describeTable (schema={}, table={})", schema, table);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -123,10 +123,10 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String getTriggerDefinition(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
             @McpToolParam(description = "") String table,
-            @McpToolParam(description = "") String trigger,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String trigger
     ) {
         log.info("Tool call: getTriggerDefinition (schema={}, table={}, trigger={})", schema, table, trigger);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -153,9 +153,9 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String getViewDefinition(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String name,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String name
     ) {
         log.info("Tool call: getViewDefinition (schema={}, name={})", schema, name);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -179,9 +179,9 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListRoutinesResult listRoutines(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "JDBC name pattern, e.g. '%calculate%'.", required = false) String namePattern,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "JDBC name pattern, e.g. '%calculate%'.", required = false) String namePattern
     ) {
         log.info("Tool call: listRoutines (schema={}, pattern={})", schema, namePattern);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -202,9 +202,9 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public String getRoutineDefinition(
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = "") String name,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = "") String name
     ) {
         log.info("Tool call: getRoutineDefinition (schema={}, name={})", schema, name);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -228,8 +228,8 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public ListSequencesResult listSequences(
-            @McpToolParam(description = "", required = false) String schema,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
+            @McpToolParam(description = "", required = false) String schema
     ) {
         log.info("Tool call: listSequences (schema={})", schema);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
@@ -251,8 +251,8 @@ public class MetadataTools {
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true)
     )
     public SearchObjectsResult searchObjects(
-            @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String namePattern,
-            @McpToolParam(description = ToolConnections.CONNECTION_PARAM, required = false) String connection
+            @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
+            @McpToolParam(description = "Name pattern — plain substring (auto-wrapped in %..%) or explicit pattern with % / _") String namePattern
     ) {
         log.info("Tool call: searchObjects (pattern={})", namePattern);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

@@ -12,7 +12,7 @@ class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrat
 
     @Test
     void columnStatsReturnsBasicExtremes() {
-        ObjectNode result = object(distributionTools().columnStats(schema(), "ORDERS", "TOTAL", null));
+        ObjectNode result = object(distributionTools().columnStats(connection(), schema(), "ORDERS", "TOTAL"));
         assertThat(field(result, "totalRows").asInt()).isEqualTo(3);
         assertThat(field(result, "nonNullRows").asInt()).isEqualTo(3);
         assertThat(field(result, "distinctValues").asInt()).isEqualTo(3);
@@ -20,13 +20,13 @@ class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrat
 
     @Test
     void distributionAndHistogramExposeSkew() {
-        ObjectNode distribution = object(distributionTools().columnDistribution(schema(), "EVENTS", "STATUS", 5, null));
+        ObjectNode distribution = object(distributionTools().columnDistribution(connection(), schema(), "EVENTS", "STATUS", 5));
         assertThat(field(distribution, "totalRows").asInt()).isEqualTo(100);
         ObjectNode ok = (ObjectNode) findByField((ArrayNode) field(distribution, "values"), "value", "OK");
         assertThat(ok).isNotNull();
         assertThat(field(ok, "frequency").asInt()).isEqualTo(90);
 
-        ObjectNode histogram = object(distributionTools().columnHistogram(schema(), "EVENTS", "AMOUNT", null));
+        ObjectNode histogram = object(distributionTools().columnHistogram(connection(), schema(), "EVENTS", "AMOUNT"));
         assertThat(field(histogram, "percentileFunction").asText()).isEqualTo("percentile_cont");
         assertThat(field(histogram, "p50").asDouble())
                 .isBetween(field(histogram, "min").asDouble(), field(histogram, "max").asDouble());
@@ -34,19 +34,19 @@ class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrat
 
     @Test
     void nullRatioSelectivityAndJoinCardinalityReturnPlannerSignals() {
-        ObjectNode nullRatio = object(distributionTools().nullRatio(schema(), "EVENTS", null));
+        ObjectNode nullRatio = object(distributionTools().nullRatio(connection(), schema(), "EVENTS"));
         ObjectNode category = (ObjectNode) findByField((ArrayNode) field(nullRatio, "columns"), "column", "CATEGORY");
         assertThat(category).isNotNull();
         assertThat(field(category, "nullRows").asInt()).isEqualTo(10);
 
-        ObjectNode selectivity = object(distributionTools().estimateSelectivity(
-                schema(), "EVENTS", "status = 'FAIL'", null));
+        ObjectNode selectivity = object(distributionTools().estimateSelectivity(connection(),
+                schema(), "EVENTS", "status = 'FAIL'"));
         assertThat(field(selectivity, "estimatedRows").asLong())
                 .isLessThanOrEqualTo(field(selectivity, "baselineRows").asLong());
 
-        ObjectNode join = object(distributionTools().joinCardinality(
+        ObjectNode join = object(distributionTools().joinCardinality(connection(),
                 schema(), "CUSTOMERS", "ID",
-                schema(), "ORDERS", "CUSTOMER_ID", "INNER", null));
+                schema(), "ORDERS", "CUSTOMER_ID", "INNER"));
         assertThat(field(join, "joinType").asText()).isEqualTo("INNER");
         assertThat(field(join, "estimatedRows").asLong()).isGreaterThan(0L);
     }
@@ -54,7 +54,7 @@ class OracleIntegrationDistributionToolsTest extends AbstractOracleToolsIntegrat
     @Test
     void selectivityRejectsMultipleStatementsAtToolBoundary() {
         assertInvalidArgument(() ->
-                distributionTools().estimateSelectivity(schema(), "EVENTS", "status = 'OK'; DROP TABLE events", null),
+                distributionTools().estimateSelectivity(connection(), schema(), "EVENTS", "status = 'OK'; DROP TABLE events"),
                 "single boolean expression");
     }
 }

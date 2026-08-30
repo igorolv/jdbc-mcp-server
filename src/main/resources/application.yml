@@ -15,17 +15,13 @@ spring:
     exclude:
       - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
 
-# Top-level server data directory — all local storage is rooted here.
+# Top-level server data directory — all local storage is rooted here. Each connection gets its own
+# slot under <data-dir>/<connection>/ (usage-catalog/, logs/, the persisted snapshot).
 jdbc-mcp:
   data-dir: ${JDBC_MCP_DATA_DIR:${user.home}/.jdbc-mcp-server}
-  # Name of the local catalog (knowledge store) for the inspected database. It is the slot key
-  # under <data-dir>/<name>/ for everything we keep about this DB (usage-catalog/, logs/, and the
-  # future persisted snapshot). Defaults to "default". Run several DBs by launching several server
-  # instances, each with its own JDBC_MCP_CATALOG.
-  catalog-name: ${JDBC_MCP_CATALOG:default}
-  # JSON file describing the named connections this server serves. Defaults to
-  # <data-dir>/connections.json; when it is missing the server runs on the single JDBC_URL
-  # connection below, exactly as it did before multi-connection support.
+  # JSON file describing the named connections this server serves — the only place databases,
+  # credentials and their per-connection settings are configured. Defaults to
+  # <data-dir>/connections.json; startup fails when it is missing or defines no connection.
   connections-file: ${JDBC_MCP_CONNECTIONS_FILE:}
   resources:
     # Opt in to a catalog-qualified manifest, concrete snapshot tables, and table/column URI templates.
@@ -46,39 +42,3 @@ jdbc-mcp:
     schema-context: ${JDBC_MCP_TOOLS_SCHEMA_CONTEXT:true} # tableContext/joinPaths/schemaGraph/lint
     connections: ${JDBC_MCP_TOOLS_CONNECTIONS:true}      # listConnections
 
-# Global connection defaults. With no connections file these describe the single database the
-# server serves; with one they are the fallback for every field an entry does not set.
-jdbc:
-  url: ${JDBC_URL:}
-  username: ${JDBC_USERNAME:}
-  password: ${JDBC_PASSWORD:}
-  default-schema: ${JDBC_DEFAULT_SCHEMA:}
-  query-timeout-seconds: ${JDBC_QUERY_TIMEOUT_SECONDS:30}
-  max-rows: ${JDBC_MAX_ROWS:1000}
-  fetch-size: ${JDBC_FETCH_SIZE:500}
-  readonly-guard: ${JDBC_READONLY_GUARD:strict}
-  pool-maximum-size: ${JDBC_POOL_MAX_SIZE:40}
-  pool-minimum-idle: ${JDBC_POOL_MIN_IDLE:0}
-  connection-timeout-ms: ${JDBC_CONNECTION_TIMEOUT_MS:10000}
-  validation-timeout-ms: ${JDBC_VALIDATION_TIMEOUT_MS:5000}
-  idle-timeout-ms: ${JDBC_POOL_IDLE_TIMEOUT_MS:60000}
-
-structure-snapshot:
-  # Schemas to front-load into the persistent structure snapshot on a full rebuild.
-  # CSV; empty falls back to the default schema (like usage.native-schemas).
-  schemas: ${JDBC_STRUCTURE_SNAPSHOT_SCHEMAS:}
-  # Oracle only: timeout for the DBMS_XMLGEN-backed bulk column/default query during rebuild.
-  # Kept separate from JDBC_QUERY_TIMEOUT_SECONDS so ordinary tool calls remain responsive.
-  # 0 disables the JDBC statement timeout for this query.
-  oracle-column-query-timeout-seconds: ${JDBC_STRUCTURE_SNAPSHOT_ORACLE_COLUMN_QUERY_TIMEOUT_SECONDS:300}
-
-usage:
-  catalog-enabled: ${JDBC_USAGE_CATALOG_ENABLED:true}
-  # Additional directories, JSON files, or zip archives with canonical QueryUsage records.
-  # The default {dataDir}/usage-catalog is always included.
-  catalog-paths: ${JDBC_USAGE_CATALOG_PATHS:}
-  native-schemas: ${JDBC_USAGE_NATIVE_SCHEMAS:}
-  native-include-views: ${JDBC_USAGE_NATIVE_INCLUDE_VIEWS:true}
-  native-include-routines: ${JDBC_USAGE_NATIVE_INCLUDE_ROUTINES:true}
-  native-include-triggers: ${JDBC_USAGE_NATIVE_INCLUDE_TRIGGERS:true}
-  native-max-objects: ${JDBC_USAGE_NATIVE_MAX_OBJECTS:10000}

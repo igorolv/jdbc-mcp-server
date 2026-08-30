@@ -13,8 +13,8 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void returnsTableNeighborhood() {
-        ObjectNode context = object(schemaContextTools().tableContext(
-                schema(), "ORDERS", 1, true, false, false, null));
+        ObjectNode context = object(schemaContextTools().tableContext(connection(),
+                schema(), "ORDERS", 1, true, false, false));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         assertThat(findByField(tables, "name", "ORDERS")).isNotNull();
@@ -28,8 +28,8 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void findsFkJoinPath() {
-        ObjectNode result = object(schemaContextTools().findJoinPaths(
-                schema(), "LINE_ITEMS", schema(), "CUSTOMERS", 4, 5, 100, false, null));
+        ObjectNode result = object(schemaContextTools().findJoinPaths(connection(),
+                schema(), "LINE_ITEMS", schema(), "CUSTOMERS", 4, 5, 100, false));
 
         assertThat(field(result, "pathCount").asInt()).isGreaterThanOrEqualTo(1);
         ArrayNode paths = (ArrayNode) field(result, "paths");
@@ -41,8 +41,8 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void lintsSchemaForSqlAuthoringRisks() {
-        ObjectNode result = object(schemaContextTools().schemaLint(
-                schema(), null, null, 100, 200, null));
+        ObjectNode result = object(schemaContextTools().schemaLint(connection(),
+                schema(), null, null, 100, 200));
 
         ArrayNode findings = (ArrayNode) field(result, "findings");
         assertThat(finding(findings, "fkWithoutIndex", "ORDERS", "CUSTOMER_ID")).isNotNull();
@@ -52,7 +52,7 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void returnsCompactSchemaBrief() {
-        String brief = schemaContextTools().schemaBrief(schema(), null, 100, null);
+        String brief = schemaContextTools().schemaBrief(connection(), schema(), null, 100);
 
         assertThat(brief).contains("Schema brief");
         assertThat(brief).contains("Tables");
@@ -65,8 +65,8 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void returnsRelationshipGraphMetrics() {
-        ObjectNode graph = object(schemaContextTools().schemaGraph(
-                schema(), 100, "LINE_ITEMS", "CUSTOMERS", 4, null));
+        ObjectNode graph = object(schemaContextTools().schemaGraph(connection(),
+                schema(), 100, "LINE_ITEMS", "CUSTOMERS", 4));
 
         assertThat(field(graph, "nodeCount").asInt()).isGreaterThanOrEqualTo(5);
         assertThat(field(graph, "declaredEdgeCount").asInt()).isEqualTo(2);
@@ -84,8 +84,8 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void returnsQueryAuthoringContext() {
-        ObjectNode context = object(schemaContextTools().queryContext(
-                schema(), "customer orders total", "CUSTOMERS,ORDERS", true, 10, null));
+        ObjectNode context = object(schemaContextTools().queryContext(connection(),
+                schema(), "customer orders total", "CUSTOMERS,ORDERS", true, 10));
 
         ArrayNode tables = (ArrayNode) field(context, "tables");
         ObjectNode customers = (ObjectNode) findByField(tables, "name", "CUSTOMERS");
@@ -105,7 +105,7 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void returnsSchemaGraphDot() {
-        String dot = schemaContextTools().schemaGraphDot(schema(), null, null);
+        String dot = schemaContextTools().schemaGraphDot(connection(), schema(), null);
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("CUSTOMERS");
@@ -117,7 +117,7 @@ class OracleIntegrationSchemaContextToolsTest extends AbstractOracleToolsIntegra
 
     @Test
     void returnsSchemaGraphDotFiltered() {
-        String dot = schemaContextTools().schemaGraphDot(schema(), "CUSTOMERS,ORDERS", null);
+        String dot = schemaContextTools().schemaGraphDot(connection(), schema(), "CUSTOMERS,ORDERS");
 
         assertThat(dot).startsWith("digraph");
         assertThat(dot).contains("CUSTOMERS");
