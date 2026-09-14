@@ -126,7 +126,8 @@ URL shapes: PostgreSQL `jdbc:postgresql://<host>:5432/<database>`, Oracle
 `jdbc:sqlserver://<host>:1433;databaseName=<database>`. The engine is detected from the prefix.
 
 **This file is the only place a database is configured.** There are no `JDBC_URL` / `JDBC_USERNAME` /
-`JDBC_PASSWORD` variables; startup fails when the file is missing or defines no connection. The
+`JDBC_PASSWORD` variables. A missing or empty file starts the server with no connections (warning
+logged, `listConnections` returns an empty list); a malformed file is a startup error. The
 object key is the connection name, the name of the local catalog directory `<data-dir>/<name>/`
 (`<name>.db`, `usage-catalog/`), and the value every tool call passes as `connection`. The single
 server process writes its shared rolling log under `<data-dir>/logs/`.

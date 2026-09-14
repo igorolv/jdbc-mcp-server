@@ -189,21 +189,15 @@ class ConnectionsLoaderTest {
     }
 
     @Test
-    void aMissingFileIsAClearStartupError() {
-        assertThatThrownBy(() -> load(null))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("No database connections configured")
-                .hasMessageContaining("connections.json");
+    void aMissingFileStartsTheServerWithNoConnections() throws IOException {
+        assertThat(load(null)).isEmpty();
     }
 
     @Test
-    void aFileWithoutConnectionsIsAClearStartupError() {
-        assertThatThrownBy(() -> load("""
+    void aFileWithoutConnectionsStartsTheServerWithNoConnections() throws IOException {
+        assertThat(load("""
                 {"connections": {}}
-                """))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("No database connections configured")
-                .hasMessageContaining("connections.json");
+                """)).isEmpty();
     }
 
     @Test

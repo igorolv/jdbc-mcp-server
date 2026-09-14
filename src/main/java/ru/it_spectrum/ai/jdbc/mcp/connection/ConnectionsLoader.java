@@ -24,6 +24,10 @@ import java.util.function.UnaryOperator;
  * field falls back to the {@code DEFAULTS} of the properties record it belongs to. String values may
  * reference environment variables as {@code ${VAR}} — see {@link EnvironmentPlaceholders}.
  *
+ * <p>A missing file, or one that defines no connection, is not a startup error: the server comes
+ * up with an empty registry so an MCP client can still list tools and {@code listConnections} can
+ * say that nothing is configured. A file that is present but malformed still fails startup.
+ *
  * <p>Nothing here opens a database connection or a catalog file.
  */
 public final class ConnectionsLoader {
@@ -33,14 +37,15 @@ public final class ConnectionsLoader {
     private ConnectionsLoader() {
     }
 
-    /** @return configured connections, in file order */
+    /** @return configured connections, in file order; empty when the file is missing or defines none */
     public static List<ConnectionDefinition> load(JdbcMcpProperties server, ObjectMapper mapper,
                                                   UnaryOperator<String> env) {
         Path connectionsFile = server.resolvedConnectionsFile();
         if (!Files.exists(connectionsFile)) {
-            throw new IllegalStateException("No database connections configured: there is no file at "
-                    + connectionsFile + ". Create it (or point JDBC_MCP_CONNECTIONS_FILE elsewhere) "
-                    + "with at least one entry under \"connections\".");
+            log.warn("No database connections configured: there is no file at {}. Create it (or point "
+                    + "JDBC_MCP_CONNECTIONS_FILE elsewhere) with at least one entry under "
+                    + "\"connections\". Starting with no connections.", connectionsFile);
+            return List.of();
         }
 
         ConnectionsFile file = read(connectionsFile, mapper);
@@ -57,8 +62,9 @@ public final class ConnectionsLoader {
             definitions.put(name, fromFile(name, entry.getValue(), server, env));
         }
         if (definitions.isEmpty()) {
-            throw new IllegalStateException("No database connections configured: " + connectionsFile
-                    + " defines none under \"connections\".");
+            log.warn("No database connections configured: {} defines none under \"connections\". "
+                    + "Starting with no connections.", connectionsFile);
+            return List.of();
         }
 
         logConfiguration(definitions.values());

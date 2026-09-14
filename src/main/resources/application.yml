@@ -22,7 +22,8 @@ jdbc-mcp:
   data-dir: ${JDBC_MCP_DATA_DIR:${user.home}/.jdbc-mcp-server}
   # JSON file describing the named connections this server serves — the only place databases,
   # credentials and their per-connection settings are configured. Defaults to
-  # <data-dir>/connections.json; startup fails when it is missing or defines no connection.
+  # <data-dir>/connections.json. A missing or empty file starts the server with no connections; a
+  # malformed one fails startup.
   connections-file: ${JDBC_MCP_CONNECTIONS_FILE:}
   resources:
     # Opt in to a catalog-qualified manifest, concrete snapshot tables, and table/column URI templates.

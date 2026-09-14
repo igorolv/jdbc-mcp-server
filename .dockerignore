@@ -1,0 +1,16 @@
+.git
+.gradle
+.gradle-user
+build
+.idea
+.vscode
+*.iml
+.claude
+.qwen
+docs
+examples
+scripts
+*.md
+.env
+.env.*
+application-local.yml

@@ -86,7 +86,10 @@ credentials, schema, timeouts, limits — comes from the environment.
 ### The connections file
 
 Default path `~/.jdbc-mcp-server/connections.json` (`<data-dir>/connections.json`), overridden with
-`JDBC_MCP_CONNECTIONS_FILE`. Startup fails when the file is missing or defines no connection.
+`JDBC_MCP_CONNECTIONS_FILE`. When the file is missing or defines no connection the server still
+starts (so an MCP client can list its tools), logs a warning, and `listConnections` returns an empty
+list; every other tool then reports that no connection is available. A file that is present but
+malformed is a startup error.
 
 ```json
 {
@@ -822,7 +825,7 @@ environment configures only the server process itself:
 
 | Variable | Required | Description |
 |---|---|---|
-| `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. Startup fails when the file is missing or defines no connection |
+| `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. A missing or empty file starts the server with no connections (warning logged); a malformed one is a startup error |
 | `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Each connection gets its own subdirectory under it |
 | `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest plus concrete table resources and table/column resource templates; default `false` |
 | `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
@@ -844,6 +847,23 @@ java -jar jdbc-mcp-server.jar
 
 The server immediately starts listening for MCP over stdin/stdout. Logs are written to stderr. Tool
 calls address a database by the name it has in the file: `"connection": "myapp"`.
+
+### Docker
+
+The image is published to GHCR with every release. Mount the directory holding `connections.json`
+at `/data` — it is also where the server keeps its local catalogs and logs:
+
+```bash
+docker run -i --rm -v ~/.jdbc-mcp-server:/data ghcr.io/igorolv/jdbc-mcp-server:latest
+```
+
+The same command is what an MCP client should launch (`-i` keeps stdin open for the stdio
+transport). JDBC URLs in `connections.json` must be reachable from inside the container: use the
+database host name, not `localhost`, or add `--network host` on Linux. To build the image locally:
+
+```bash
+docker build -t jdbc-mcp-server .
+```
 
 ## Connecting an AI Client
 
