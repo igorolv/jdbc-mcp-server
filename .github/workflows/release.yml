@@ -1,0 +1,49 @@
+name: Release
+
+# Push a tag like v0.1.0 to build the fat jar and publish it as a GitHub Release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version from tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit tests
+        run: ./gradlew test --no-daemon -Pversion=${{ steps.version.outputs.value }}
+
+      - name: Build fat jar
+        run: ./gradlew bootJar --no-daemon -Pversion=${{ steps.version.outputs.value }}
+
+      - name: Attach checksum
+        run: |
+          cd build/libs
+          sha256sum jdbc-mcp-server.jar > jdbc-mcp-server.jar.sha256
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            build/libs/jdbc-mcp-server.jar
+            build/libs/jdbc-mcp-server.jar.sha256

@@ -1,5 +1,11 @@
 # JDBC MCP Server
 
+[![CI](https://github.com/igorolv/jdbc-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/igorolv/jdbc-mcp-server/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/igorolv/jdbc-mcp-server?include_prereleases)](https://github.com/igorolv/jdbc-mcp-server/releases/latest)
+[![License](https://img.shields.io/github/license/igorolv/jdbc-mcp-server)](LICENSE)
+[![Java 21](https://img.shields.io/badge/Java-21%2B-blue?logo=openjdk)](https://adoptium.net/)
+[![MCP](https://img.shields.io/badge/MCP-server-8A2BE2)](https://modelcontextprotocol.io/)
+
 A local MCP server for read-only access to PostgreSQL, Oracle, and Microsoft SQL Server databases.
 It lets AI agents such as Claude Code, Cursor, VS Code Copilot, and others write SQL queries,
 inspect execution plans, and explore database structure: tables, columns, indexes, foreign keys,
@@ -19,10 +25,12 @@ databases actually used.
 
 ## Quickstart
 
-**1. Build the jar** (JDK 21+; all JDBC drivers are bundled):
+**1. Get the jar** — download `jdbc-mcp-server.jar` from the
+[latest release](https://github.com/igorolv/jdbc-mcp-server/releases/latest) (JDK 21+ required;
+all JDBC drivers are bundled), or build it yourself:
 
 ```bash
-./gradlew bootJar
+./gradlew bootJar   # → build/libs/jdbc-mcp-server.jar
 ```
 
 **2. Describe your databases** in `~/.jdbc-mcp-server/connections.json`:
@@ -828,8 +836,11 @@ read-only guard, snapshot and usage options — are fields of its `connections.j
 With [`connections.json`](#databases-and-credentials) in place:
 
 ```bash
-java -jar build/libs/jdbc-mcp-server.jar
+java -jar jdbc-mcp-server.jar
 ```
+
+(Use `build/libs/jdbc-mcp-server.jar` if you built it locally, or the file downloaded from
+[Releases](https://github.com/igorolv/jdbc-mcp-server/releases/latest).)
 
 The server immediately starts listening for MCP over stdin/stdout. Logs are written to stderr. Tool
 calls address a database by the name it has in the file: `"connection": "myapp"`.
