@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/github/license/igorolv/jdbc-mcp-server)](LICENSE)
 [![Java 21](https://img.shields.io/badge/Java-21%2B-blue?logo=openjdk)](https://adoptium.net/)
 [![MCP](https://img.shields.io/badge/MCP-server-8A2BE2)](https://modelcontextprotocol.io/)
+[![Glama score](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server/badges/score.svg)](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server)
 
 A local MCP server for read-only access to PostgreSQL, Oracle, and Microsoft SQL Server databases.
 It lets AI agents such as Claude Code, Cursor, VS Code Copilot, and others write SQL queries,
