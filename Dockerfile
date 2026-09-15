@@ -12,7 +12,8 @@ WORKDIR /src
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle ./gradle
 # A Windows checkout may hand us gradlew with CRLF endings and no executable bit.
-RUN sed -i 's/$//' gradlew && chmod +x gradlew     && ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
+RUN sed -i 's/
+$//' gradlew && chmod +x gradlew     && ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
 
 COPY src ./src
 RUN ./gradlew --no-daemon bootJar
@@ -20,7 +21,8 @@ RUN ./gradlew --no-daemon bootJar
 FROM eclipse-temurin:21-jre
 LABEL org.opencontainers.image.source="https://github.com/igorolv/jdbc-mcp-server" \
       org.opencontainers.image.description="Read-only JDBC MCP server for PostgreSQL, Oracle, and SQL Server" \
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.licenses="Apache-2.0" \
+      io.modelcontextprotocol.server.name="io.github.igorolv/jdbc-mcp-server"
 
 RUN useradd --system --create-home --uid 10001 mcp \
     && mkdir -p /data && chown mcp:mcp /data
