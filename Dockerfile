@@ -12,8 +12,8 @@ WORKDIR /src
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle ./gradle
 # A Windows checkout may hand us gradlew with CRLF endings and no executable bit.
-RUN sed -i 's/
-$//' gradlew && chmod +x gradlew     && ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
+RUN sed -i 's/\r$//' gradlew && chmod +x gradlew \
+    && ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
 
 COPY src ./src
 RUN ./gradlew --no-daemon bootJar
