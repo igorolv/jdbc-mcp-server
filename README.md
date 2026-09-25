@@ -8,34 +8,14 @@
 [![Glama score](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server/badges/score.svg)](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server)
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/igorolv/jdbc-mcp-server)
 
-A local MCP server that gives AI agents — Claude Code, Codex CLI, OpenCode, VS Code with GitHub
-Copilot, Cursor and other MCP clients — **read-only** access to PostgreSQL, Oracle, Microsoft SQL Server, Firebird and SQLite, and,
-in [generic mode](#generic-jdbc), to any other database with a JDBC driver. Agents use it to explore
-the schema, write SQL against real tables and columns, inspect execution plans and audit indexes
-instead of guessing.
+MCP server (stdio) that exposes read-only access to relational databases over JDBC: schema
+metadata, `SELECT` execution, execution plans, statistics and index analysis. Built-in dialects
+for PostgreSQL, Oracle, SQL Server, Firebird and SQLite (drivers bundled); other databases are
+served through `DatabaseMetaData` with an external driver.
 
-- **Five engines in one jar, plus any JDBC driver.** PostgreSQL, Oracle, SQL Server, Firebird
-  (Jaybird) and SQLite drivers are bundled. Anything else — MySQL, MariaDB, H2, Db2, … — runs in
-  generic mode with its driver jar.
-  See [Supported Databases](#supported-databases).
-- **Read-only by design.** Every statement passes an AST-based guard; connections are read-only at
-  the JDBC, session or file level where the engine allows it; credentials never sit in the
-  environment where an agent could pick them up. See [Read-only Protection](#read-only-protection).
-- **Many databases, one tool manifest.** Name your databases in one
-  [`connections.json`](#configuring-connections) and pass `connection` to any tool. Pools open only
-  for databases actually used.
-- **49 tools built for agents.** One-call table descriptions (`describeTable`), ready-made schema
-  context packets, FK join paths, compact plan summaries, planner selectivity estimates, index and
-  schema audits, benchmarks. See [MCP Tools](#mcp-tools).
-- **Knows how the data is used.** A local [usage catalog](#usage-catalog) indexes known application
-  and report queries with their business meaning, so undeclared joins and field semantics come with
-  evidence.
-- **Fast on repeat.** Structural metadata is kept in a local SQLite
-  [structure snapshot](#persistent-structure-snapshot) that several agent processes share.
-- **Fits small models.** [Tool groups](#tool-groups) can be switched off to shrink the manifest for
-  small-context local models.
-
-**Contents:** [Why This Exists](#why-this-exists) ·
+**Contents:** [Features](#features) ·
+[Scope and Limitations](#scope-and-limitations) ·
+[Typical Workflows](#typical-workflows) ·
 [Quickstart](#quickstart) ·
 [Supported Databases](#supported-databases) ·
 [Configuring Connections](#configuring-connections) ·
@@ -52,60 +32,43 @@ instead of guessing.
 [Troubleshooting](#troubleshooting) ·
 [License](#license)
 
-## Why This Exists
+## Features
 
-Scenario: you ask an LLM to "check the database and show how many orders we had by status last
-month." Without this server, the LLM may:
+- **Engines:** PostgreSQL 11+, Oracle 12c+, SQL Server 2012+, Firebird 3+, SQLite; generic JDBC
+  via `driverPath`. Capabilities per engine: [Supported Databases](#supported-databases).
+- **Write protection:** JSqlParser AST guard (single `SELECT` / `WITH` / `EXPLAIN`), plus
+  session-, transaction- or file-level read-only mode where the engine supports it. Details:
+  [Read-only Protection](#read-only-protection).
+- **Connections:** any number of databases in one [`connections.json`](#configuring-connections);
+  every tool takes a `connection` argument; pools are created on first use. Credentials are not
+  read from the environment.
+- **Tools:** 49, in 11 [groups](#tool-groups) that can be disabled individually: metadata, query
+  execution, plan analysis, column distribution and selectivity, table and index statistics,
+  schema context, benchmarks, usage catalog. Reference: [MCP Tools](#mcp-tools).
+- **Local catalog:** per-connection SQLite file with a persistent
+  [structure snapshot](#persistent-structure-snapshot) and an index of known application queries
+  ([usage catalog](#usage-catalog)).
+- **Clients:** any MCP client with stdio transport; configuration examples for Claude Code, Codex
+  CLI, OpenCode, VS Code, Copilot CLI and Cursor in
+  [Connecting an AI Client](#connecting-an-ai-client).
 
-- invent table and column names;
-- miss the real schema details, such as nullable fields, types, and foreign keys;
-- accidentally generate a `DELETE` or `TRUNCATE` while "reasoning."
+## Scope and Limitations
 
-With this server, the LLM can:
+- Read-only: no DML, DDL or migrations; `EXPLAIN ANALYZE` (PostgreSQL) executes the query inside a
+  read-only transaction.
+- stdio transport only; Java 21+.
+- Non-JDBC databases are not supported.
+- Integration tests run in CI against PostgreSQL 16, Oracle 23ai Free, SQL Server 2022 and
+  Firebird 3 (Testcontainers).
 
-1. call `schemaBrief` to discover the schema map, or `queryContext` to get ready-to-use detailed context: tables, columns, relationships, and constraints;
-2. call `describeTable` for everything about one table in a single call — columns with types, nullability, defaults and comments, primary and unique keys, indexes, foreign keys in both directions, CHECK constraints with their allowed values, and triggers;
-3. widen the view with `tableContext` around a table or `findJoinPaths` for JOIN path discovery;
-4. write a query and optionally call `inspectQuery`, `queryLint`, or `resolveQueryLineage` for AST, metadata, and view/routine lineage checks;
-5. call `validateQuery` with the same `params` or `namedParams` that will be used for execution, validating syntax without running the query;
-6. call `explainQuery` when a plan is needed;
-7. call `executeQuery` to fetch data.
+## Typical Workflows
 
-Any non-SELECT query is blocked before it reaches the database.
+Query authoring: `listConnections` → `schemaBrief` or `queryContext` → `describeTable` →
+`findJoinPaths` → `validateQuery` → `executeQuery`.
 
-Second scenario: "this report takes 40 seconds — why, and what do we do about it?" Without the
-server, an LLM falls back on rules of thumb — "add an index on the filter column" — with no idea
-whether the table holds a thousand rows or a hundred million, or which predicate actually narrows
-anything down. With it, the agent can work through the problem the way a DBA would:
-
-1. `analyzePlan` instead of a raw plan dump: the most expensive nodes, full scans of large tables,
-   planner estimates that miss reality by orders of magnitude (`analyze=true` on PostgreSQL),
-   nested loops over large outer inputs, sorts spilling to disk;
-2. `tableStats` and `indexStats` — how big the tables really are, which indexes exist and, where the
-   engine tracks it, how often they are scanned, dead tuples, when statistics were last gathered;
-3. `estimateSelectivity`, `joinCardinality`, `columnDistribution`, `columnHistogram`, `nullRatio` —
-   which predicate is selective, how skewed the values are, how many rows a join will produce;
-   on PostgreSQL, Oracle and SQL Server the estimates come from the planner, without running the
-   query;
-4. `fkIndexCoverage`, `redundantIndexes`, `unusedIndexes` (PostgreSQL), `schemaLint` — foreign keys
-   without a supporting index (with the `CREATE INDEX` column list ready), indexes that duplicate
-   a longer one, indexes nobody uses;
-5. `benchmarkQuery` and `timedQuery` — cold and warm timings of the rewrite against the original,
-   plus `pg_stat_statements` deltas on PostgreSQL.
-
-The outcome is a concrete proposal — this composite index with the most selective column first,
-this rewrite of the join — backed by numbers from your database instead of folklore. The agent
-measures, it never changes anything: creating the index stays your decision.
-
-Beyond live schema introspection, the server also keeps a local **usage catalog** of known SQL
-queries used by applications and reports against the inspected database, together with their
-business context — parameter meanings, output column descriptions, and where each output is
-rendered (Excel cell, dashboard widget, BI Publisher region). This lets the LLM answer questions
-like *"which production reports already touch this column?"* and *"what business label does this
-field have in the customer card?"* against a curated body of evidence instead of guessing from
-names alone. The catalog is also the source of the typed three-layer `evidence` bundle on
-relationship edges, so undeclared joins observed in production queries are treated as first-class
-hints alongside declared FKs. See [Usage Catalog](#usage-catalog).
+Plan and index analysis: `analyzePlan` → `tableStats`, `indexStats` → `estimateSelectivity`,
+`joinCardinality`, `columnDistribution` → `fkIndexCoverage`, `redundantIndexes`,
+`unusedIndexes` → `benchmarkQuery`.
 
 ## Quickstart
 
@@ -134,8 +97,8 @@ all JDBC drivers are bundled), or build it yourself:
 
 Entries for Oracle, SQL Server, Firebird, SQLite and generic JDBC look the same — see
 [the connections file](#the-connections-file). Use a
-[read-only database user](#maximum-protection-use-a-read-only-database-user); five minutes there
-outweighs every other protection in this server.
+[read-only database user](#maximum-protection-use-a-read-only-database-user): it is the only
+protection that does not depend on this server.
 
 **3. Register the server** with your MCP client — with no database settings in the client config:
 
@@ -464,8 +427,8 @@ elsewhere. The directory around it is the server's data directory: each connecti
 `jdbc:oracle:`, `jdbc:sqlserver:`, `jdbc:firebirdsql:` / `jdbc:firebird:`, `jdbc:sqlite:`). Any other
 URL needs a `driverPath` and is served as [generic JDBC](#generic-jdbc); `dialect` overrides the
 detection. `description` is free text returned by `listConnections`, so an agent can pick a database
-by meaning rather than by name — worth filling in, including the stand and any caution ("PRODUCTION
-— keep queries small").
+by meaning rather than by name; include the stand and any restriction ("PRODUCTION — keep queries
+small").
 
 When the file is missing or defines no connection the server still starts (so an MCP client can list
 its tools), logs a warning, and `listConnections` returns an empty list; every other tool then
@@ -573,9 +536,8 @@ One server process can serve any number of named databases. The tool manifest st
 and a database's pool, local catalog and services are created the first time something actually asks
 for that connection.
 
-This matters at scale: registering fifteen MCP server instances puts fifteen tool manifests into the
-agent's context and fifteen JVMs in memory, when the session may end up touching two of the
-databases.
+With one registered instance per database, each instance adds its own tool manifest to the agent's
+context and runs its own JVM, whether or not the session uses that database.
 
 **Choosing a connection.** There is no default connection: every tool call names the database it
 means in its first argument, including installations that serve exactly one. A missing or unknown
@@ -648,9 +610,9 @@ error message and its cause is listed in
 
 The server is a local stdio process, so every MCP client registers it the same way: the command is
 `java`, the arguments are `-jar <absolute-path>/jdbc-mcp-server.jar`, and there is no environment to
-set. The databases come from [`connections.json`](#configuring-connections), and keeping
-credentials out of the client config is
-[the point](#why-credentials-live-in-a-file-not-in-environment-variables). Add
+set. The databases come from [`connections.json`](#configuring-connections); credentials are kept
+out of the client config on purpose — see
+[why](#why-credentials-live-in-a-file-not-in-environment-variables). Add
 `JDBC_MCP_CONNECTIONS_FILE` only if you keep the file somewhere other than the default path.
 
 | Client | Where the server is registered |
@@ -1044,10 +1006,12 @@ the connected schema's views, routines and triggers. At runtime the server parse
 builds a persistent SQLite index with extracted tables / columns / equi-join pairs as facts. JSON
 files remain authoritative for file-backed records; native records are refreshed from live metadata.
 
-**Why this exists.** The metadata tools answer "what tables and columns exist". The usage catalog
-answers "how are they actually used by applications". With both, an LLM can replace guesses about
-undeclared joins with evidence-based reasoning ("these two columns are joined in 17 production
-reports, here are their uids").
+**Purpose.** The metadata tools answer "what tables and columns exist"; the usage catalog answers
+"how are they used by applications". It supports lookups such as "which reports reference this
+column" and "which business label does this output field carry", and it feeds the `observedQuery`
+and `semanticUsage` layers of the relationship `evidence` bundle, so equi-joins seen in stored
+queries appear next to declared foreign keys (for example, "these two columns are joined in 17
+stored report queries", with their uids).
 
 **Identity.** Each query is keyed by `(source.kind, source.path, source.unit)`. Diagnostics and
 evidence render this key as:
@@ -1293,8 +1257,8 @@ so that an agent does not casually acquire them.
 
 ### Maximum Protection: Use a Read-only Database User
 
-If you can spend five minutes, create a dedicated user with read-only permissions. This is the
-strongest guarantee even if the guard is accidentally disabled.
+A dedicated user with read-only permissions keeps the database protected even when the guard is
+disabled or bypassed.
 
 **PostgreSQL:**
 
