@@ -84,4 +84,9 @@ class OracleIntegrationMetadataToolsTest extends AbstractOracleToolsIntegrationT
         assertThat(findByField(search, "name", "CUSTOMERS")).isNotNull();
         assertThat(findByField(search, "name", "V_CUSTOMER_TOTALS")).isNotNull();
     }
+
+    @Test
+    void anUnknownTableIsNotFoundRatherThanAnEmptyDescription() {
+        assertUnknownTableIsNotFound("ORDERS", "NO_SUCH_TABLE");
+    }
 }

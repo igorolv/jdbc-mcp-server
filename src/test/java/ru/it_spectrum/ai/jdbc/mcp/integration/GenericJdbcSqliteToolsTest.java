@@ -325,4 +325,9 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
                 null, "orders", null, "customers", null, null, null, false));
         assertThat(((ArrayNode) field(paths, "paths")).size()).isGreaterThan(0);
     }
+
+    @Test
+    void anUnknownTableIsNotFoundRatherThanAnEmptyDescription() {
+        assertUnknownTableIsNotFound("orders", "no_such_table");
+    }
 }

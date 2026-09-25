@@ -48,6 +48,21 @@ public class PassThroughStructureSnapshotStore implements StructureSnapshotStore
     }
 
     @Override
+    public List<String> snapshotSchemaNames(String prefix, int limit) {
+        return List.of();
+    }
+
+    @Override
+    public List<String> snapshotTableNames(String schema, String prefix, int limit) {
+        return List.of();
+    }
+
+    @Override
+    public List<String> snapshotColumnNames(String schema, String table, String prefix, int limit) {
+        return List.of();
+    }
+
+    @Override
     public void saveAll(Collection<TableDescription> tables) {
         // no-op
     }

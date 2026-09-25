@@ -38,7 +38,7 @@ class SchemaTableContextService extends SchemaContextSupport {
         boolean incoming = includeIncoming == null || includeIncoming;
         boolean observed = defaultIncludeObserved(includeObserved);
 
-        TableDescription root = metadata.describeTable(schema, table);
+        TableDescription root = metadata.requireTable(schema, table);
         String rootSchema = root.schema();
         String rootTable = root.name();
 

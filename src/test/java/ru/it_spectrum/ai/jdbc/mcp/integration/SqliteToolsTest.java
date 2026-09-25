@@ -278,4 +278,9 @@ class SqliteToolsTest extends AbstractToolsIntegrationTest {
         array.forEach(node -> out.add(node.get(fieldName).asText()));
         return out;
     }
+
+    @Test
+    void anUnknownTableIsNotFoundRatherThanAnEmptyDescription() {
+        assertUnknownTableIsNotFound("orders", "no_such_table");
+    }
 }

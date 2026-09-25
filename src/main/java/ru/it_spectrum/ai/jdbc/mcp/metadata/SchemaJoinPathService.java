@@ -40,10 +40,10 @@ class SchemaJoinPathService extends SchemaContextSupport {
         int tableLimit = clamp(scanLimit, MAX_TABLES_LIMIT, 1, MAX_TABLES_LIMIT);
         boolean observed = defaultIncludeObserved(includeObserved);
 
-        TableDescription fromInfo = metadata.describeTable(fromSchema, fromTable);
+        TableDescription fromInfo = metadata.requireTable(fromSchema, fromTable);
         String effectiveFromSchema = fromInfo.schema();
         String effectiveFromTable = fromInfo.name();
-        TableDescription toInfo = metadata.describeTable(toSchema, toTable);
+        TableDescription toInfo = metadata.requireTable(toSchema, toTable);
         String effectiveToSchema = toInfo.schema();
         String effectiveToTable = toInfo.name();
 

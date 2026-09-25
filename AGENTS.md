@@ -38,8 +38,10 @@ jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
 
 The catalog segment is the connection name, UTF-8 percent-encoded and fixed per connection; it is not
 a client-selectable template argument, and a read resolves the connection from the URI it was given.
-Resources are published for every configured connection that already has a local catalog file. They
-are disabled by default; set `JDBC_MCP_RESOURCES_ENABLED=true` to register them.
+Resources are published for every usable configured connection. Tables are not listed one by one;
+`completion/complete` on the template arguments offers schema, table and column names from the local
+snapshot (empty until the connection has a catalog). A missing table or column is error `-32002`.
+They are disabled by default; set `JDBC_MCP_RESOURCES_ENABLED=true` to register them.
 
 ## Code style: typed response models
 
@@ -590,7 +592,7 @@ All tools share one error shape — a JSON object with at minimum `error` and `k
 | `argument` | Tool argument was missing or malformed (raised by the tool/service). |
 | `unsupported` | The connection's engine cannot answer this at all — plans, view/routine/trigger sources or sequences on a generic JDBC connection. Do not retry with other arguments. |
 | `rejected` | The read-only guard blocked the SQL before sending it to the database. |
-| `not_found` | A `getViewDefinition` / `getRoutineDefinition` / `getTriggerDefinition` lookup matched nothing. The body adds `missing` and `name`. |
+| `not_found` | A `getViewDefinition` / `getRoutineDefinition` / `getTriggerDefinition` lookup matched nothing, or the table named in `describeTable`, `tableContext`, `findJoinPaths` or `schemaLint` (with `table`) does not exist. The body adds `missing` and `name`. |
 | `driver` / `unexpected` / `plan_parse` | Internal driver / unhandled / plan-parser failure. |
 
 `validateQuery` returns its own JSON shape (no `kind` — instead `valid` is the discriminator):
@@ -698,9 +700,9 @@ Notes on the structure snapshot:
   operation is wrapped in something the guard does not recognize, set `"readonlyGuard": "off"` on
   that connection.
   Connection-level read-only flags stay on; Oracle and SQL Server treat them as best-effort.
-- **Oracle: empty `describeTable` / `listTables`** — Oracle stores unquoted identifiers in upper
+- **Oracle: `not_found` from `describeTable`, empty `listTables`** — Oracle stores unquoted identifiers in upper
   case. Pass `CUSTOMERS` rather than `customers`.
-- **Firebird: empty `describeTable`, or "Firebird has no schemas"** — same upper-case rule; omit
+- **Firebird: `not_found` from `describeTable`, or "Firebird has no schemas"** — same upper-case rule; omit
   `schema` or pass `PUBLIC`.
 - **SQLite: "unable to open database file"** — the path in the URL does not exist (the read-only
   open never creates a file). Use an absolute path; forward slashes work on Windows.

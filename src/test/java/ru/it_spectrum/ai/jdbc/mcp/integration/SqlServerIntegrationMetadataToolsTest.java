@@ -68,4 +68,9 @@ class SqlServerIntegrationMetadataToolsTest extends AbstractSqlServerToolsIntegr
         assertThat(findByField(search, "name", "customers")).isNotNull();
         assertThat(findByField(search, "name", "v_customer_totals")).isNotNull();
     }
+
+    @Test
+    void anUnknownTableIsNotFoundRatherThanAnEmptyDescription() {
+        assertUnknownTableIsNotFound("orders", "no_such_table");
+    }
 }

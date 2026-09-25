@@ -97,6 +97,11 @@ public class QueryLintService {
         for (TableDescription desc : descs.values()) {
             tables.put(norm(desc.name()), new TableInfo(desc.schema(), desc.name(), desc));
         }
+        // Names the database does not know are absent from the metadata; keep them as columnless
+        // entries so they are reported as unknown_table.
+        for (String name : model.physicalTableNames()) {
+            tables.putIfAbsent(norm(name), new TableInfo(schema, name, null));
+        }
         return tables;
     }
 
@@ -234,6 +239,7 @@ public class QueryLintService {
         TableInfo(String schema, String name, TableDescription desc) {
             this.schema = schema;
             this.name = name;
+            if (desc == null) return;
             List<Column> cols = desc.columns();
             if (cols instanceof List<?> list) {
                 for (Object item : list) {

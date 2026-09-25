@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
 import ru.it_spectrum.ai.jdbc.mcp.dialect.UnsupportedFeatureException;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.ObjectNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -42,6 +43,9 @@ public class ToolErrors {
     public String argument(IllegalArgumentException e) {
         if (e instanceof UnsupportedFeatureException unsupported) {
             return unsupported(unsupported);
+        }
+        if (e instanceof ObjectNotFoundException missing) {
+            return notFound(missing.objectKind(), missing.objectName());
         }
         log.warn("Tool error [kind=argument]: {}", e.getMessage());
         return error("argument", e.getMessage());

@@ -145,6 +145,72 @@ public class SqliteStructureSnapshotStore implements StructureSnapshotStore {
         return List.copyOf(out);
     }
 
+    /**
+     * A description with no type and no columns stands for a name the database did not list. Older
+     * versions persisted such placeholders; they are never written now, and
+     * {@link #purgePlaceholderTables} removes the ones already on disk.
+     */
+    static boolean isPlaceholder(TableDescription td) {
+        return td.type() == null && (td.columns() == null || td.columns().isEmpty());
+    }
+
+    /**
+     * Deletes placeholder rows left by older versions: untyped {@code snapshot_table} rows without a
+     * single {@code snapshot_column}. Returns how many were removed. Idempotent; run on catalog open.
+     */
+    public static int purgePlaceholderTables(Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "DELETE FROM snapshot_table WHERE type IS NULL AND NOT EXISTS ("
+                        + "SELECT 1 FROM snapshot_column c "
+                        + "WHERE c.schema = snapshot_table.schema AND c.table_name = snapshot_table.name)")) {
+            return ps.executeUpdate();
+        }
+    }
+
+    // ---------- names ----------
+    // The type filter is defence in depth: a catalog shared with an older server process may still
+    // receive placeholder rows between purges.
+
+    @Override
+    public List<String> snapshotSchemaNames(String prefix, int limit) throws SQLException {
+        return names("SELECT DISTINCT schema FROM snapshot_table WHERE type IS NOT NULL "
+                + "AND schema LIKE ? ESCAPE '\\' ORDER BY schema LIMIT ?", limit, prefixPattern(prefix));
+    }
+
+    @Override
+    public List<String> snapshotTableNames(String schema, String prefix, int limit) throws SQLException {
+        return names("SELECT name FROM snapshot_table WHERE type IS NOT NULL AND schema = ? "
+                + "AND name LIKE ? ESCAPE '\\' ORDER BY name LIMIT ?", limit, norm(schema), prefixPattern(prefix));
+    }
+
+    @Override
+    public List<String> snapshotColumnNames(String schema, String table, String prefix, int limit)
+            throws SQLException {
+        return names("SELECT name FROM snapshot_column WHERE schema = ? AND table_name = ? "
+                        + "AND name LIKE ? ESCAPE '\\' ORDER BY ordinal, name LIMIT ?",
+                limit, norm(schema), table == null ? "" : table.trim(), prefixPattern(prefix));
+    }
+
+    private List<String> names(String sql, int limit, String... args) throws SQLException {
+        List<String> out = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            int idx = 1;
+            for (String arg : args) ps.setString(idx++, arg);
+            ps.setInt(idx, Math.max(0, limit));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(rs.getString(1));
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /** {@code LIKE} pattern for "starts with": SQLite's LIKE is case-insensitive for ASCII. */
+    private static String prefixPattern(String prefix) {
+        if (prefix == null || prefix.isEmpty()) return "%";
+        return prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+    }
+
     @Override
     public void saveAll(Collection<TableDescription> tables) throws SQLException {
         if (tables == null || tables.isEmpty()) return;
@@ -152,7 +218,7 @@ public class SqliteStructureSnapshotStore implements StructureSnapshotStore {
             conn.setAutoCommit(false);
             try {
                 for (TableDescription td : tables) {
-                    if (td == null || td.name() == null) continue;
+                    if (td == null || td.name() == null || isPlaceholder(td)) continue;
                     writeTable(conn, td);
                 }
                 conn.commit();

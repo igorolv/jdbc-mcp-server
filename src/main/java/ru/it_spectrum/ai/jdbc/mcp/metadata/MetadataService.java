@@ -153,6 +153,7 @@ public class MetadataService {
 
     // ---------- describeTable (columns + PK + indexes + FKs) ----------
 
+    /** Full description of one table or view; {@code null} when the database does not know the name. */
     public TableDescription describeTable(String schema, String table) throws SQLException {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("table must be provided");
@@ -160,6 +161,15 @@ public class MetadataService {
         String effectiveSchema = resolveSchema(schema);
         Map<String, TableDescription> result = describeTables(effectiveSchema, List.of(table));
         return result.get(key(effectiveSchema, table));
+    }
+
+    /** Like {@link #describeTable}, for callers that cannot proceed without the table. */
+    public TableDescription requireTable(String schema, String table) throws SQLException {
+        TableDescription described = describeTable(schema, table);
+        if (described == null) {
+            throw ObjectNotFoundException.table(resolveSchema(schema), table);
+        }
+        return described;
     }
 
     private List<Column> fetchColumns(DatabaseMetaData md, String schema, String table)
@@ -449,6 +459,8 @@ public class MetadataService {
                                 rs.getString("TABLE_TYPE"),
                                 rs.getString("REMARKS")));
                     } else {
+                        // Not listed. Some drivers miss objects they can still describe (synonyms,
+                        // collation / case quirks), so the name survives only if it has columns.
                         tableEntryByName.put(name, new TableEntry(effectiveSchema, name, null, null));
                     }
                 }
@@ -457,19 +469,30 @@ public class MetadataService {
             Map<String, List<Column>> columnsMap = fetchColumnsForTables(
                     md, effectiveSchema, tableNames, oracleColumnQueryTimeoutSeconds);
 
+            // Neither listed nor with columns: the database does not know this name. Describing it
+            // anyway would present it as a real, empty table and persist it in the snapshot — and some
+            // drivers fail the key/index lookups below outright for unknown names.
+            Set<String> known = new LinkedHashSet<>();
+            for (String t : tableNames) {
+                if (tableEntryByName.get(t).type() != null || !columnsMap.getOrDefault(t, List.of()).isEmpty()) {
+                    known.add(t);
+                }
+            }
+            if (known.isEmpty()) return Map.<String, TableDescription>of();
+
             Map<String, List<Index>> indexesMap = new LinkedHashMap<>();
             Map<String, List<UniqueConstraint>> uniqueMap = new LinkedHashMap<>();
-            fetchIndexesForTablesBulk(conn, md, effectiveSchema, tableNames, indexesMap, uniqueMap);
+            fetchIndexesForTablesBulk(conn, md, effectiveSchema, known, indexesMap, uniqueMap);
 
-            Map<String, List<Constraint>> constraintsMap = fetchConstraintsForTablesBulk(conn, effectiveSchema, tableNames);
+            Map<String, List<Constraint>> constraintsMap = fetchConstraintsForTablesBulk(conn, effectiveSchema, known);
             Map<String, PrimaryKey> pkMap = primaryKeysFromConstraints(constraintsMap);
             Map<String, List<ForeignKey>> fkMap = foreignKeysFromConstraints(effectiveSchema, constraintsMap);
             Map<String, List<IncomingForeignKey>> exportedMap =
-                    incomingForeignKeysForReferencedTables(conn, effectiveSchema, tableNames);
-            Map<String, List<Trigger>> triggersMap = fetchTriggersForTablesBulk(conn, effectiveSchema, tableNames);
+                    incomingForeignKeysForReferencedTables(conn, effectiveSchema, known);
+            Map<String, List<Trigger>> triggersMap = fetchTriggersForTablesBulk(conn, effectiveSchema, known);
 
             Map<String, TableDescription> descMap = new LinkedHashMap<>();
-            for (String t : tableNames) {
+            for (String t : known) {
                 TableEntry te = tableEntryByName.get(t);
                 List<Column> cols = columnsMap.getOrDefault(t, List.of());
                 PrimaryKey pk = pkMap.get(t);

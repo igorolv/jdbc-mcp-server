@@ -25,6 +25,8 @@ import ru.it_spectrum.ai.jdbc.mcp.usage.CatalogTestSupport;
 import tools.jackson.databind.ObjectMapper;
 
 import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,10 +62,53 @@ class SqliteStructureSnapshotStoreTest {
                 List.of());
     }
 
+    private DataSource ds;
+
     @BeforeEach
     void setUp() throws Exception {
-        DataSource ds = CatalogTestSupport.temporaryCatalog();
+        ds = CatalogTestSupport.temporaryCatalog();
         store = new SqliteStructureSnapshotStore(ds, MAPPER);
+    }
+
+    private static TableDescription placeholder(String schema, String name) {
+        return new TableDescription(schema, name, null, null, List.of(),
+                null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+    }
+
+    @Test
+    void placeholdersForUnlistedNamesAreNeverPersisted() throws Exception {
+        TableDescription untypedButWithColumns = new TableDescription("public", "syn_customer", null, null,
+                List.of(new Column("id", 1, "bigint", 19, null, false, null, null, null)),
+                null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+
+        store.saveAll(List.of(customer(), placeholder("public", "nope"), untypedButWithColumns));
+
+        assertThat(store.peekDescribeTable("public", "nope")).isNull();
+        assertThat(store.peekDescribeTable("public", "customer")).isEqualTo(customer());
+        // Not listed but describable (e.g. a synonym some drivers miss): kept.
+        assertThat(store.peekDescribeTable("public", "syn_customer")).isEqualTo(untypedButWithColumns);
+    }
+
+    @Test
+    void purgeRemovesPlaceholderRowsLeftByOlderVersions() throws Exception {
+        store.saveAll(List.of(customer()));
+        try (Connection conn = ds.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT INTO snapshot_table (schema, name, type, remarks, detail_json) VALUES (?, ?, NULL, NULL, ?)")) {
+            ps.setString(1, "public");
+            ps.setString(2, "nope");
+            ps.setString(3, MAPPER.writeValueAsString(placeholder("public", "nope")));
+            ps.executeUpdate();
+        }
+        assertThat(store.peekDescribeTable("public", "nope")).isNotNull();
+
+        try (Connection conn = ds.getConnection()) {
+            assertThat(SqliteStructureSnapshotStore.purgePlaceholderTables(conn)).isEqualTo(1);
+            assertThat(SqliteStructureSnapshotStore.purgePlaceholderTables(conn)).isZero();
+        }
+
+        assertThat(store.peekDescribeTable("public", "nope")).isNull();
+        assertThat(store.peekDescribeTable("public", "customer")).isEqualTo(customer());
     }
 
     @Test
@@ -96,6 +141,33 @@ class SqliteStructureSnapshotStoreTest {
         store.saveAll(List.of(customer()));
 
         assertThat(store.listSnapshotTableDescriptions()).containsExactly(customer());
+    }
+
+    @Test
+    void completesSchemaTableAndColumnNamesByCaseInsensitivePrefix() throws Exception {
+        TableDescription c = customer();
+        TableDescription customerTag = new TableDescription("public", "customer_tag", "TABLE", null,
+                List.of(new Column("tag", 1, "text", 0, null, false, null, null, null)),
+                null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        TableDescription audit = new TableDescription("audit", "log", "TABLE", null, List.of(),
+                null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        // Placeholders for names the database did not list (no type, no columns) never become completions.
+        TableDescription phantom = new TableDescription("ghost", "customer_nope", null, null, List.of(),
+                null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        TableDescription phantomInPublic = new TableDescription("public", "customer_nope", null, null, List.of(),
+                null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        store.saveAll(List.of(c, customerTag, audit, phantom, phantomInPublic));
+
+        assertThat(store.snapshotSchemaNames("", 10)).containsExactly("audit", "public");
+        assertThat(store.snapshotSchemaNames("PU", 10)).containsExactly("public");
+        assertThat(store.snapshotTableNames("public", "CUST", 10)).containsExactly("customer", "customer_tag");
+        assertThat(store.snapshotTableNames("public", "customer", 1)).containsExactly("customer");
+        // '_' is a literal in the prefix, not a LIKE wildcard
+        assertThat(store.snapshotTableNames("public", "customer_", 10)).containsExactly("customer_tag");
+        assertThat(store.snapshotColumnNames("public", "customer", "", 10))
+                .containsExactly("id", "org_id", "status");
+        assertThat(store.snapshotColumnNames("public", "customer", "s", 10)).containsExactly("status");
+        assertThat(store.snapshotColumnNames("public", "missing", "", 10)).isEmpty();
     }
 
     @Test

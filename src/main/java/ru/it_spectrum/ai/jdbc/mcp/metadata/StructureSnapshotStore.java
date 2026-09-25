@@ -55,6 +55,17 @@ public interface StructureSnapshotStore {
     /** Full descriptions currently persisted in the snapshot; never queries the live database. */
     List<TableDescription> listSnapshotTableDescriptions() throws SQLException;
 
+    // ---------- names (completion; snapshot only, never the loader) ----------
+
+    /** Distinct schemas holding snapshot tables whose name starts with {@code prefix} (case-insensitive). */
+    List<String> snapshotSchemaNames(String prefix, int limit) throws SQLException;
+
+    /** Snapshot table/view names in {@code schema} starting with {@code prefix} (case-insensitive). */
+    List<String> snapshotTableNames(String schema, String prefix, int limit) throws SQLException;
+
+    /** Snapshot column names of one table starting with {@code prefix} (case-insensitive), in ordinal order. */
+    List<String> snapshotColumnNames(String schema, String table, String prefix, int limit) throws SQLException;
+
     /** Persist (insert-or-replace) full descriptions: detail JSON + flat column/FK projection. */
     void saveAll(Collection<TableDescription> tables) throws SQLException;
 

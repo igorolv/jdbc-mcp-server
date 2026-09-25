@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.resource;
 
+import io.modelcontextprotocol.server.McpServerFeatures.SyncCompletionSpecification;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncResourceSpecification;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncResourceTemplateSpecification;
 import org.slf4j.Logger;
@@ -8,23 +9,21 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionDefinition;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.sql.SQLException;
 
 /**
- * Registers the catalog-qualified MCP resources for every configured connection that already has a
- * local catalog file.
+ * Registers the catalog-qualified MCP resources for every usable configured connection.
  *
- * <p>Building the list touches local SQLite files only — no database is contacted and no JDBC pool
- * is created, so enabling resources stays cheap even with a dozen connections configured. Each
- * catalog gets its own manifest, concrete table resources and URI templates; since every URI is
- * qualified by catalog name, a read routes itself back to the connection it came from.
+ * <p>The registered set is fixed — a manifest and two URI templates per connection — and depends on
+ * nothing but the connections file, so it never goes stale: a catalog built later by
+ * {@code rebuildCatalog} is picked up by the next read or completion without re-registering anything.
+ * Registration touches no file and no database; the connection's object graph is resolved only when a
+ * client reads a resource or asks for completions.
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = "jdbc-mcp.resources", name = "enabled",
@@ -43,26 +42,19 @@ public class CatalogResourceConfig {
                         definition.configError());
                 continue;
             }
-            if (!definition.hasLocalSnapshot()) {
-                log.info("Skipping resources for connection '{}': no local catalog at {}",
-                        definition.name(), definition.catalog().catalogDbFile());
-                continue;
-            }
-            try {
-                ConnectionContext context = connections.resolve(definition.name());
-                services.add(new CatalogResourceService(context::metadata, context.snapshotStore(),
-                        mapper, definition.catalog(), definition.kind()));
-            } catch (RuntimeException e) {
-                log.warn("Skipping resources for connection '{}': {}", definition.name(), e.getMessage());
-            }
+            String name = definition.name();
+            services.add(new CatalogResourceService(
+                    () -> connections.resolve(name).metadata(),
+                    () -> connections.resolve(name).snapshotStore(),
+                    definition::hasLocalSnapshot,
+                    mapper, definition.catalog(), definition.kind()));
         }
         return List.copyOf(services);
     }
 
     @Bean("jdbcCatalogResources")
     List<SyncResourceSpecification> jdbcCatalogResources(
-            @Qualifier("jdbcCatalogResourceServices") List<CatalogResourceService> services)
-            throws SQLException {
+            @Qualifier("jdbcCatalogResourceServices") List<CatalogResourceService> services) {
         List<SyncResourceSpecification> resources = new ArrayList<>();
         for (CatalogResourceService service : services) {
             resources.addAll(service.resources());
@@ -78,5 +70,15 @@ public class CatalogResourceConfig {
             templates.addAll(service.resourceTemplates());
         }
         return List.copyOf(templates);
+    }
+
+    @Bean("jdbcCatalogResourceCompletions")
+    List<SyncCompletionSpecification> jdbcCatalogResourceCompletions(
+            @Qualifier("jdbcCatalogResourceServices") List<CatalogResourceService> services) {
+        List<SyncCompletionSpecification> completions = new ArrayList<>();
+        for (CatalogResourceService service : services) {
+            completions.addAll(service.completions());
+        }
+        return List.copyOf(completions);
     }
 }

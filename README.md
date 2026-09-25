@@ -553,8 +553,8 @@ it reads configuration only, so it works even when some of the configured databa
   `configError`.
 - Each connection keeps its own local catalog at `<data-dir>/<name>/<name>.db`, so structure
   snapshots and usage indexes never mix.
-- MCP resources (when `JDBC_MCP_RESOURCES_ENABLED=true`) are published for every configured
-  connection that already has a local catalog file; URIs are catalog-qualified.
+- MCP resources (when `JDBC_MCP_RESOURCES_ENABLED=true`) are published for every usable configured
+  connection; URIs are catalog-qualified.
 
 The single server process keeps its shared rolling log under
 `<data-dir>/logs/jdbc-mcp-server.log`. Log entries emitted while handling a tool call include its
@@ -1181,14 +1181,11 @@ All tools are **read-only**; data is not modified.
 
 ## MCP Resources
 
-When `JDBC_MCP_RESOURCES_ENABLED=true`, the server exposes — for every configured connection that
-already has a local catalog file — a concrete catalog manifest, one concrete resource for every table
-or view already persisted in that connection's structure snapshot, and two parameterized resource
-templates:
+When `JDBC_MCP_RESOURCES_ENABLED=true`, the server exposes — for every usable configured connection —
+one concrete resource, the catalog manifest, and two parameterized resource templates:
 
 ```text
 jdbc-mcp://catalog/<catalog>/manifest
-jdbc-mcp://catalog/<catalog>/schemas/SSV/tables/CUSTOMERS
 jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
 jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
 ```
@@ -1202,12 +1199,16 @@ snapshot version/build time/covered schemas, and the exact templates for its cat
 column reads reuse `MetadataService`, so they have the same persistent-snapshot and live-fallback
 semantics as `describeTable`.
 
-Concrete table resources are loaded from the local SQLite snapshots when the MCP server starts — no
-database is contacted and no JDBC pool is created for this — so clients with MCP resource-picker
-support can offer entries like `SSV.CUSTOMERS` without querying the live database. Their compact descriptions contain the database comment when present, the primary-key
-columns, and outgoing foreign-key mappings; column lists and counts are intentionally omitted. After
-running `rebuildCatalog` in an already-running server, restart or reconnect that MCP server instance
-to refresh its concrete resource list.
+Tables are not listed one by one in `resources/list`: on a schema with thousands of tables that would
+turn the list into a dump of the catalog. Instead the server answers `completion/complete` for the
+template arguments — `schema`, then `table` (given `schema`), then `column` (given `schema` and
+`table`) — with case-insensitive prefix matches from the local structure snapshot, at most 100 values
+per response with `hasMore` set when there are more. Completions never contact the database and
+return nothing until the connection has a local catalog; since they read the snapshot on every call,
+a catalog built by `rebuildCatalog` is offered immediately, without a restart.
+
+Reading a table or column that does not exist fails with the MCP resource-not-found error
+(`-32002`, `data.uri` names the URI).
 
 Column resources include the column definition plus matching PK position, unique constraints,
 indexes, outgoing/incoming foreign keys, and CHECK constraints. URI path segments preserve case
@@ -1228,7 +1229,7 @@ All tools return errors in the same shape: JSON with `error` and `kind` fields.
 | `argument` | Invalid tool argument |
 | `unsupported` | The connection's engine cannot answer this at all (e.g. plans on a generic JDBC connection); retrying with other arguments will not help |
 | `rejected` | The read-only guard blocked the query before it reached the database |
-| `not_found` | `getViewDefinition`, `getRoutineDefinition`, or `getTriggerDefinition` found nothing. The response body also includes `missing` and `name` |
+| `not_found` | `getViewDefinition`, `getRoutineDefinition`, or `getTriggerDefinition` found nothing, or the table named in `describeTable`, `tableContext`, `findJoinPaths`, or `schemaLint` (with `table`) does not exist. The response body also includes `missing` and `name` |
 | `driver` / `unexpected` / `plan_parse` | Internal driver failure, unhandled failure, or plan parsing failure |
 
 `validateQuery` uses its own shape, without `kind`; `valid` is the discriminator.
@@ -1317,7 +1318,7 @@ environment configures only the server process itself:
 |---|---|---|
 | `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. A missing or empty file starts the server with no connections (warning logged); a malformed one is a startup error |
 | `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Each connection gets its own subdirectory under it |
-| `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest plus concrete table resources and table/column resource templates; default `false` |
+| `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest and table/column resource templates with argument completion; default `false` |
 | `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
 
 A connection's own settings — URL, credentials, default schema, timeouts, row caps, pool sizes, the
@@ -1490,7 +1491,7 @@ not parse `.env` itself; variables must already be present in the environment wh
 - **Empty `describeTable` / `listTables` result on Oracle** - Oracle stores object names in uppercase. Pass `CUSTOMERS`, not `customers`.
 - **Generic JDBC: "No driver in ... accepts the URL"** - the jars in `driverPath` register no driver for that URL prefix. Check the URL, or name the class with `driverClass`.
 - **Generic JDBC: `kind: "unsupported"`** - the tool needs something JDBC does not expose portably (plans, view sources, sequences). See [Generic JDBC](#generic-jdbc) for what works.
-- **Firebird: empty `describeTable`, or `argument` error "Firebird has no schemas"** - Firebird stores unquoted names in uppercase and has no schemas: pass `CUSTOMERS` and omit `schema` (or pass `PUBLIC`).
+- **Firebird: `not_found` from `describeTable`, or `argument` error "Firebird has no schemas"** - Firebird stores unquoted names in uppercase and has no schemas: pass `CUSTOMERS` and omit `schema` (or pass `PUBLIC`).
 - **SQLite: "unable to open database file"** - the path in the URL does not exist (the read-only open never creates a file) or is not readable. Use an absolute path; on Windows forward slashes work: `jdbc:sqlite:C:/data/app.db`.
 - **Firebird: "unsupported on-disk structure"** - the server version does not match the file's ODS (Firebird 3 reads ODS 12 only, Firebird 4/5 read ODS 13). Serve the file with the matching Firebird version, or back it up with `gbak` and restore it on a newer one.
 - **SQL Server certificate errors** - set the JDBC URL encryption options explicitly, for example `encrypt=true;trustServerCertificate=false` with a trusted certificate, or `trustServerCertificate=true` only for local/dev use.

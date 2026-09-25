@@ -146,6 +146,32 @@ abstract class AbstractToolsIntegrationTest {
         assertThrownToolError(call, "unsupported", expectedFragment);
     }
 
+    protected final void assertNotFound(ThrowingCallable call, String expectedFragment) {
+        assertThrownToolError(call, "not_found", expectedFragment);
+    }
+
+    /**
+     * A name the database does not know is {@code not_found} for every tool that needs the table — never
+     * a fake empty description — asking about it leaves no trace in the listing, and queryLint still
+     * flags it as unknown.
+     */
+    protected final void assertUnknownTableIsNotFound(String knownTable, String unknownTable) {
+        assertNotFound(() -> metadataTools().describeTable(connection(), schema(), unknownTable), unknownTable);
+        assertNotFound(() -> schemaContextTools().tableContext(connection(), schema(), unknownTable,
+                null, null, null, false), unknownTable);
+        assertNotFound(() -> schemaContextTools().findJoinPaths(connection(), schema(), knownTable,
+                schema(), unknownTable, null, null, null, false), unknownTable);
+        assertNotFound(() -> schemaContextTools().schemaLint(connection(), schema(), unknownTable,
+                null, null, null), unknownTable);
+
+        ArrayNode tables = array(metadataTools().listTables(connection(), schema(), "%", null).tables());
+        assertThat(findByField(tables, "name", knownTable)).isNotNull();
+        assertThat(json(tables)).doesNotContain("\"" + unknownTable + "\"");
+
+        assertThat(json(queryAnalysisTools().queryLint(connection(), "SELECT 1 FROM " + unknownTable, schema())))
+                .contains("unknown_table");
+    }
+
     protected final void assertErrorKind(Object response, String expectedKind) {
         ObjectNode body = object(response);
         assertThat(field(body, "kind").asText()).isEqualTo(expectedKind);

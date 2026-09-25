@@ -44,32 +44,36 @@ class CatalogResourceConfigTest {
                     assertThat(context).doesNotHaveBean("jdbcCatalogResourceServices");
                     assertThat(context).doesNotHaveBean("jdbcCatalogResources");
                     assertThat(context).doesNotHaveBean("jdbcCatalogResourceTemplates");
+                    assertThat(context).doesNotHaveBean("jdbcCatalogResourceCompletions");
                 });
     }
 
     @Test
-    void enablingResourcesExposesEveryCatalogWithALocalSnapshot() throws IOException {
+    void enablingResourcesExposesAManifestTemplatesAndCompletionsPerConnection() throws IOException {
         runner.withPropertyValues("jdbc-mcp.resources.enabled=true")
                 .withBean(ConnectionRegistry.class, () -> registry("orders", true))
                 .run(context -> {
-                    assertThat(context).hasBean("jdbcCatalogResources");
-                    assertThat(context).hasBean("jdbcCatalogResourceTemplates");
                     @SuppressWarnings("unchecked")
                     List<SyncResourceSpecification> resources =
                             (List<SyncResourceSpecification>) context.getBean("jdbcCatalogResources");
                     assertThat(resources).hasSize(1);
                     assertThat(resources.getFirst().resource().uri())
                             .isEqualTo("jdbc-mcp://catalog/orders/manifest");
+                    assertThat(context.getBean("jdbcCatalogResourceTemplates", List.class)).hasSize(2);
+                    assertThat(context.getBean("jdbcCatalogResourceCompletions", List.class)).hasSize(2);
                 });
     }
 
     @Test
-    void connectionsWithoutALocalCatalogAreSkipped() throws IOException {
+    void aConnectionWithoutALocalCatalogIsStillPublished() throws IOException {
+        // The registered set does not depend on the catalog, so one built later by rebuildCatalog is
+        // served without a restart.
         runner.withPropertyValues("jdbc-mcp.resources.enabled=true")
                 .withBean(ConnectionRegistry.class, () -> registry("orders", false))
                 .run(context -> {
-                    assertThat(context.getBean("jdbcCatalogResources", List.class)).isEmpty();
-                    assertThat(context.getBean("jdbcCatalogResourceTemplates", List.class)).isEmpty();
+                    assertThat(context.getBean("jdbcCatalogResources", List.class)).hasSize(1);
+                    assertThat(context.getBean("jdbcCatalogResourceTemplates", List.class)).hasSize(2);
+                    assertThat(context.getBean("jdbcCatalogResourceCompletions", List.class)).hasSize(2);
                 });
     }
 

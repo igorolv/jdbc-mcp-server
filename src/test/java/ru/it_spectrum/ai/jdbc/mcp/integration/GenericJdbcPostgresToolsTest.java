@@ -199,4 +199,9 @@ class GenericJdbcPostgresToolsTest extends AbstractToolsIntegrationTest {
         ObjectNode coverage = object(statsTools().fkIndexCoverage(connection(), "public", "orders"));
         assertThat(field(coverage, "uncoveredCount").asInt()).isZero();
     }
+
+    @Test
+    void anUnknownTableIsNotFoundRatherThanAnEmptyDescription() {
+        assertUnknownTableIsNotFound("orders", "no_such_table");
+    }
 }

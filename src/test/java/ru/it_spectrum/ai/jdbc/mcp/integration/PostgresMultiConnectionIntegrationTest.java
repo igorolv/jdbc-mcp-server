@@ -161,8 +161,10 @@ class PostgresMultiConnectionIntegrationTest {
         TableDescription orders = metadataTools.describeTable("orders@dev", "public", "orders_only");
         assertThat(orders.columns()).extracting("name").contains("sku");
 
-        TableDescription missing = metadataTools.describeTable("billing", "public", "orders_only");
-        assertThat(missing.columns()).isNullOrEmpty();
+        assertThatThrownBy(() -> metadataTools.describeTable("billing", "public", "orders_only"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("\"kind\":\"not_found\"")
+                .hasMessageContaining("public.orders_only");
 
         assertThat(metadataTools.listTables("billing", "public", null, null).tables())
                 .extracting("name").contains("billing_only").doesNotContain("orders_only");

@@ -1,9 +1,13 @@
 package ru.it_spectrum.ai.jdbc.mcp.resource;
 
+import io.modelcontextprotocol.server.McpServerFeatures.SyncCompletionSpecification;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncResourceSpecification;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncResourceTemplateSpecification;
 import io.modelcontextprotocol.spec.McpError;
+import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.modelcontextprotocol.spec.McpSchema.CompleteRequest;
+import io.modelcontextprotocol.spec.McpSchema.CompleteResult;
 import io.modelcontextprotocol.spec.McpSchema.ReadResourceRequest;
 import io.modelcontextprotocol.spec.McpSchema.ReadResourceResult;
 import io.modelcontextprotocol.spec.McpSchema.TextResourceContents;
@@ -32,78 +36,76 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
-/** Builds and serves catalog-qualified MCP resources over the existing metadata service. */
+/**
+ * Builds and serves catalog-qualified MCP resources over the existing metadata service.
+ *
+ * <p>Each catalog publishes one concrete resource (its manifest) plus two URI templates, for a table
+ * and for a column. Tables are deliberately <em>not</em> listed one by one: a schema with thousands
+ * of tables would turn {@code resources/list} into a dump of the catalog, and the list would go stale
+ * after every {@code rebuildCatalog}. Clients discover names through {@code completion/complete} on the
+ * template arguments instead, answered from the local snapshot on every call.
+ */
 public final class CatalogResourceService {
 
     static final int RESOURCE_SCHEMA_VERSION = 1;
     static final String JSON_MIME_TYPE = "application/json";
+    /** The MCP spec caps a completion response at 100 values. */
+    static final int MAX_COMPLETION_VALUES = 100;
+
+    private static final CatalogSnapshotInfo NO_SNAPSHOT = new CatalogSnapshotInfo(0, 0L, null, List.of());
 
     private final Supplier<MetadataService> metadata;
-    private final StructureSnapshotStore snapshotStore;
+    private final Supplier<StructureSnapshotStore> snapshotStore;
+    private final BooleanSupplier snapshotPresent;
     private final ObjectMapper mapper;
     private final String catalog;
     private final DatabaseKind databaseKind;
     private final CatalogResourceUris uris;
 
     /**
-     * @param metadata supplied lazily: listing resources reads the local snapshot only, and the
-     *                 live-database fallback behind {@code describeTable} must not be built — nor
-     *                 its pool — until a client actually reads a resource
+     * @param metadata        supplied lazily: the live-database fallback behind {@code describeTable}
+     *                        must not be built — nor its pool — until a client actually reads a resource
+     * @param snapshotStore   supplied lazily for the same reason
+     * @param snapshotPresent whether the local catalog file exists; manifest reads and completions
+     *                        consult the store only when it does, so they never create an empty catalog
      */
-    public CatalogResourceService(Supplier<MetadataService> metadata, StructureSnapshotStore snapshotStore,
-                                  ObjectMapper mapper, JdbcMcpProperties jdbcMcpProperties,
-                                  DatabaseKind databaseKind) {
+    public CatalogResourceService(Supplier<MetadataService> metadata, Supplier<StructureSnapshotStore> snapshotStore,
+                                  BooleanSupplier snapshotPresent, ObjectMapper mapper,
+                                  JdbcMcpProperties jdbcMcpProperties, DatabaseKind databaseKind) {
         this.metadata = metadata;
         this.snapshotStore = snapshotStore;
+        this.snapshotPresent = snapshotPresent;
         this.mapper = mapper;
         this.catalog = jdbcMcpProperties.resolvedCatalogName();
         this.databaseKind = databaseKind;
         this.uris = new CatalogResourceUris(catalog);
     }
 
-    public List<SyncResourceSpecification> resources() throws SQLException {
-        McpSchema.Resource manifest = McpSchema.Resource.builder(uris.manifest(), "jdbc-catalog-manifest")
+    public List<SyncResourceSpecification> resources() {
+        McpSchema.Resource manifest = McpSchema.Resource.builder(uris.manifest(), manifestName())
                 .title("JDBC catalog " + catalog)
                 .description("Snapshot identity, coverage, and resource templates for JDBC catalog '" + catalog + "'.")
                 .mimeType(JSON_MIME_TYPE)
                 .meta(declarationMeta())
                 .build();
-        List<SyncResourceSpecification> resources = new ArrayList<>();
-        resources.add(new SyncResourceSpecification(manifest, this::readManifest));
-        List<TableDescription> snapshotTables = snapshotStore.listSnapshotTableDescriptions();
-        if (snapshotTables != null) {
-            for (TableDescription table : snapshotTables) {
-                if (table == null || table.schema() == null || table.schema().isBlank()
-                        || table.name() == null || table.name().isBlank()) {
-                    continue;
-                }
-                String qualifiedName = table.schema() + "." + table.name();
-                McpSchema.Resource resource = McpSchema.Resource
-                        .builder(uris.table(table.schema(), table.name()), qualifiedName)
-                        .description(tableDescription(table))
-                        .mimeType(JSON_MIME_TYPE)
-                        .meta(tableDeclarationMeta(table))
-                        .build();
-                resources.add(new SyncResourceSpecification(resource, this::readTable));
-            }
-        }
-        return List.copyOf(resources);
+        return List.of(new SyncResourceSpecification(manifest, this::readManifest));
     }
 
     public List<SyncResourceTemplateSpecification> resourceTemplates() {
         McpSchema.ResourceTemplate table = McpSchema.ResourceTemplate
-                .builder(uris.tableTemplate(), "jdbc-table")
-                .title("JDBC table description")
+                .builder(uris.tableTemplate(), tableTemplateName())
+                .title("Table in JDBC catalog " + catalog)
                 .description("Columns, keys, indexes, constraints, relationships, and triggers for one table or view "
                         + "in JDBC catalog '" + catalog + "'.")
                 .mimeType(JSON_MIME_TYPE)
                 .meta(declarationMeta())
                 .build();
         McpSchema.ResourceTemplate column = McpSchema.ResourceTemplate
-                .builder(uris.columnTemplate(), "jdbc-column")
-                .title("JDBC column context")
+                .builder(uris.columnTemplate(), columnTemplateName())
+                .title("Column in JDBC catalog " + catalog)
                 .description("Definition and structural roles of one column in JDBC catalog '" + catalog + "'.")
                 .mimeType(JSON_MIME_TYPE)
                 .meta(declarationMeta())
@@ -113,19 +115,68 @@ public final class CatalogResourceService {
                 new SyncResourceTemplateSpecification(column, this::readColumn));
     }
 
-    private ReadResourceResult readManifest(io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-                                            ReadResourceRequest request) {
+    /** Argument completion for both templates: schema, table and column names from the local snapshot. */
+    public List<SyncCompletionSpecification> completions() {
+        return List.of(
+                new SyncCompletionSpecification(new McpSchema.ResourceReference(uris.tableTemplate()), this::complete),
+                new SyncCompletionSpecification(new McpSchema.ResourceReference(uris.columnTemplate()), this::complete));
+    }
+
+    private CompleteResult complete(McpSyncServerExchange exchange, CompleteRequest request) {
+        if (request.argument() == null || request.argument().name() == null || !snapshotPresent.getAsBoolean()) {
+            return completion(List.of());
+        }
+        String prefix = request.argument().value() == null ? "" : request.argument().value();
+        Map<String, String> context = request.context() == null || request.context().arguments() == null
+                ? Map.of() : request.context().arguments();
+        String schema = context.get("schema");
+        String table = context.get("table");
+        int limit = MAX_COMPLETION_VALUES + 1;
+        try {
+            StructureSnapshotStore store = snapshotStore.get();
+            List<String> values = switch (request.argument().name()) {
+                case "schema" -> store.snapshotSchemaNames(prefix, limit);
+                case "table" -> isBlank(schema) ? List.of() : store.snapshotTableNames(schema, prefix, limit);
+                case "column" -> isBlank(schema) || isBlank(table)
+                        ? List.of() : store.snapshotColumnNames(schema, table, prefix, limit);
+                default -> List.of();
+            };
+            return completion(values);
+        } catch (SQLException e) {
+            throw internalError("Failed to complete JDBC resource argument", e);
+        }
+    }
+
+    private static CompleteResult completion(List<String> values) {
+        boolean hasMore = values.size() > MAX_COMPLETION_VALUES;
+        List<String> page = hasMore ? values.subList(0, MAX_COMPLETION_VALUES) : values;
+        return new CompleteResult(new CompleteResult.CompleteCompletion(List.copyOf(page), null, hasMore));
+    }
+
+    private String manifestName() {
+        return catalog + "/manifest";
+    }
+
+    private String tableTemplateName() {
+        return catalog + "/table";
+    }
+
+    private String columnTemplateName() {
+        return catalog + "/column";
+    }
+
+    private ReadResourceResult readManifest(McpSyncServerExchange exchange, ReadResourceRequest request) {
         try {
             uris.requireManifest(request.uri());
-            CatalogSnapshotInfo snapshot = snapshotStore.snapshotInfo();
+            CatalogSnapshotInfo snapshot = snapshotInfo();
             CatalogResourceManifest document = new CatalogResourceManifest(
                     RESOURCE_SCHEMA_VERSION,
                     catalog,
                     databaseKind.name(),
                     snapshot,
                     List.of(
-                            new ResourceTemplateRef("jdbc-table", uris.tableTemplate(), JSON_MIME_TYPE),
-                            new ResourceTemplateRef("jdbc-column", uris.columnTemplate(), JSON_MIME_TYPE)));
+                            new ResourceTemplateRef(tableTemplateName(), uris.tableTemplate(), JSON_MIME_TYPE),
+                            new ResourceTemplateRef(columnTemplateName(), uris.columnTemplate(), JSON_MIME_TYPE)));
             return jsonResult(request.uri(), document, snapshot);
         } catch (IllegalArgumentException e) {
             throw invalidParams(e.getMessage());
@@ -134,15 +185,16 @@ public final class CatalogResourceService {
         }
     }
 
-    private ReadResourceResult readTable(io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-                                         ReadResourceRequest request) {
+    private ReadResourceResult readTable(McpSyncServerExchange exchange, ReadResourceRequest request) {
         try {
             CatalogResourceUris.TableRef ref = uris.parseTable(request.uri());
             TableDescription table = metadata.get().describeTable(ref.schema(), ref.table());
-            if (table == null) throw new IllegalArgumentException("Table not found: " + ref.schema() + "." + ref.table());
+            if (isMissing(table)) {
+                throw notFound(request.uri(), "Table not found: " + ref.schema() + "." + ref.table());
+            }
             return jsonResult(request.uri(),
                     new TableResourceDocument(RESOURCE_SCHEMA_VERSION, catalog, table),
-                    snapshotStore.snapshotInfo());
+                    snapshotInfo());
         } catch (IllegalArgumentException e) {
             throw invalidParams(e.getMessage());
         } catch (SQLException e) {
@@ -150,19 +202,20 @@ public final class CatalogResourceService {
         }
     }
 
-    private ReadResourceResult readColumn(io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-                                          ReadResourceRequest request) {
+    private ReadResourceResult readColumn(McpSyncServerExchange exchange, ReadResourceRequest request) {
         try {
             CatalogResourceUris.ColumnRef ref = uris.parseColumn(request.uri());
             TableDescription table = metadata.get().describeTable(ref.schema(), ref.table());
-            if (table == null) throw new IllegalArgumentException("Table not found: " + ref.schema() + "." + ref.table());
+            if (isMissing(table)) {
+                throw notFound(request.uri(), "Table not found: " + ref.schema() + "." + ref.table());
+            }
             Column column = findColumn(table, ref.column());
             if (column == null) {
-                throw new IllegalArgumentException("Column not found: " + ref.schema() + "." + ref.table()
+                throw notFound(request.uri(), "Column not found: " + ref.schema() + "." + ref.table()
                         + "." + ref.column());
             }
             ColumnResourceDocument document = columnDocument(table, column);
-            return jsonResult(request.uri(), document, snapshotStore.snapshotInfo());
+            return jsonResult(request.uri(), document, snapshotInfo());
         } catch (IllegalArgumentException e) {
             throw invalidParams(e.getMessage());
         } catch (SQLException e) {
@@ -242,51 +295,22 @@ public final class CatalogResourceService {
                 "resourceSchemaVersion", RESOURCE_SCHEMA_VERSION);
     }
 
-    private Map<String, Object> tableDeclarationMeta(TableDescription table) {
-        Map<String, Object> meta = new LinkedHashMap<>(declarationMeta());
-        meta.put("schema", table.schema());
-        meta.put("table", table.name());
-        if (table.type() != null) meta.put("tableType", table.type());
-        return Map.copyOf(meta);
+    private CatalogSnapshotInfo snapshotInfo() throws SQLException {
+        return snapshotPresent.getAsBoolean() ? snapshotStore.get().snapshotInfo() : NO_SNAPSHOT;
     }
 
-    private static String tableDescription(TableDescription table) {
-        List<String> details = new ArrayList<>();
-        String remarks = singleLine(table.remarks());
-        if (remarks != null) details.add(remarks);
-        if (table.primaryKey() != null && table.primaryKey().columns() != null
-                && !table.primaryKey().columns().isEmpty()) {
-            details.add("PK: " + String.join(", ", table.primaryKey().columns()));
-        }
-        if (table.foreignKeys() != null && !table.foreignKeys().isEmpty()) {
-            List<String> foreignKeys = new ArrayList<>();
-            for (ForeignKey foreignKey : table.foreignKeys()) {
-                String formatted = formatForeignKey(foreignKey);
-                if (formatted != null) foreignKeys.add(formatted);
-            }
-            if (!foreignKeys.isEmpty()) details.add("FK: " + String.join(", ", foreignKeys));
-        }
-        return details.isEmpty() ? null : String.join("; ", details);
+    /**
+     * {@code describeTable} answers a name the database does not know with {@code null}. The untyped,
+     * column-less placeholder older versions returned (and may have left in a shared catalog) is
+     * treated the same way, so a resource never presents it as a real, empty table.
+     */
+    private static boolean isMissing(TableDescription table) {
+        return table == null
+                || (table.type() == null && (table.columns() == null || table.columns().isEmpty()));
     }
 
-    private static String formatForeignKey(ForeignKey foreignKey) {
-        if (foreignKey == null || foreignKey.columns() == null || foreignKey.columns().isEmpty()
-                || foreignKey.referencedTable() == null || foreignKey.referencedTable().isBlank()) {
-            return null;
-        }
-        String target = foreignKey.referencedTable();
-        if (foreignKey.referencedSchema() != null && !foreignKey.referencedSchema().isBlank()) {
-            target = foreignKey.referencedSchema() + "." + target;
-        }
-        if (foreignKey.referencedColumns() != null && !foreignKey.referencedColumns().isEmpty()) {
-            target += "(" + String.join(", ", foreignKey.referencedColumns()) + ")";
-        }
-        return String.join(", ", foreignKey.columns()) + " → " + target;
-    }
-
-    private static String singleLine(String value) {
-        if (value == null || value.isBlank()) return null;
-        return value.trim().replaceAll("\\s+", " ");
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private Map<String, Object> contentMeta(CatalogSnapshotInfo snapshot) {
@@ -303,6 +327,14 @@ public final class CatalogResourceService {
         return McpError.builder(McpSchema.ErrorCodes.INVALID_PARAMS)
                 .message(safeMessage)
                 .data(safeMessage)
+                .build();
+    }
+
+    /** {@code -32002}, the code the MCP spec assigns to a resource that does not exist. */
+    private static McpError notFound(String uri, String message) {
+        return McpError.builder(McpSchema.ErrorCodes.RESOURCE_NOT_FOUND)
+                .message(message)
+                .data(Map.of("uri", uri))
                 .build();
     }
 

@@ -114,7 +114,7 @@ public class MetadataTools {
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            TableDescription info = ctx.metadata().describeTable(schema, table);
+            TableDescription info = ctx.metadata().requireTable(schema, table);
             ToolLogger.completed(log, "describeTable", start);
             return info;
         } catch (SQLException e) {

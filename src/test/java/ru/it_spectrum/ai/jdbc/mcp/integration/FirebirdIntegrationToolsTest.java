@@ -238,4 +238,9 @@ class FirebirdIntegrationToolsTest extends AbstractFirebirdToolsIntegrationTest 
         String brief = schemaContextTools().schemaBrief(connection(), null, null, null);
         assertThat(brief).contains("CUSTOMERS").contains("ORDERS");
     }
+
+    @Test
+    void anUnknownTableIsNotFoundRatherThanAnEmptyDescription() {
+        assertUnknownTableIsNotFound("ORDERS", "NO_SUCH_TABLE");
+    }
 }

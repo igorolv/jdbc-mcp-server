@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
+import ru.it_spectrum.ai.jdbc.mcp.metadata.SqliteStructureSnapshotStore;
 
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -81,6 +82,7 @@ public class CatalogDataSourceConfig {
             initialiseSchema(dataSource, List.of(
                     USAGE_SCHEMA_RESOURCE, STRUCTURE_SCHEMA_RESOURCE));
             initialiseCatalogMeta(dataSource);
+            purgePlaceholderTables(dataSource, dbFile);
         } catch (IOException | SQLException | RuntimeException e) {
             dataSource.close();
             throw e;
@@ -147,6 +149,16 @@ public class CatalogDataSourceConfig {
                     + "ON CONFLICT(meta_key) DO UPDATE SET meta_value = excluded.meta_value");
             stmt.executeUpdate("INSERT INTO catalog_meta(meta_key, meta_value) "
                     + "VALUES ('format_version', '1') ON CONFLICT(meta_key) DO NOTHING");
+        }
+    }
+
+    private void purgePlaceholderTables(DataSource ds, Path dbFile) throws SQLException {
+        try (Connection conn = ds.getConnection()) {
+            int removed = SqliteStructureSnapshotStore.purgePlaceholderTables(conn);
+            if (removed > 0) {
+                log.info("Removed {} placeholder table row(s) for names the database did not list from {}",
+                        removed, dbFile);
+            }
         }
     }
 

@@ -84,7 +84,7 @@ abstract class SchemaContextSupport {
     }
 
     protected Map<String, TableDescription> loadSingleTable(String schema, String table) throws SQLException {
-        TableDescription described = metadata.describeTable(schema, table);
+        TableDescription described = metadata.requireTable(schema, table);
         Map<String, TableDescription> out = new LinkedHashMap<>();
         out.put(key(described.schema(), described.name()), described);
         return out;
