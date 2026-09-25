@@ -14,6 +14,8 @@ class DbProfile:
     view_schema_column: str
     view_name_column: str
     quote_ident: Callable[[str], str]
+    # False when the engine needs no USERNAME / PASSWORD (a SQLite file).
+    credentials: bool = True
 
     def qualified_name(self, schema: str | None, name: str) -> str:
         if schema:

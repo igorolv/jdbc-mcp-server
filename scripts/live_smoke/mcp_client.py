@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 import queue
+import shutil
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
@@ -23,12 +25,14 @@ class McpClient:
         cwd: Path,
         startup_timeout: float = 45.0,
         verbose: bool = False,
+        connection: str | None = None,
     ) -> None:
         self.jar = jar
         self.env = env
         self.cwd = cwd
         self.startup_timeout = startup_timeout
         self.verbose = verbose
+        self.connection = connection
         self._next_id = 1
         self._responses: "queue.Queue[dict[str, Any]]" = queue.Queue()
         self._stderr_lines: list[str] = []
@@ -77,9 +81,13 @@ class McpClient:
         return self.request("tools/list", {})
 
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Calls a tool; every tool except listConnections gets this client's `connection`."""
+        arguments = dict(arguments or {})
+        if self.connection and name != "listConnections":
+            arguments.setdefault("connection", self.connection)
         return self.request(
             "tools/call",
-            {"name": name, "arguments": arguments or {}},
+            {"name": name, "arguments": arguments},
         )
 
     def tool_text(self, response: dict[str, Any]) -> str:
@@ -172,22 +180,70 @@ class McpClient:
                 self._started.set()
 
 
-def server_env(base_env: dict[str, str], prefix: str, schema: str | None) -> dict[str, str]:
-    env = os.environ.copy()
-    env.update(base_env)
-    missing = []
-    for suffix in ("URL", "USERNAME", "PASSWORD"):
-        key = f"{prefix}_{suffix}"
-        if not env.get(key):
-            missing.append(key)
-    if missing:
-        raise McpClientError("missing environment variables: " + ", ".join(missing))
+SMOKE_CONNECTION = "smoke"
 
-    env["JDBC_URL"] = env[f"{prefix}_URL"]
-    env["JDBC_USERNAME"] = env[f"{prefix}_USERNAME"]
-    env["JDBC_PASSWORD"] = env[f"{prefix}_PASSWORD"]
-    effective_schema = schema or env.get(f"{prefix}_SCHEMA")
-    if effective_schema:
-        env["JDBC_DEFAULT_SCHEMA"] = effective_schema
-    env.setdefault("JDBC_USAGE_INDEX_ON_STARTUP", "false")
-    return env
+
+class SmokeServerConfig:
+    """A throwaway data directory with a one-entry connections.json for the server under test.
+
+    The server reads databases only from connections.json, so the LIVE_<DB>_* variables are written
+    into a temporary file named by JDBC_MCP_CONNECTIONS_FILE. JDBC_MCP_DATA_DIR points at the same
+    temporary directory, so the run leaves no catalog or log in ~/.jdbc-mcp-server. Everything is
+    deleted on exit; close the McpClient first so the server releases its files.
+    """
+
+    def __init__(
+        self,
+        prefix: str,
+        schema: str | None,
+        credentials: bool = True,
+        base_env: dict[str, str] | None = None,
+        connection: str = SMOKE_CONNECTION,
+    ) -> None:
+        self.connection = connection
+        source = os.environ.copy()
+        source.update(base_env or {})
+        required = ("URL", "USERNAME", "PASSWORD") if credentials else ("URL",)
+        missing = [f"{prefix}_{suffix}" for suffix in required if not source.get(f"{prefix}_{suffix}")]
+        if missing:
+            raise McpClientError("missing environment variables: " + ", ".join(missing))
+
+        entry: dict[str, Any] = {
+            "url": source[f"{prefix}_URL"],
+            "description": f"Live smoke run ({prefix})",
+        }
+        for suffix, field in (("USERNAME", "username"), ("PASSWORD", "password")):
+            if source.get(f"{prefix}_{suffix}"):
+                entry[field] = source[f"{prefix}_{suffix}"]
+        effective_schema = schema or source.get(f"{prefix}_SCHEMA")
+        if effective_schema:
+            entry["defaultSchema"] = effective_schema
+        self._entry = entry
+        self._env = source
+        self.data_dir: Path | None = None
+
+    def __enter__(self) -> "SmokeServerConfig":
+        self.data_dir = Path(tempfile.mkdtemp(prefix="jdbc-mcp-smoke-"))
+        connections_file = self.data_dir / "connections.json"
+        connections_file.write_text(
+            json.dumps({"connections": {self.connection: self._entry}}, indent=2),
+            encoding="utf-8",
+        )
+        try:
+            connections_file.chmod(0o600)
+        except OSError:
+            pass  # best effort; the directory is private to this run anyway
+        self._env["JDBC_MCP_DATA_DIR"] = str(self.data_dir)
+        self._env["JDBC_MCP_CONNECTIONS_FILE"] = str(connections_file)
+        return self
+
+    @property
+    def env(self) -> dict[str, str]:
+        if self.data_dir is None:
+            raise McpClientError("SmokeServerConfig is not entered")
+        return self._env
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        if self.data_dir is not None:
+            shutil.rmtree(self.data_dir, ignore_errors=True)
+            self.data_dir = None

@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.live_smoke.mcp_client import McpClient, McpClientError, server_env
+from scripts.live_smoke.mcp_client import McpClient, McpClientError, SmokeServerConfig
 from scripts.live_smoke.profiles import PROFILES
 from scripts.live_smoke.suites import run_query_tools
 
@@ -23,8 +23,11 @@ def main() -> int:
     profile = PROFILES[args.db]
     schema = args.schema or profile.default_schema(os.environ)
     try:
-        env = server_env({}, profile.env_prefix, schema)
-        with McpClient(jar, env, REPO_ROOT, args.startup_timeout, args.verbose) as client:
+        # The config is entered first and exited last: the server must be stopped before its
+        # temporary data directory is deleted.
+        with SmokeServerConfig(profile.env_prefix, schema, profile.credentials) as config, \
+                McpClient(jar, config.env, REPO_ROOT, args.startup_timeout, args.verbose,
+                          connection=config.connection) as client:
             init = client.initialize()
             server = init.get("result", {}).get("serverInfo", {})
             print(f"server: {server.get('name')} {server.get('version')}")

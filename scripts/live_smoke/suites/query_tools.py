@@ -28,6 +28,7 @@ def run(client: McpClient, profile: DbProfile, schema: str | None) -> list[Check
             results.append(CheckResult(name, "FAIL", str(exc)))
 
     check("tools/list contains core query tools", lambda: _check_tools(client))
+    check("listConnections", lambda: _list_connections(client))
     check("listSchemas", lambda: _list_schemas(client))
     check("inspectQuery ping", lambda: _inspect_ping(client, profile))
     check("validateQuery ping", lambda: _validate_ping(client, profile))
@@ -45,18 +46,31 @@ def _check_tools(client: McpClient) -> str:
     payload = client.list_tools()
     tools = payload.get("result", {}).get("tools", [])
     names = {tool.get("name") for tool in tools}
-    required = {"inspectQuery", "validateQuery", "executeQuery", "resolveQueryLineage"}
+    required = {"listConnections", "inspectQuery", "validateQuery", "executeQuery", "resolveQueryLineage"}
     missing = sorted(required - names)
     if missing:
         raise AssertionError("missing tools: " + ", ".join(missing))
     return f"{len(tools)} tools advertised"
 
 
+def _list_connections(client: McpClient) -> str:
+    data = client.tool_json(client.call_tool("listConnections"))
+    connections = (data or {}).get("connections") or []
+    names = [c.get("name") for c in connections]
+    if names != [client.connection]:
+        raise AssertionError(f"expected only connection {client.connection!r}, got {names}")
+    entry = connections[0]
+    if entry.get("configError"):
+        raise AssertionError("configError: " + entry["configError"])
+    return f"{entry.get('name')}: kind={entry.get('kind')}, defaultSchema={entry.get('defaultSchema')}"
+
+
 def _list_schemas(client: McpClient) -> str:
     data = client.tool_json(client.call_tool("listSchemas", {"includeSystem": False}))
-    if not isinstance(data, list):
-        raise AssertionError("listSchemas did not return a JSON array")
-    return f"{len(data)} schemas"
+    schemas = data.get("schemas") if isinstance(data, dict) else None
+    if not isinstance(schemas, list):
+        raise AssertionError("listSchemas did not return a 'schemas' array")
+    return f"{len(schemas)} schemas"
 
 
 def _inspect_ping(client: McpClient, profile: DbProfile) -> str:
