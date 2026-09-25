@@ -172,8 +172,11 @@ the [field table](../README.md#connection-fields) when a setting does not seem t
 ```
 
 No `defaultSchema`: the database is one logical schema, `PUBLIC`. Without an `encoding=` /
-`charSet=` / `lc_ctype=` parameter the server adds `encoding=UTF8`. The README section on
-[Firebird](../README.md#firebird) explains how to serve an embedded `.fdb` / `.gdb` file with Docker.
+`charSet=` / `lc_ctype=` parameter the server adds `encoding=UTF8`. For a local file, use
+`jdbc:firebirdsql:embedded:<absolute-path>?nativeLibraryPath=<native-library-directory>`.
+The bundled Jaybird native module supplies the Java bridge; install a matching Firebird or RED
+Database native client and engine separately. The README [Firebird](../README.md#firebird) section
+shows both embedded and Docker examples. `driverPath` is unnecessary for the bundled embedded driver.
 
 ### SQLite
 

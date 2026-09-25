@@ -476,9 +476,14 @@ SQL Server 2012 and later, through the bundled `mssql-jdbc` driver.
 
 Firebird 3.0 and later, through Jaybird 6 (bundled). Connect over the network with the pure-Java
 driver — `jdbc:firebirdsql://<host>:3050//<path/to/db.fdb>` — to a Firebird server; no native
-client library is needed. An embedded database (a `.fdb` / `.gdb` file opened in-process) can be
-served by starting a Firebird server of the matching version on a **copy** of the file (Firebird 3
-for ODS 12, Firebird 4/5 for ODS 13); the official `firebirdsql/firebird` Docker image works:
+client library is needed. The bundled `jaybird-native` module also opens local files in-process:
+`jdbc:firebirdsql:embedded:C:/data/app.gdb?nativeLibraryPath=C:/Firebird/Firebird_5_0`.
+The path names the directory containing `fbclient.dll` or `libfbclient.so`; matching engine and
+plugins must also be installed. A RED Database file needs the RED native installation. The first
+native connection in a JVM selects its native library, so use separate MCP processes for different
+native installations. Embedded reads may update database internals; copy a file that must stay
+unchanged. A local file can alternatively be served by starting a Firebird server of the matching
+version on a **copy** (Firebird 3 for ODS 12, Firebird 4/5 for ODS 13); the official image works:
 
 ```bash
 docker run -d --name fb3 -e FIREBIRD_ROOT_PASSWORD=<pw> \

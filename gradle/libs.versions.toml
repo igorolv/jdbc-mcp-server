@@ -25,6 +25,7 @@ ojdbc11 = { module = "com.oracle.database.jdbc:ojdbc11", version.ref = "ojdbc" }
 orai18n = { module = "com.oracle.database.nls:orai18n", version.ref = "ojdbc" }
 mssql-jdbc = { module = "com.microsoft.sqlserver:mssql-jdbc", version.ref = "mssql-jdbc" }
 jaybird = { module = "org.firebirdsql.jdbc:jaybird", version.ref = "jaybird" }
+jaybird-native = { module = "org.firebirdsql.jdbc:jaybird-native", version.ref = "jaybird" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 testcontainers-oracle-free = { module = "org.testcontainers:oracle-free", version.ref = "testcontainers" }

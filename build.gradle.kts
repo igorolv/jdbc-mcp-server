@@ -33,6 +33,8 @@ dependencies {
     runtimeOnly(libs.mssql.jdbc)
     // Firebird: compile-time too — the plan tools call Jaybird's FirebirdPreparedStatement API
     implementation(libs.jaybird)
+    // Native and embedded Firebird access; the matching fbclient/engine installation stays external.
+    runtimeOnly(libs.jaybird.native)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.testcontainers.junit)
