@@ -653,18 +653,14 @@ credentials out of the client config is
 [the point](#why-credentials-live-in-a-file-not-in-environment-variables). Add
 `JDBC_MCP_CONNECTIONS_FILE` only if you keep the file somewhere other than the default path.
 
-| Client | Status | Where the server is registered |
-|---|---|---|
-| [Claude Code](#claude-code) | tested | `claude mcp add` → `~/.claude.json` (user) or `.mcp.json` (project) |
-| [Codex CLI](#codex-cli) | tested | `~/.codex/config.toml` |
-| [OpenCode](#opencode) | tested | `~/.config/opencode/opencode.json` (global) or `opencode.json` (project) |
-| [VS Code with GitHub Copilot](#vs-code-with-github-copilot) | not tested yet | `.vscode/mcp.json` (workspace) or the user `mcp.json` |
-| [GitHub Copilot CLI](#github-copilot-cli) | not tested yet | `~/.copilot/mcp-config.json` |
-| [Cursor, Claude Desktop, Qwen Code](#other-clients) | not tested yet | the client's `mcpServers` JSON |
-
-"Not tested yet" means the configuration follows the client's documented format for stdio
-servers, but nobody has run this server in it. Reports are welcome in
-[issues](https://github.com/igorolv/jdbc-mcp-server/issues).
+| Client | Where the server is registered |
+|---|---|
+| [Claude Code](#claude-code) | `claude mcp add` → `~/.claude.json` (user) or `.mcp.json` (project) |
+| [Codex CLI](#codex-cli) | `~/.codex/config.toml` |
+| [OpenCode](#opencode) | `~/.config/opencode/opencode.json` (global) or `opencode.json` (project) |
+| [VS Code with GitHub Copilot](#vs-code-with-github-copilot) | `.vscode/mcp.json` (workspace) or the user `mcp.json` |
+| [GitHub Copilot CLI](#github-copilot-cli) | `~/.copilot/mcp-config.json` |
+| [Cursor, Claude Desktop, Qwen Code](#other-clients) | the client's `mcpServers` JSON |
 
 Once registered, ask the agent to call `listConnections`; it should list the entries of your
 `connections.json`.
@@ -738,7 +734,7 @@ start.
 
 ### VS Code with GitHub Copilot
 
-Not tested yet. In `.vscode/mcp.json` for one workspace, or in the user-level `mcp.json` opened
+In `.vscode/mcp.json` for one workspace, or in the user-level `mcp.json` opened
 with the **MCP: Open User Configuration** command for all workspaces:
 
 ```json
@@ -758,7 +754,7 @@ The top-level key is `servers`, not `mcpServers`. The tools are used by Copilot 
 
 ### GitHub Copilot CLI
 
-Not tested yet. In `~/.copilot/mcp-config.json` (or interactively with `/mcp add`):
+In `~/.copilot/mcp-config.json` (or interactively with `/mcp add`):
 
 ```json
 {
@@ -777,7 +773,7 @@ A project can also carry the configuration in `.mcp.json` or `.github/mcp.json`.
 
 ### Other clients
 
-Not tested yet. Cursor (`.cursor/mcp.json` or `~/.cursor/mcp.json`), Claude Desktop
+Cursor (`.cursor/mcp.json` or `~/.cursor/mcp.json`), Claude Desktop
 (`claude_desktop_config.json`) and Qwen Code (`~/.qwen/settings.json`) all use the common
 `mcpServers` shape:
 

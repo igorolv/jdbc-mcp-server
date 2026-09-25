@@ -220,14 +220,14 @@ The databases come from `connections.json`, so there is nothing to put in `env` 
 
 **Where to put it** (the README section "Connecting an AI Client" has a complete snippet per client):
 
-| Client | Status | How / where | Shape |
-|---|---|---|---|
-| Claude Code | tested | `claude mcp add --scope user jdbc -- java -jar <jar>` → `~/.claude.json`; project: `.mcp.json` | `"mcpServers"` → `"jdbc"`: `type: "stdio"`, `command`, `args` |
-| Codex CLI | tested | `codex mcp add jdbc -- java -jar <jar>` → `~/.codex/config.toml` | `[mcp_servers.jdbc]`: `command`, `args`; raise `tool_timeout_sec` (60 s default) for `rebuildCatalog` |
-| OpenCode | tested | `~/.config/opencode/opencode.json(c)`; project: `opencode.json` | `"mcp"` → `"jdbc"`: `type: "local"`, `command: ["java", "-jar", "<jar>"]` |
-| VS Code + GitHub Copilot | not tested yet | `.vscode/mcp.json`, or user `mcp.json` (**MCP: Open User Configuration**) | `"servers"` → `"jdbc"`: `type: "stdio"`, `command`, `args` |
-| GitHub Copilot CLI | not tested yet | `~/.copilot/mcp-config.json`, or `/mcp add` | `"mcpServers"` → `"jdbc"`: `type: "local"`, `command`, `args` |
-| Cursor / Claude Desktop / Qwen Code | not tested yet | `.cursor/mcp.json` / `claude_desktop_config.json` / `~/.qwen/settings.json` | `"mcpServers"` → `"jdbc"`: `command`, `args` |
+| Client | How / where | Shape |
+|---|---|---|
+| Claude Code | `claude mcp add --scope user jdbc -- java -jar <jar>` → `~/.claude.json`; project: `.mcp.json` | `"mcpServers"` → `"jdbc"`: `type: "stdio"`, `command`, `args` |
+| Codex CLI | `codex mcp add jdbc -- java -jar <jar>` → `~/.codex/config.toml` | `[mcp_servers.jdbc]`: `command`, `args`; raise `tool_timeout_sec` (60 s default) for `rebuildCatalog` |
+| OpenCode | `~/.config/opencode/opencode.json(c)`; project: `opencode.json` | `"mcp"` → `"jdbc"`: `type: "local"`, `command: ["java", "-jar", "<jar>"]` |
+| VS Code + GitHub Copilot | `.vscode/mcp.json`, or user `mcp.json` (**MCP: Open User Configuration**) | `"servers"` → `"jdbc"`: `type: "stdio"`, `command`, `args` |
+| GitHub Copilot CLI | `~/.copilot/mcp-config.json`, or `/mcp add` | `"mcpServers"` → `"jdbc"`: `type: "local"`, `command`, `args` |
+| Cursor / Claude Desktop / Qwen Code | `.cursor/mcp.json` / `claude_desktop_config.json` / `~/.qwen/settings.json` | `"mcpServers"` → `"jdbc"`: `command`, `args` |
 
 Use absolute paths. If `java` on the `PATH` is older than 21, put the full path of a JDK 21+ `java`
 binary in `command`. When editing a client config for the user, do not add database settings to its
