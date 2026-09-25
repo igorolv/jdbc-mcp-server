@@ -24,9 +24,9 @@ instead of guessing.
 - **Many databases, one tool manifest.** Name your databases in one
   [`connections.json`](#configuring-connections) and pass `connection` to any tool. Pools open only
   for databases actually used.
-- **49 tools built for agents.** Ready-made schema context packets, FK join paths, compact plan
-  summaries, planner selectivity estimates, index and schema audits, benchmarks. See
-  [MCP Tools](#mcp-tools).
+- **49 tools built for agents.** One-call table descriptions (`describeTable`), ready-made schema
+  context packets, FK join paths, compact plan summaries, planner selectivity estimates, index and
+  schema audits, benchmarks. See [MCP Tools](#mcp-tools).
 - **Knows how the data is used.** A local [usage catalog](#usage-catalog) indexes known application
   and report queries with their business meaning, so undeclared joins and field semantics come with
   evidence.
@@ -64,13 +64,38 @@ month." Without this server, the LLM may:
 With this server, the LLM can:
 
 1. call `schemaBrief` to discover the schema map, or `queryContext` to get ready-to-use detailed context: tables, columns, relationships, and constraints;
-2. refine the context with `tableContext` around a specific table or `findJoinPaths` for JOIN path discovery;
-3. write a query and optionally call `inspectQuery`, `queryLint`, or `resolveQueryLineage` for AST, metadata, and view/routine lineage checks;
-4. call `validateQuery` with the same `params` or `namedParams` that will be used for execution, validating syntax without running the query;
-5. call `explainQuery` when a plan is needed;
-6. call `executeQuery` to fetch data.
+2. call `describeTable` for everything about one table in a single call — columns with types, nullability, defaults and comments, primary and unique keys, indexes, foreign keys in both directions, CHECK constraints with their allowed values, and triggers;
+3. widen the view with `tableContext` around a table or `findJoinPaths` for JOIN path discovery;
+4. write a query and optionally call `inspectQuery`, `queryLint`, or `resolveQueryLineage` for AST, metadata, and view/routine lineage checks;
+5. call `validateQuery` with the same `params` or `namedParams` that will be used for execution, validating syntax without running the query;
+6. call `explainQuery` when a plan is needed;
+7. call `executeQuery` to fetch data.
 
 Any non-SELECT query is blocked before it reaches the database.
+
+Second scenario: "this report takes 40 seconds — why, and what do we do about it?" Without the
+server, an LLM falls back on rules of thumb — "add an index on the filter column" — with no idea
+whether the table holds a thousand rows or a hundred million, or which predicate actually narrows
+anything down. With it, the agent can work through the problem the way a DBA would:
+
+1. `analyzePlan` instead of a raw plan dump: the most expensive nodes, full scans of large tables,
+   planner estimates that miss reality by orders of magnitude (`analyze=true` on PostgreSQL),
+   nested loops over large outer inputs, sorts spilling to disk;
+2. `tableStats` and `indexStats` — how big the tables really are, which indexes exist and, where the
+   engine tracks it, how often they are scanned, dead tuples, when statistics were last gathered;
+3. `estimateSelectivity`, `joinCardinality`, `columnDistribution`, `columnHistogram`, `nullRatio` —
+   which predicate is selective, how skewed the values are, how many rows a join will produce;
+   on PostgreSQL, Oracle and SQL Server the estimates come from the planner, without running the
+   query;
+4. `fkIndexCoverage`, `redundantIndexes`, `unusedIndexes` (PostgreSQL), `schemaLint` — foreign keys
+   without a supporting index (with the `CREATE INDEX` column list ready), indexes that duplicate
+   a longer one, indexes nobody uses;
+5. `benchmarkQuery` and `timedQuery` — cold and warm timings of the rewrite against the original,
+   plus `pg_stat_statements` deltas on PostgreSQL.
+
+The outcome is a concrete proposal — this composite index with the most selective column first,
+this rewrite of the join — backed by numbers from your database instead of folklore. The agent
+measures, it never changes anything: creating the index stays your decision.
 
 Beyond live schema introspection, the server also keeps a local **usage catalog** of known SQL
 queries used by applications and reports against the inspected database, together with their
