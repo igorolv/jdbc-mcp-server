@@ -161,7 +161,14 @@ schema), `structureSnapshotOracleColumnQueryTimeoutSeconds` (300, `0` disables â
 bulk column query during a rebuild, kept apart from `queryTimeoutSeconds`), and the `usage*` fields
 listed under [Usage catalog tools](#usage-catalog-tools). `dialect` (`postgresql`, `oracle`, `mssql`,
 `firebird`, `sqlite`, `generic`; default detected from the URL), `driverPath` and `driverClass` choose the
-engine and load a driver from outside the server jar. See the README for the full table.
+engine and load a driver from outside the server jar. See the README for the full table. Unknown keys
+are ignored without a warning, so check field spelling when a setting seems to have no effect; the
+file is read only at startup.
+
+`docs/connections.md` is the detailed guide: recipes per engine (SSL, Oracle SIDs / TNS aliases, SQL
+Server named instances, SQLite paths, MySQL / MariaDB / H2 / Db2 drivers), `<service>@<stand>`
+naming, secrets, Docker, tuning, how to check a configuration, and every configuration error with
+its cause.
 
 The structure snapshot persists structural metadata in the local SQLite `<catalog>.db` ("cache
 forever", no TTL); live stats are not cached. SQLite WAL lets several local MCP processes share one

@@ -8,23 +8,79 @@
 [![Glama score](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server/badges/score.svg)](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server)
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/igorolv/jdbc-mcp-server)
 
-A local MCP server for read-only access to PostgreSQL, Oracle, Microsoft SQL Server, Firebird, and
-SQLite databases — and, in [generic mode](#generic-jdbc), to any other database with a JDBC driver.
-It lets AI agents such as Claude Code, Cursor, VS Code Copilot, and others write SQL queries,
-inspect execution plans, and explore database structure: tables, columns, indexes, foreign keys,
-views, functions, and sequences.
+A local MCP server that gives AI agents — Claude Code, Cursor, VS Code Copilot, Qwen Code and
+others — **read-only** access to PostgreSQL, Oracle, Microsoft SQL Server, Firebird and SQLite, and,
+in [generic mode](#generic-jdbc), to any other database with a JDBC driver. Agents use it to explore
+the schema, write SQL against real tables and columns, inspect execution plans and audit indexes
+instead of guessing.
 
-PostgreSQL, Oracle, Microsoft SQL Server, Firebird (Jaybird), and SQLite JDBC drivers are bundled into
-the fat jar, so no extra driver installation is required.
+- **Five engines in one jar, plus any JDBC driver.** PostgreSQL, Oracle, SQL Server, Firebird
+  (Jaybird) and SQLite drivers are bundled. Anything else — MySQL, MariaDB, H2, Db2, … — runs in
+  generic mode with its driver jar.
+  See [Supported Databases](#supported-databases).
+- **Read-only by design.** Every statement passes an AST-based guard; connections are read-only at
+  the JDBC, session or file level where the engine allows it; credentials never sit in the
+  environment where an agent could pick them up. See [Read-only Protection](#read-only-protection).
+- **Many databases, one tool manifest.** Name your databases in one
+  [`connections.json`](#configuring-connections) and pass `connection` to any tool. Pools open only
+  for databases actually used.
+- **49 tools built for agents.** Ready-made schema context packets, FK join paths, compact plan
+  summaries, planner selectivity estimates, index and schema audits, benchmarks. See
+  [MCP Tools](#mcp-tools).
+- **Knows how the data is used.** A local [usage catalog](#usage-catalog) indexes known application
+  and report queries with their business meaning, so undeclared joins and field semantics come with
+  evidence.
+- **Fast on repeat.** Structural metadata is kept in a local SQLite
+  [structure snapshot](#persistent-structure-snapshot) that several agent processes share.
+- **Fits small models.** [Tool groups](#tool-groups) can be switched off to shrink the manifest for
+  small-context local models.
 
-The server exposes 49 MCP tools and can optionally expose catalog-qualified MCP resources for table
-and column metadata. Tools may update the local SQLite catalog, but they never write to the inspected
-database.
+**Contents:** [Why This Exists](#why-this-exists) ·
+[Quickstart](#quickstart) ·
+[Supported Databases](#supported-databases) ·
+[Configuring Connections](#configuring-connections) ·
+[Connecting an AI Client](#connecting-an-ai-client) ·
+[Architecture](#architecture) ·
+[MCP Tools](#mcp-tools) ·
+[MCP Resources](#mcp-resources) ·
+[Error Format](#error-format) ·
+[Read-only Protection](#read-only-protection) ·
+[Server Environment Variables](#server-environment-variables) ·
+[Build](#build) ·
+[Project Structure](#project-structure) ·
+[Stack](#stack) ·
+[Troubleshooting](#troubleshooting) ·
+[License](#license)
 
-One server process can serve several databases: name them in
-[`connections.json`](#databases-and-credentials) and pass `connection` to any tool. The tool manifest
-stays a single set regardless of how many databases are configured, and pools are opened only for the
-databases actually used.
+## Why This Exists
+
+Scenario: you ask an LLM to "check the database and show how many orders we had by status last
+month." Without this server, the LLM may:
+
+- invent table and column names;
+- miss the real schema details, such as nullable fields, types, and foreign keys;
+- accidentally generate a `DELETE` or `TRUNCATE` while "reasoning."
+
+With this server, the LLM can:
+
+1. call `schemaBrief` to discover the schema map, or `queryContext` to get ready-to-use detailed context: tables, columns, relationships, and constraints;
+2. refine the context with `tableContext` around a specific table or `findJoinPaths` for JOIN path discovery;
+3. write a query and optionally call `inspectQuery`, `queryLint`, or `resolveQueryLineage` for AST, metadata, and view/routine lineage checks;
+4. call `validateQuery` with the same `params` or `namedParams` that will be used for execution, validating syntax without running the query;
+5. call `explainQuery` when a plan is needed;
+6. call `executeQuery` to fetch data.
+
+Any non-SELECT query is blocked before it reaches the database.
+
+Beyond live schema introspection, the server also keeps a local **usage catalog** of known SQL
+queries used by applications and reports against the inspected database, together with their
+business context — parameter meanings, output column descriptions, and where each output is
+rendered (Excel cell, dashboard widget, BI Publisher region). This lets the LLM answer questions
+like *"which production reports already touch this column?"* and *"what business label does this
+field have in the customer card?"* against a curated body of evidence instead of guessing from
+names alone. The catalog is also the source of the typed three-layer `evidence` bundle on
+relationship edges, so undeclared joins observed in production queries are treated as first-class
+hints alongside declared FKs. See [Usage Catalog](#usage-catalog).
 
 ## Quickstart
 
@@ -51,8 +107,10 @@ all JDBC drivers are bundled), or build it yourself:
 }
 ```
 
-Use a [read-only database user](#maximum-protection-use-a-read-only-database-user); five minutes
-there outweighs every other protection in this server.
+Entries for Oracle, SQL Server, Firebird, SQLite and generic JDBC look the same — see
+[the connections file](#the-connections-file). Use a
+[read-only database user](#maximum-protection-use-a-read-only-database-user); five minutes there
+outweighs every other protection in this server.
 
 **3. Register the server** with your MCP client — with no database settings in the client config:
 
@@ -77,130 +135,30 @@ other tool takes that name as its first argument:
 {"connection": "myapp", "sql": "SELECT count(*) FROM orders"}
 ```
 
-Full details: [Databases and Credentials](#databases-and-credentials),
-[Connecting an AI Client](#connecting-an-ai-client),
-[Serving Several Databases from One Server](#serving-several-databases-from-one-server).
+Full details: [Configuring Connections](#configuring-connections),
+[Connecting an AI Client](#connecting-an-ai-client), and the detailed
+[connections guide](docs/connections.md).
 
-## Databases and Credentials
+## Supported Databases
 
-Every database this server serves is described in one JSON file. Nothing about a database — URL,
-credentials, schema, timeouts, limits — comes from the environment.
+Every tool works on every engine unless the table says otherwise. The engine is chosen from the
+JDBC URL prefix; `dialect` in the connection entry overrides it.
 
-### The connections file
+| | PostgreSQL | Oracle | SQL Server | Firebird 3+ | SQLite | Generic JDBC |
+|---|---|---|---|---|---|---|
+| URL prefix | `jdbc:postgresql:` | `jdbc:oracle:` | `jdbc:sqlserver:` | `jdbc:firebirdsql:` | `jdbc:sqlite:` | any, with `driverPath` |
+| Driver | bundled | bundled | bundled | bundled (Jaybird) | bundled | your jar |
+| Schemas | native | native | native | one logical `PUBLIC` | one: `main` | native, or one logical |
+| Read-only enforced by | session `default_transaction_read_only` | guard + read-only user | guard + read-only user | read-only transactions | file opened read-only | guard + driver `setReadOnly` |
+| Plans | `EXPLAIN [ANALYZE]` | `EXPLAIN PLAN` | `SHOWPLAN` (estimated) | Jaybird plan, no costs | `EXPLAIN QUERY PLAN`, no costs | — |
+| Row estimates (`estimateSelectivity`, `joinCardinality`) | planner | planner | planner | exact `COUNT(*)` | exact `COUNT(*)` | exact `COUNT(*)` |
+| View / trigger sources | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| Routines | ✓ | ✓ (packages too) | ✓ | ✓ (packages, UDFs) | none in SQLite | listed, no source |
+| Sequences | ✓ | ✓ | ✓ | ✓ (generators) | `AUTOINCREMENT` counters | — |
+| Table / index sizes | ✓ | best-effort | ✓ | — | `dbstat` | — |
+| `unusedIndexes` | ✓ | — | — | — | — | — |
 
-Default path `~/.jdbc-mcp-server/connections.json` (`<data-dir>/connections.json`), overridden with
-`JDBC_MCP_CONNECTIONS_FILE`. When the file is missing or defines no connection the server still
-starts (so an MCP client can list its tools), logs a warning, and `listConnections` returns an empty
-list; every other tool then reports that no connection is available. A file that is present but
-malformed is a startup error.
-
-```json
-{
-  "connections": {
-    "orders": {
-      "url": "jdbc:postgresql://db.example.com:5432/orders",
-      "username": "ai_readonly",
-      "password": "secret",
-      "defaultSchema": "public",
-      "description": "Order service — customers, orders, shipments",
-      "structureSnapshotSchemas": ["public", "nsi"]
-    },
-    "billing": {
-      "url": "jdbc:oracle:thin:@//oracle.example.com:1521/BILLING",
-      "username": "AI_READONLY",
-      "password": "${BILLING_DB_PASSWORD}",
-      "description": "Legacy billing (Oracle)"
-    }
-  }
-}
-```
-
-The object key is the connection name. It is also the name of the connection's local catalog
-directory (`<data-dir>/<name>/`) and appears in MCP resource URIs, so it must match
-`[A-Za-z0-9._-]+(@[A-Za-z0-9._-]+)?`, be at most 64 characters, and not be `.` or `..`.
-
-The optional `@` is there to name the two axes separately: `<service>@<stand>`, as in `ssj@dev`,
-`nsi@dev`, `ssj@tst`. A dash cannot do that job, because dashes already occur inside service names
-(`ssj-ws`, `ssj-ek-export`, `ais-ui`), so `ssj-ws-dev` is ambiguous to a human and to a model alike.
-`@` never occurs in a service name and reads as "what, where" the way `user@host` does. It is
-percent-encoded to `%40` in resource URIs; nothing else about the name changes — the directory on
-disk is the name as written.
-
-`url` is the only required field; the engine is detected from its prefix (`jdbc:postgresql:`,
-`jdbc:oracle:`, `jdbc:sqlserver:`, `jdbc:firebirdsql:` / `jdbc:firebird:`, `jdbc:sqlite:`). Any other
-URL needs a `driverPath` and is served as [generic JDBC](#generic-jdbc); `dialect` overrides the
-detection. `description` is free text returned by `listConnections`, so an
-agent can pick a database by meaning rather than by name — worth filling in.
-
-Any string value may reference an environment variable as `${VAR}`. A referenced variable that is
-not set fails startup with a message naming the variable and the field; it never becomes an empty
-password. Read the next section before reaching for it.
-
-### Why credentials live in a file, not in environment variables
-
-The point of this server is that the agent reaches the database *only* through it: every statement
-goes through the read-only guard, every result is capped by `maxRows`, and nothing but
-`SELECT` / `WITH` / `EXPLAIN` gets through.
-
-Credentials in environment variables undermine exactly that. They are set on the server process by
-the MCP client, which means they also sit in the client's own configuration — a file agents read and
-edit as a matter of routine — and in the environment of whatever shell launched it. An agent that
-has seen a URL, a user and a password does not need the tools any more: `psql`, `sqlplus`, `sqlcmd`
-or three lines of Python connect straight to the database, with no guard, no row cap and no trace in
-this server's log.
-
-So the server accepts no database credentials from the environment at all — there are no `JDBC_URL`
-/ `JDBC_USERNAME` / `JDBC_PASSWORD` variables. They live in `connections.json`, which only the server
-reads.
-
-Be clear about what that does and does not buy:
-
-- It removes the easy path. Credentials stop being part of the material an agent routinely handles:
-  MCP client configs, shell environment, `env` dumps in logs and bug reports.
-- **It is not a sandbox.** An agent with shell access running as you can read the file; `chmod 600`
-  keeps out other users, not a process running as your user.
-- The guarantee that survives everything is a
-  [read-only database user](#maximum-protection-use-a-read-only-database-user). The file narrows the
-  attack surface; the database's own permissions close it.
-
-For the same reason, prefer a literal password in the file over a `${VAR}` reference whose variable
-would be set in the MCP client's `env` block — that puts the secret straight back where the agent
-looks. `${VAR}` earns its place when the value is injected from outside the agent's reach (a systemd
-unit, a wrapper script, a secret manager), or when the file itself is shared or committed and the
-secret must not be.
-
-### Connection fields
-
-Everything except `url` is optional; a field left out falls back to the built-in default:
-
-| Field | Default | Meaning |
-|---|---|---|
-| `url` | required | JDBC URL; also selects the engine |
-| `dialect` | from the URL | `postgresql`, `oracle`, `mssql`, `firebird`, `sqlite`, or `generic` — see [Generic JDBC](#generic-jdbc) |
-| `driverPath`, `driverClass` | bundled drivers | Load the JDBC driver from a jar or directory instead — see [Generic JDBC](#generic-jdbc) |
-| `username`, `password` | none | Database credentials |
-| `description` | none | Free text returned by `listConnections` |
-| `defaultSchema` | the session schema | Schema used when a metadata tool call omits one |
-| `queryTimeoutSeconds` | `30` | Per-query timeout; `0` disables |
-| `maxRows` | `1000` | Row cap for one response; `truncated: true` when hit |
-| `fetchSize` | `500` | JDBC `fetchSize` hint |
-| `readonlyGuard` | `strict` | `off` disables the client-side SELECT-only check |
-| `poolMaximumSize` | `40` | Hikari maximum pool size |
-| `poolMinimumIdle` | `0` | Hikari minimum idle; `0` keeps the pool lazy |
-| `poolConnectionTimeoutMs` | `10000` | Hikari connection checkout timeout |
-| `poolValidationTimeoutMs` | `5000` | Hikari validation timeout |
-| `poolIdleTimeoutMs` | `60000` | Idle connections above `poolMinimumIdle` are closed after this |
-| `structureSnapshotSchemas` | the default schema | Schemas captured by `rebuildCatalog` |
-| `structureSnapshotOracleColumnQueryTimeoutSeconds` | `300` | Oracle-only timeout for the bulk column query during `rebuildCatalog`; `0` disables |
-| `usageCatalogEnabled` | `true` | When `false`, usage tools report the disabled state |
-| `usageCatalogPaths` | none | Extra directories, JSON files or zip archives with QueryUsage records |
-| `usageNativeSchemas` | the default schema | Schemas scanned for native usage |
-| `usageNativeIncludeViews`, `usageNativeIncludeRoutines`, `usageNativeIncludeTriggers` | `true` | What native usage scanning covers |
-| `usageNativeMaxObjects` | `10000` | Maximum native usage records per index build |
-
-The `JDBC_MCP_TOOLS_*` group flags stay in the environment — they shape the tool manifest, which is
-shared by all connections. See [Configuration](#configuration) for the handful of variables the
-server itself reads.
+"—" means the tool answers with error kind `unsupported` or a note saying why.
 
 ### URL examples
 
@@ -212,17 +170,23 @@ jdbc:oracle:thin:@//db.example.com:1521/ORCLPDB1
 jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=...)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=...)))
 
 jdbc:sqlserver://db.example.com:1433;databaseName=myapp;encrypt=true;trustServerCertificate=false
-jdbc:sqlserver://db.example.com;databaseName=myapp;integratedSecurity=false
+jdbc:sqlserver://db.example.com;instanceName=SQLEXPRESS;databaseName=myapp
 
 jdbc:firebirdsql://db.example.com:3050//var/lib/firebird/data/myapp.fdb
 jdbc:firebirdsql://db.example.com/myapp?encoding=WIN1251
 
 jdbc:sqlite:/data/app.db
 jdbc:sqlite:C:/data/app.db
+
+jdbc:mysql://db.example.com:3306/shop           (generic, with driverPath)
+jdbc:h2:tcp://db.example.com/~/inventory        (generic, with driverPath)
 ```
 
-Firebird, SQLite and generic JDBC differ from the other engines — schemas, plans, statistics: see
-[Firebird](#firebird), [SQLite](#sqlite) and [Generic JDBC](#generic-jdbc).
+More per-engine recipes — SSL, SIDs and TNS aliases, named instances, Windows paths, drivers for
+MySQL / MariaDB / H2 / Db2 — are in [docs/connections.md](docs/connections.md#recipes-per-engine).
+
+PostgreSQL, Oracle and SQL Server behave as you would expect. Firebird, SQLite and generic JDBC
+differ enough to read the notes below before using them.
 
 ### Firebird
 
@@ -330,35 +294,311 @@ complete than a real dialect:
   Make the connection itself read-only where the driver allows it (a read-only URL option), or use
   a read-only database user.
 
-## Why This Exists
+## Configuring Connections
 
-Scenario: you ask an LLM to "check the database and show how many orders we had by status last
-month." Without this server, the LLM may:
+Every database this server serves is described in one JSON file. Nothing about a database — URL,
+credentials, schema, timeouts, limits — comes from the environment. This section covers what most
+setups need; [docs/connections.md](docs/connections.md) is the detailed guide: recipes per engine,
+environments, secrets, external drivers, Docker, tuning, and a reference of configuration errors.
 
-- invent table and column names;
-- miss the real schema details, such as nullable fields, types, and foreign keys;
-- accidentally generate a `DELETE` or `TRUNCATE` while "reasoning."
+### The connections file
 
-With this server, the LLM can:
+The default path is `~/.jdbc-mcp-server/connections.json` (`%USERPROFILE%\.jdbc-mcp-server\connections.json`
+on Windows, `/data/connections.json` in the Docker image). `JDBC_MCP_CONNECTIONS_FILE` points
+elsewhere. The directory around it is the server's data directory: each connection gets a
+`<name>/` subdirectory for its local catalog, and the log is written to `logs/`.
 
-1. call `schemaBrief` to discover the schema map, or `queryContext` to get ready-to-use detailed context: tables, columns, relationships, and constraints;
-2. refine the context with `tableContext` around a specific table or `findJoinPaths` for JOIN path discovery;
-3. write a query and optionally call `inspectQuery`, `queryLint`, or `resolveQueryLineage` for AST, metadata, and view/routine lineage checks;
-4. call `validateQuery` with the same `params` or `namedParams` that will be used for execution, validating syntax without running the query;
-5. call `explainQuery` when a plan is needed;
-6. call `executeQuery` to fetch data.
+```json
+{
+  "connections": {
+    "orders": {
+      "url": "jdbc:postgresql://db.example.com:5432/orders",
+      "username": "ai_readonly",
+      "password": "secret",
+      "defaultSchema": "public",
+      "description": "Order service — customers, orders, shipments",
+      "structureSnapshotSchemas": ["public", "nsi"]
+    },
+    "billing": {
+      "url": "jdbc:oracle:thin:@//oracle.example.com:1521/BILLING",
+      "username": "AI_READONLY",
+      "password": "${BILLING_DB_PASSWORD}",
+      "defaultSchema": "BILLING_OWNER",
+      "description": "Legacy billing (Oracle)"
+    },
+    "crm": {
+      "url": "jdbc:sqlserver://sql.example.com:1433;databaseName=crm;encrypt=true",
+      "username": "ai_readonly",
+      "password": "secret",
+      "defaultSchema": "dbo",
+      "description": "CRM (SQL Server)"
+    },
+    "legacy": {
+      "url": "jdbc:firebirdsql://fb.example.com:3050//var/lib/firebird/data/app.fdb",
+      "username": "SYSDBA",
+      "password": "secret",
+      "description": "Pre-2010 warehouse app (Firebird)"
+    },
+    "analytics": {
+      "url": "jdbc:sqlite:/srv/data/analytics.db",
+      "description": "Nightly analytics extract (SQLite)"
+    },
+    "shop": {
+      "url": "jdbc:mysql://mysql.example.com:3306/shop",
+      "username": "ai_readonly",
+      "password": "secret",
+      "driverPath": "drivers/mysql-connector-j-9.1.0.jar",
+      "description": "Web shop (MySQL, generic JDBC)"
+    }
+  }
+}
+```
 
-Any non-SELECT query is blocked before it reaches the database.
+`url` is the only required field; the engine is detected from its prefix (`jdbc:postgresql:`,
+`jdbc:oracle:`, `jdbc:sqlserver:`, `jdbc:firebirdsql:` / `jdbc:firebird:`, `jdbc:sqlite:`). Any other
+URL needs a `driverPath` and is served as [generic JDBC](#generic-jdbc); `dialect` overrides the
+detection. `description` is free text returned by `listConnections`, so an agent can pick a database
+by meaning rather than by name — worth filling in, including the stand and any caution ("PRODUCTION
+— keep queries small").
 
-Beyond live schema introspection, the server also keeps a local **usage catalog** of known SQL
-queries used by applications and reports against the inspected database, together with their
-business context — parameter meanings, output column descriptions, and where each output is
-rendered (Excel cell, dashboard widget, BI Publisher region). This lets the LLM answer questions
-like *"which production reports already touch this column?"* and *"what business label does this
-field have in the customer card?"* against a curated body of evidence instead of guessing from
-names alone. The catalog is also the source of the typed three-layer `evidence` bundle on
-relationship edges, so undeclared joins observed in production queries are treated as first-class
-hints alongside declared FKs. See *Usage Catalog* below.
+When the file is missing or defines no connection the server still starts (so an MCP client can list
+its tools), logs a warning, and `listConnections` returns an empty list; every other tool then
+reports that no connection is available. A file that is present but malformed is a startup error.
+Keys the server does not know are ignored without a warning, so a misspelled field silently keeps
+its default.
+
+### Connection names
+
+The object key is the connection name: the value an agent passes as `connection`, the name of the
+local catalog directory (`<data-dir>/<name>/`), and part of MCP resource URIs. It must match
+`[A-Za-z0-9._-]+(@[A-Za-z0-9._-]+)?`, be at most 64 characters, and not be `.` or `..`.
+
+The optional `@` is there to name the two axes separately: `<service>@<stand>`, as in `ssj@dev`,
+`nsi@dev`, `ssj@tst`. A dash cannot do that job, because dashes already occur inside service names
+(`ssj-ws`, `ssj-ek-export`, `ais-ui`), so `ssj-ws-dev` is ambiguous to a human and to a model alike.
+`@` never occurs in a service name and reads as "what, where" the way `user@host` does. It is
+percent-encoded to `%40` in resource URIs; nothing else about the name changes — the directory on
+disk is the name as written.
+
+Because the catalog is keyed by name, renaming a connection starts it with an empty catalog, and two
+databases must never share a name — see
+[Changing a configuration](docs/connections.md#changing-a-configuration).
+
+### Connection fields
+
+Everything except `url` is optional; a field left out falls back to the built-in default:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `url` | required | JDBC URL; also selects the engine |
+| `username`, `password` | none | Database credentials |
+| `description` | none | Free text returned by `listConnections` |
+| `defaultSchema` | the session schema | Schema used when a metadata tool call omits one |
+| `dialect` | from the URL | `postgresql`, `oracle`, `mssql`, `firebird`, `sqlite`, or `generic` — see [Generic JDBC](#generic-jdbc) |
+| `driverPath`, `driverClass` | bundled drivers | Load the JDBC driver from a jar or directory instead — see [Generic JDBC](#generic-jdbc) |
+| `queryTimeoutSeconds` | `30` | Per-query timeout; `0` disables |
+| `maxRows` | `1000` | Row cap for one response; `truncated: true` when hit |
+| `fetchSize` | `500` | JDBC `fetchSize` hint |
+| `readonlyGuard` | `strict` | `off` disables the client-side SELECT-only check |
+| `poolMaximumSize` | `40` | Hikari maximum pool size |
+| `poolMinimumIdle` | `0` | Hikari minimum idle; `0` keeps the pool lazy |
+| `poolConnectionTimeoutMs` | `10000` | Hikari connection checkout timeout |
+| `poolValidationTimeoutMs` | `5000` | Hikari validation timeout |
+| `poolIdleTimeoutMs` | `60000` | Idle connections above `poolMinimumIdle` are closed after this |
+| `structureSnapshotSchemas` | the default schema | Schemas captured by `rebuildCatalog` |
+| `structureSnapshotOracleColumnQueryTimeoutSeconds` | `300` | Oracle-only timeout for the bulk column query during `rebuildCatalog`; `0` disables |
+| `usageCatalogEnabled` | `true` | When `false`, usage tools report the disabled state |
+| `usageCatalogPaths` | none | Extra directories, JSON files or zip archives with QueryUsage records |
+| `usageNativeSchemas` | the default schema | Schemas scanned for native usage |
+| `usageNativeIncludeViews`, `usageNativeIncludeRoutines`, `usageNativeIncludeTriggers` | `true` | What native usage scanning covers |
+| `usageNativeMaxObjects` | `10000` | Maximum native usage records per index build |
+
+Guidance on choosing values — lower `maxRows` and timeouts for production, pool sizes, which schemas
+to snapshot — is in [Tuning a connection](docs/connections.md#tuning-a-connection). The
+`JDBC_MCP_TOOLS_*` group flags stay in the environment — they shape the tool manifest, which is
+shared by all connections. See [Server Environment Variables](#server-environment-variables).
+
+### Passwords and `${VAR}` references
+
+Any string value may reference an environment variable as `${VAR}`. A referenced variable that is
+not set fails startup with a message naming the variable and the field; it never becomes an empty
+password. Read the next section before reaching for it.
+
+Keep the file readable only by its owner — `chmod 600 ~/.jdbc-mcp-server/connections.json`; for the
+Windows equivalent and wrapper-script examples see [Secrets](docs/connections.md#secrets).
+
+### Why credentials live in a file, not in environment variables
+
+The point of this server is that the agent reaches the database *only* through it: every statement
+goes through the read-only guard, every result is capped by `maxRows`, and nothing but
+`SELECT` / `WITH` / `EXPLAIN` gets through.
+
+Credentials in environment variables undermine exactly that. They are set on the server process by
+the MCP client, which means they also sit in the client's own configuration — a file agents read and
+edit as a matter of routine — and in the environment of whatever shell launched it. An agent that
+has seen a URL, a user and a password does not need the tools any more: `psql`, `sqlplus`, `sqlcmd`
+or three lines of Python connect straight to the database, with no guard, no row cap and no trace in
+this server's log.
+
+So the server accepts no database credentials from the environment at all — there are no `JDBC_URL`
+/ `JDBC_USERNAME` / `JDBC_PASSWORD` variables. They live in `connections.json`, which only the server
+reads.
+
+Be clear about what that does and does not buy:
+
+- It removes the easy path. Credentials stop being part of the material an agent routinely handles:
+  MCP client configs, shell environment, `env` dumps in logs and bug reports.
+- **It is not a sandbox.** An agent with shell access running as you can read the file; `chmod 600`
+  keeps out other users, not a process running as your user.
+- The guarantee that survives everything is a
+  [read-only database user](#maximum-protection-use-a-read-only-database-user). The file narrows the
+  attack surface; the database's own permissions close it.
+
+For the same reason, prefer a literal password in the file over a `${VAR}` reference whose variable
+would be set in the MCP client's `env` block — that puts the secret straight back where the agent
+looks. `${VAR}` earns its place when the value is injected from outside the agent's reach (a systemd
+unit, a wrapper script, a secret manager), or when the file itself is shared or committed and the
+secret must not be.
+
+### Several databases in one server
+
+One server process can serve any number of named databases. The tool manifest stays a single set of
+49 tools no matter how many are configured — each tool takes `connection` as its first argument —
+and a database's pool, local catalog and services are created the first time something actually asks
+for that connection.
+
+This matters at scale: registering fifteen MCP server instances puts fifteen tool manifests into the
+agent's context and fifteen JVMs in memory, when the session may end up touching two of the
+databases.
+
+**Choosing a connection.** There is no default connection: every tool call names the database it
+means in its first argument, including installations that serve exactly one. A missing or unknown
+name returns an `argument` error listing the available names. `listConnections` shows what exists —
+it reads configuration only, so it works even when some of the configured databases are down.
+
+**Isolation.**
+
+- Configuring a connection costs nothing until it is used: no pool, no catalog file, no connection.
+- Reaching database `X` opens pools for `X` only.
+- A database that is down, or an entry whose URL is not a supported JDBC URL, fails the calls made
+  against it and leaves the other connections working. `listConnections` reports the reason in
+  `configError`.
+- Each connection keeps its own local catalog at `<data-dir>/<name>/<name>.db`, so structure
+  snapshots and usage indexes never mix.
+- MCP resources (when `JDBC_MCP_RESOURCES_ENABLED=true`) are published for every configured
+  connection that already has a local catalog file; URIs are catalog-qualified.
+
+The single server process keeps its shared rolling log under
+`<data-dir>/logs/jdbc-mcp-server.log`. Log entries emitted while handling a tool call include its
+`connection` name; process-level entries use `connection=server`.
+
+**One instance per database** still works and remains a reasonable choice for one or two databases.
+The client namespaces tools by server key, at the cost of one tool manifest and one JVM per database:
+
+```json
+{
+  "mcpServers": {
+    "jdbc-orders": {
+      "command": "java",
+      "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
+      "env": {"JDBC_MCP_CONNECTIONS_FILE": "<absolute-path>/orders-connections.json"}
+    },
+    "jdbc-billing": {
+      "command": "java",
+      "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
+      "env": {"JDBC_MCP_CONNECTIONS_FILE": "<absolute-path>/billing-connections.json"}
+    }
+  }
+}
+```
+
+Do not give two databases the same connection name, in either setup: their usage index and structure
+snapshot would share one `<catalog>.db` file. Several stands of one service, per-project connection
+files and naming conventions are covered in
+[Several databases and environments](docs/connections.md#several-databases-and-environments).
+
+### Checking the configuration
+
+1. **Run the jar by hand** — `java -jar jdbc-mcp-server.jar < /dev/null` — when an MCP client only
+   says it failed to connect. A malformed file, an invalid name or an unset `${VAR}` is reported
+   there.
+2. **Read the startup line.** The server logs every entry with its URL (a `password=` parameter is
+   masked) and, for an entry it cannot use, the reason:
+
+   ```text
+   Configured connections: orders -> jdbc:postgresql://db.example.com:5432/orders, shop -> jdbc:mysql://mysql.example.com:3306/shop (unusable: driverPath /home/me/.jdbc-mcp-server/drivers/mysql-connector-j-9.1.0.jar does not exist)
+   ```
+
+3. **Ask the agent for `listConnections`.** Each entry shows its `kind`, `defaultSchema`, whether a
+   local catalog exists, and `configError` when it cannot be used.
+4. **Make one real call per connection**, e.g. `listSchemas`. Host, credentials and driver loading
+   are checked only when a connection is first used.
+
+The file is read once at startup: after editing it, restart or reconnect the MCP server. Every
+error message and its cause is listed in
+[Configuration errors](docs/connections.md#configuration-errors).
+
+## Connecting an AI Client
+
+Add this server to the client configuration:
+
+```json
+{
+  "command": "java",
+  "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
+  "env": {}
+}
+```
+
+There is nothing to put in `env`: the databases come from
+[`connections.json`](#configuring-connections), and keeping credentials out of the client config
+is [the point](#why-credentials-live-in-a-file-not-in-environment-variables). Add
+`JDBC_MCP_CONNECTIONS_FILE` only if you keep the file somewhere other than the default path.
+
+### Where to Configure It
+
+| Client | Connection method |
+|---|---|
+| Claude Code | `claude mcp add --scope user jdbc java -jar /path/to/jdbc-mcp-server.jar` |
+| Qwen Code | `~/.qwen/settings.json` -> `"mcpServers"` -> `"jdbc"` |
+| VS Code | `.vscode/mcp.json` -> `"servers"` -> `"jdbc"` |
+| Cursor | `.cursor/mcp.json` -> `"mcpServers"` -> `"jdbc"` |
+| Claude Desktop | `claude_desktop_config.json` -> `"mcpServers"` -> `"jdbc"` |
+
+For Claude Code, omitting `--scope user` adds the server only to the current project.
+Check the connection with `claude mcp list`. Restart the client after adding the server.
+
+### Running by Hand
+
+```bash
+java -jar jdbc-mcp-server.jar
+```
+
+(Use `build/libs/jdbc-mcp-server.jar` if you built it locally, or the file downloaded from
+[Releases](https://github.com/igorolv/jdbc-mcp-server/releases/latest).)
+
+The server immediately starts listening for MCP over stdin/stdout; no port is opened. Logs are
+written to stderr and to `<data-dir>/logs/`. Running it by hand is mostly useful to
+[check a configuration](#checking-the-configuration); `Ctrl-D` stops it.
+
+### Docker
+
+The image is published to GHCR with every release. Mount the directory holding `connections.json`
+at `/data` — it is also where the server keeps its local catalogs and logs:
+
+```bash
+docker run -i --rm -v ~/.jdbc-mcp-server:/data ghcr.io/igorolv/jdbc-mcp-server:latest
+```
+
+The same command is what an MCP client should launch (`-i` keeps stdin open for the stdio
+transport). JDBC URLs in `connections.json` must be reachable from inside the container: use the
+database host name, not `localhost`, or add `--network host` on Linux. SQLite files and driver jars
+must be inside the mounted directory or mounted separately — see
+[Running in Docker](docs/connections.md#running-in-docker). To build the image locally:
+
+```bash
+docker build -t jdbc-mcp-server .
+```
 
 ## Architecture
 
@@ -378,7 +618,7 @@ hints alongside declared FKs. See *Usage Catalog* below.
 
 The protocol is `stdio` only. The client starts the server as a child process. One process serves
 any number of named databases, all declared in the
-[connections file](#databases-and-credentials); a connection's pool is opened the first time a tool
+[connections file](#configuring-connections); a connection's pool is opened the first time a tool
 call names it.
 
 Tool calls on one stdio session run sequentially. The MCP Java SDK 2.0.0 used by Spring AI 2.0.1
@@ -387,48 +627,13 @@ keeps `immediateExecution(true)` until the SDK fixes this. A client's `notificat
 not propagated to JDBC `Statement.cancel()`; the configured `queryTimeoutSeconds` (or a tool call's
 `timeoutSeconds` override) remains the server-side limit for a running SQL statement.
 
-## MCP Resources
-
-When `JDBC_MCP_RESOURCES_ENABLED=true`, the server exposes — for every configured connection that
-already has a local catalog file — a concrete catalog manifest, one concrete resource for every table
-or view already persisted in that connection's structure snapshot, and two parameterized resource
-templates:
-
-```text
-jdbc-mcp://catalog/<catalog>/manifest
-jdbc-mcp://catalog/<catalog>/schemas/SSV/tables/CUSTOMERS
-jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
-jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
-```
-
-`<catalog>` is the percent-encoded connection name. It is fixed per connection when the server
-starts and is not a
-template variable clients can use to switch databases: a read resolves the connection from the URI it
-was given. This keeps resource URIs unambiguous both across the connections of one server and across
-several registered instances of this jar. The manifest reports database kind,
-snapshot version/build time/covered schemas, and the exact templates for its catalog. Table and
-column reads reuse `MetadataService`, so they have the same persistent-snapshot and live-fallback
-semantics as `describeTable`.
-
-Concrete table resources are loaded from the local SQLite snapshots when the MCP server starts — no
-database is contacted and no JDBC pool is created for this — so clients with MCP resource-picker
-support can offer entries like `SSV.CUSTOMERS` without querying the live database. Their compact descriptions contain the database comment when present, the primary-key
-columns, and outgoing foreign-key mappings; column lists and counts are intentionally omitted. After
-running `rebuildCatalog` in an already-running server, restart or reconnect that MCP server instance
-to refresh its concrete resource list.
-
-Column resources include the column definition plus matching PK position, unique constraints,
-indexes, outgoing/incoming foreign keys, and CHECK constraints. URI path segments preserve case
-and use UTF-8 percent encoding. Resources are disabled by default; enabling them leaves the MCP
-tools unchanged.
-
 ## MCP Tools
 
 The 49 tools are grouped below by purpose.
 
 Every tool takes `connection` as its **first, required** argument, naming the database to run
 against — including installations that serve exactly one database. `listConnections` lists the
-names. See [Serving Several Databases from One Server](#serving-several-databases-from-one-server).
+names. See [Several databases in one server](#several-databases-in-one-server).
 
 ### Tool Groups
 
@@ -776,6 +981,41 @@ guesswork. Data comes from system catalogs (`pg_class`, `pg_stat_*`, `ALL_TABLES
 
 All tools are **read-only**; data is not modified.
 
+## MCP Resources
+
+When `JDBC_MCP_RESOURCES_ENABLED=true`, the server exposes — for every configured connection that
+already has a local catalog file — a concrete catalog manifest, one concrete resource for every table
+or view already persisted in that connection's structure snapshot, and two parameterized resource
+templates:
+
+```text
+jdbc-mcp://catalog/<catalog>/manifest
+jdbc-mcp://catalog/<catalog>/schemas/SSV/tables/CUSTOMERS
+jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
+jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
+```
+
+`<catalog>` is the percent-encoded connection name. It is fixed per connection when the server
+starts and is not a
+template variable clients can use to switch databases: a read resolves the connection from the URI it
+was given. This keeps resource URIs unambiguous both across the connections of one server and across
+several registered instances of this jar. The manifest reports database kind,
+snapshot version/build time/covered schemas, and the exact templates for its catalog. Table and
+column reads reuse `MetadataService`, so they have the same persistent-snapshot and live-fallback
+semantics as `describeTable`.
+
+Concrete table resources are loaded from the local SQLite snapshots when the MCP server starts — no
+database is contacted and no JDBC pool is created for this — so clients with MCP resource-picker
+support can offer entries like `SSV.CUSTOMERS` without querying the live database. Their compact descriptions contain the database comment when present, the primary-key
+columns, and outgoing foreign-key mappings; column lists and counts are intentionally omitted. After
+running `rebuildCatalog` in an already-running server, restart or reconnect that MCP server instance
+to refresh its concrete resource list.
+
+Column resources include the column definition plus matching PK position, unique constraints,
+indexes, outgoing/incoming foreign keys, and CHECK constraints. URI path segments preserve case
+and use UTF-8 percent encoding. Resources are disabled by default; enabling them leaves the MCP
+tools unchanged.
+
 ## Error Format
 
 All tools return errors in the same shape: JSON with `error` and `kind` fields.
@@ -868,24 +1108,23 @@ Connection-level protections (`setReadOnly` and, on PostgreSQL, `default_transac
 remain enabled. On Oracle and SQL Server, `setReadOnly` is best-effort; use a read-only database
 user for the strongest guarantee.
 
-## Stack
+## Server Environment Variables
 
-- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.1 (`stdio` transport)
-- HikariCP through Spring Boot `starter-jdbc`
-- PostgreSQL JDBC 42.7.4
-- Oracle JDBC `ojdbc11` 23.6.0.24.10
-- Microsoft SQL Server JDBC 12.8.1
-- Firebird JDBC (Jaybird) 6.0.6
-- SQLite 3.51.3 (`sqlite-jdbc`): the WAL catalog (`<catalog>.db`) holding the usage index and persistent structure snapshot, and the driver for SQLite connections
-- Gradle 9.3.1 with version catalog
+Databases, credentials and everything that varies per database live in
+[`connections.json`](#configuring-connections) — deliberately
+[not in the environment](#why-credentials-live-in-a-file-not-in-environment-variables). The
+environment configures only the server process itself:
 
-## License
+| Variable | Required | Description |
+|---|---|---|
+| `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. A missing or empty file starts the server with no connections (warning logged); a malformed one is a startup error |
+| `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Each connection gets its own subdirectory under it |
+| `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest plus concrete table resources and table/column resource templates; default `false` |
+| `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
 
-This project is licensed under the Apache License, Version 2.0. See `LICENSE`.
-
-Runtime and test dependencies are licensed by their respective owners. See
-`THIRD_PARTY_NOTICES.md`, especially if you distribute a built fat jar containing bundled JDBC
-drivers.
+A connection's own settings — URL, credentials, default schema, timeouts, row caps, pool sizes, the
+read-only guard, snapshot and usage options — are fields of its `connections.json` entry; see
+[Connection fields](#connection-fields).
 
 ## Build
 
@@ -949,153 +1188,6 @@ $env:LIVE_ORACLE_PASSWORD = 'secret'
 `.env` is listed in `.gitignore`; if desired, store variables there and load them before running
 tests, for example with `direnv`, `dotenv-cli`, or `set -a; . ./.env; set +a` in bash. Gradle does
 not parse `.env` itself; variables must already be present in the environment when Gradle starts.
-
-## Configuration
-
-Databases, credentials and everything that varies per database live in
-[`connections.json`](#databases-and-credentials) — deliberately
-[not in the environment](#why-credentials-live-in-a-file-not-in-environment-variables). The
-environment configures only the server process itself:
-
-| Variable | Required | Description |
-|---|---|---|
-| `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. A missing or empty file starts the server with no connections (warning logged); a malformed one is a startup error |
-| `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Each connection gets its own subdirectory under it |
-| `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest plus concrete table resources and table/column resource templates; default `false` |
-| `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
-
-A connection's own settings — URL, credentials, default schema, timeouts, row caps, pool sizes, the
-read-only guard, snapshot and usage options — are fields of its `connections.json` entry; see
-[Connection fields](#connection-fields).
-
-## Running
-
-With [`connections.json`](#databases-and-credentials) in place:
-
-```bash
-java -jar jdbc-mcp-server.jar
-```
-
-(Use `build/libs/jdbc-mcp-server.jar` if you built it locally, or the file downloaded from
-[Releases](https://github.com/igorolv/jdbc-mcp-server/releases/latest).)
-
-The server immediately starts listening for MCP over stdin/stdout. Logs are written to stderr. Tool
-calls address a database by the name it has in the file: `"connection": "myapp"`.
-
-### Docker
-
-The image is published to GHCR with every release. Mount the directory holding `connections.json`
-at `/data` — it is also where the server keeps its local catalogs and logs:
-
-```bash
-docker run -i --rm -v ~/.jdbc-mcp-server:/data ghcr.io/igorolv/jdbc-mcp-server:latest
-```
-
-The same command is what an MCP client should launch (`-i` keeps stdin open for the stdio
-transport). JDBC URLs in `connections.json` must be reachable from inside the container: use the
-database host name, not `localhost`, or add `--network host` on Linux. To build the image locally:
-
-```bash
-docker build -t jdbc-mcp-server .
-```
-
-## Connecting an AI Client
-
-Add this server to the client configuration:
-
-```json
-{
-  "command": "java",
-  "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
-  "env": {}
-}
-```
-
-There is nothing to put in `env`: the databases come from
-[`connections.json`](#databases-and-credentials), and keeping credentials out of the client config
-is [the point](#why-credentials-live-in-a-file-not-in-environment-variables). Add
-`JDBC_MCP_CONNECTIONS_FILE` only if you keep the file somewhere other than the default path.
-
-### Where to Configure It
-
-| Client | Connection method |
-|---|---|
-| Claude Code | `claude mcp add --scope user jdbc java -jar /path/to/jdbc-mcp-server.jar` |
-| Qwen Code | `~/.qwen/settings.json` -> `"mcpServers"` -> `"jdbc"` |
-| VS Code | `.vscode/mcp.json` -> `"servers"` -> `"jdbc"` |
-| Cursor | `.cursor/mcp.json` -> `"mcpServers"` -> `"jdbc"` |
-| Claude Desktop | `claude_desktop_config.json` -> `"mcpServers"` -> `"jdbc"` |
-
-For Claude Code, omitting `--scope user` adds the server only to the current project.
-Check the connection with `claude mcp list`. Restart the client after adding the server.
-
-## Serving Several Databases from One Server
-
-One server process can serve any number of named databases. The tool manifest stays a single set of
-49 tools no matter how many are configured — each tool takes `connection` as its first argument —
-and a database's pool, local catalog and services are created the first time something actually asks
-for that connection.
-
-This matters at scale: registering fifteen MCP server instances puts fifteen tool manifests into the
-agent's context and fifteen JVMs in memory, when the session may end up touching two of the
-databases.
-
-Each database is one entry in [`connections.json`](#databases-and-credentials); adding a database
-means adding an entry and restarting the server.
-
-### Choosing a connection
-
-There is no default connection: every tool call names the database it means in its first argument.
-A missing or unknown name returns an `argument` error listing the available names. Call
-`listConnections` to see what exists — it reads configuration only, so it works even when some of
-the configured databases are down.
-
-### A single database
-
-Nothing changes for one database: a `connections.json` with a single entry, and its name passed as
-`connection`. There is no environment-variable shortcut — one file is the whole configuration.
-
-### Isolation
-
-- Configuring a connection costs nothing until it is used: no pool, no catalog file, no connection.
-- Reaching database `X` opens pools for `X` only.
-- A database that is down, or an entry whose URL is not a supported JDBC URL, fails the calls made
-  against it and leaves the other connections working. `listConnections` reports the reason in
-  `configError`.
-- Each connection keeps its own local catalog at `<data-dir>/<name>/<name>.db`, so structure
-  snapshots and usage indexes never mix.
-- MCP resources (when `JDBC_MCP_RESOURCES_ENABLED=true`) are published for every configured
-  connection that already has a local catalog file; URIs were catalog-qualified already.
-
-The single server process keeps its shared rolling log under
-`<data-dir>/logs/jdbc-mcp-server.log`. Log entries emitted while handling a tool call include its
-`connection` name; process-level entries use `connection=server`.
-
-### One instance per database (the earlier approach)
-
-Registering one server instance per database still works and remains a reasonable choice for one or
-two databases. The client namespaces tools by server key, at the cost of one tool manifest and one
-JVM per database:
-
-```json
-{
-  "mcpServers": {
-    "jdbc-orders": {
-      "command": "java",
-      "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
-      "env": {"JDBC_MCP_CONNECTIONS_FILE": "<absolute-path>/orders-connections.json"}
-    },
-    "jdbc-billing": {
-      "command": "java",
-      "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
-      "env": {"JDBC_MCP_CONNECTIONS_FILE": "<absolute-path>/billing-connections.json"}
-    }
-  }
-}
-```
-
-Do not give two databases the same connection name, in either setup: their usage index and structure
-snapshot would share one `<catalog>.db` file.
 
 ## Project Structure
 
@@ -1180,6 +1272,17 @@ snapshot would share one `<catalog>.db` file.
     +-- logback-spring.xml              - logs to stderr because stdout is used by MCP
 ```
 
+## Stack
+
+- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.1 (`stdio` transport)
+- HikariCP through Spring Boot `starter-jdbc`
+- PostgreSQL JDBC 42.7.4
+- Oracle JDBC `ojdbc11` 23.6.0.24.10
+- Microsoft SQL Server JDBC 12.8.1
+- Firebird JDBC (Jaybird) 6.0.6
+- SQLite 3.51.3 (`sqlite-jdbc`): the WAL catalog (`<catalog>.db`) holding the usage index and persistent structure snapshot, and the driver for SQLite connections
+- Gradle 9.3.1 with version catalog
+
 ## Troubleshooting
 
 - **"Cannot find a Java installation ... matching languageVersion=21"** - install JDK 21+ and set `JAVA_HOME`. Gradle toolchains cannot download it without internet access.
@@ -1194,3 +1297,14 @@ snapshot would share one `<catalog>.db` file.
 - **Firebird: "unsupported on-disk structure"** - the server version does not match the file's ODS (Firebird 3 reads ODS 12 only, Firebird 4/5 read ODS 13). Serve the file with the matching Firebird version, or back it up with `gbak` and restore it on a newer one.
 - **SQL Server certificate errors** - set the JDBC URL encryption options explicitly, for example `encrypt=true;trustServerCertificate=false` with a trusted certificate, or `trustServerCertificate=true` only for local/dev use.
 - **SQL Server `unusedIndexes` unsupported** - this tool intentionally avoids `sys.dm_db_index_usage_stats` because it usually requires elevated state-view permissions. Use `indexStats`, `fkIndexCoverage`, and `redundantIndexes` for low-privilege SQL Server audits.
+- **The MCP client says the server failed to start** - run `java -jar jdbc-mcp-server.jar < /dev/null` in a terminal; a malformed `connections.json`, an invalid connection name or an unset `${VAR}` is reported there. See [Checking the configuration](#checking-the-configuration).
+- **A setting in `connections.json` has no effect** - unknown keys are ignored without a warning, so check the spelling against [Connection fields](#connection-fields). The file is read only at startup: restart or reconnect the server after editing it.
+- **A connection shows `configError` in `listConnections`** - the entry is unusable (unsupported URL without `driverPath`, unknown `dialect`, missing driver jar); the other connections keep working. [Configuration errors](docs/connections.md#configuration-errors) lists every message.
+
+## License
+
+This project is licensed under the Apache License, Version 2.0. See `LICENSE`.
+
+Runtime and test dependencies are licensed by their respective owners. See
+`THIRD_PARTY_NOTICES.md`, especially if you distribute a built fat jar containing bundled JDBC
+drivers.
