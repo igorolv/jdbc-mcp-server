@@ -10,6 +10,7 @@ public enum DatabaseKind {
     ORACLE("Oracle"),
     MSSQL("SQL Server"),
     FIREBIRD("Firebird"),
+    SQLITE("SQLite"),
     GENERIC("Generic JDBC");
 
     private final String displayName;
@@ -27,8 +28,8 @@ public enum DatabaseKind {
      * The engine of one connection.
      *
      * @param explicitDialect the {@code dialect} a connection names ({@code postgresql},
-     *                        {@code oracle}, {@code mssql}, {@code firebird} or {@code generic},
-     *                        any case), or {@code null} to detect it from the URL
+     *                        {@code oracle}, {@code mssql}, {@code firebird}, {@code sqlite} or
+     *                        {@code generic}, any case), or {@code null} to detect it from the URL
      * @param externalDriver  whether the connection brings its own driver ({@code driverPath});
      *                        a URL no dialect recognizes is then served as {@link #GENERIC}
      * @throws IllegalArgumentException for an unknown dialect name, or an unrecognized URL without
@@ -43,7 +44,7 @@ public enum DatabaseKind {
                 }
             }
             throw new IllegalArgumentException("Unknown dialect '" + explicitDialect
-                    + "'. Use one of postgresql, oracle, mssql, firebird, generic");
+                    + "'. Use one of postgresql, oracle, mssql, firebird, sqlite, generic");
         }
         try {
             return fromUrl(url);
@@ -68,7 +69,8 @@ public enum DatabaseKind {
                     "JDBC_URL is not set. Provide e.g. jdbc:postgresql://host:5432/db " +
                             "or jdbc:oracle:thin:@//host:1521/service " +
                             "or jdbc:sqlserver://host:1433;databaseName=db " +
-                            "or jdbc:firebirdsql://host:3050//path/to/db.fdb");
+                            "or jdbc:firebirdsql://host:3050//path/to/db.fdb " +
+                            "or jdbc:sqlite:/path/to/app.db");
         }
         String u = url.trim().toLowerCase();
         if (u.startsWith("jdbc:postgresql:")) {
@@ -83,8 +85,11 @@ public enum DatabaseKind {
         if (u.startsWith("jdbc:firebirdsql:") || u.startsWith("jdbc:firebird:")) {
             return FIREBIRD;
         }
+        if (u.startsWith("jdbc:sqlite:")) {
+            return SQLITE;
+        }
         throw new IllegalArgumentException(
                 "Unsupported JDBC URL: '" + url + "'. Supported prefixes: " +
-                        "jdbc:postgresql:, jdbc:oracle:, jdbc:sqlserver:, jdbc:firebirdsql:, jdbc:firebird:");
+                        "jdbc:postgresql:, jdbc:oracle:, jdbc:sqlserver:, jdbc:firebirdsql:, jdbc:firebird:, jdbc:sqlite:");
     }
 }

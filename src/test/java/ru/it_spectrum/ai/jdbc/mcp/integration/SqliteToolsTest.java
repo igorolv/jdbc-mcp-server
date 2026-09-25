@@ -5,19 +5,17 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import ru.it_spectrum.ai.jdbc.mcp.config.DataSourceConfig;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
-import ru.it_spectrum.ai.jdbc.mcp.config.DriverProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.connection.TestConnections;
-import ru.it_spectrum.ai.jdbc.mcp.dialect.GenericDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.DistributionService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.PassThroughStructureSnapshotStore;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.SchemaContextService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StatsService;
-import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
+import ru.it_spectrum.ai.jdbc.mcp.plan.SqlitePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.sql.BenchmarkService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryAnalysisService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLineageService;
@@ -51,15 +49,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 /**
- * Generic JDBC end to end, without Docker: an SQLite file served through a driver loaded from
- * {@code driverPath} — a copy of the sqlite-jdbc jar in a directory of its own, loaded in an
- * isolated class loader although the same driver is on the server's class path. SQLite has no
- * schemas, no plans and no catalog SQL the dialect could rely on, which is exactly what the generic
- * path has to cope with. The URL opens the file read-only ({@code open_mode=1}).
+ * The SQLite dialect end to end over the bundled driver, as a plain {@code jdbc:sqlite:} URL is
+ * served: the pool comes from {@link DataSourceConfig}, which adds {@code open_mode=1}. No Docker.
  */
-class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
+class SqliteToolsTest extends AbstractToolsIntegrationTest {
 
-    private static final String CONNECTION_NAME = "legacy-sqlite";
+    private static final String CONNECTION_NAME = "shop";
 
     private static HikariDataSource dataSource;
     private static final IntegrationTestContext CONTEXT = createContext();
@@ -76,29 +71,21 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
 
     private static IntegrationTestContext createContext() {
         try {
-            Path dir = Files.createTempDirectory("generic-sqlite");
-            Path db = dir.resolve("shop.db");
+            Path db = Files.createTempDirectory("sqlite-dialect").resolve("shop.db");
             seed(db);
-            Path drivers = Files.createDirectories(dir.resolve("drivers"));
-            Path bundled = Path.of(org.sqlite.JDBC.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            Files.copy(bundled, drivers.resolve("sqlite-jdbc.jar"));
-
             JdbcProperties properties = new JdbcProperties(
-                    "jdbc:sqlite:" + db.toAbsolutePath().toString().replace('\\', '/') + "?open_mode=1",
+                    "jdbc:sqlite:" + db.toAbsolutePath().toString().replace('\\', '/'),
                     null, null, null, 30, 1000, 100, "strict", 2, 0, 10_000, 5_000, 60_000);
-            DriverProperties driver = new DriverProperties("generic", drivers.toString(), null);
-            DatabaseKind kind = DatabaseKind.resolve(properties.url(), driver.dialect(), driver.externalDriver());
-            dataSource = DataSourceConfig.createDataSource(properties, kind, driver, CONNECTION_NAME);
-            SqlDialect dialect = new GenericDialect(dataSource);
+            DatabaseKind kind = DatabaseKind.fromUrl(properties.url());
+            dataSource = DataSourceConfig.createDataSource(properties, kind, CONNECTION_NAME);
+            SqlDialect dialect = SqlDialect.forKind(kind);
             ReadOnlyGuard guard = new ReadOnlyGuard(properties);
             SqlExecutor executor = new SqlExecutor(dataSource, dialect, properties, guard);
             PassThroughStructureSnapshotStore store = new PassThroughStructureSnapshotStore();
             MetadataService metadata = new MetadataService(executor, dialect, properties, store);
             StatsService stats = new StatsService(executor, dialect, properties);
             SchemaContextService schemaContext = new SchemaContextService(metadata, stats, executor, dialect, null);
-            PlanParser planParser = (result, analyzed) -> {
-                throw new AssertionError("generic connections never parse plans");
-            };
+            SqlitePlanParser planParser = new SqlitePlanParser();
             DistributionService distribution = new DistributionService(executor, dialect, properties, planParser);
             BenchmarkService benchmarks = new BenchmarkService(executor, dialect);
             QueryAnalysisService analysis = new QueryAnalysisService();
@@ -106,7 +93,6 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
             QueryLintService lint = new QueryLintService(analysis, metadata, stats);
             JsonResponses json = new JsonResponses(new JsonConfig().jdbcMcpObjectMapper());
             ToolErrors errors = new ToolErrors(json);
-
             ConnectionRegistry connections = TestConnections.registry(
                     CONNECTION_NAME, properties,
                     dialect, executor, guard, planParser, store,
@@ -114,7 +100,7 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
                     analysis, lineage, lint);
             return new IntegrationTestContext(
                     CONNECTION_NAME,
-                    null,
+                    "main",
                     new QueryTools(connections, errors),
                     new QueryAnalysisTools(connections, errors),
                     new MetadataTools(connections, json, errors),
@@ -132,16 +118,24 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + db);
              Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)");
-            statement.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, "
-                    + "customer_id INTEGER REFERENCES customers(id), total REAL)");
+            statement.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "customer_id INTEGER REFERENCES customers, total REAL CHECK (total >= 0))");
             statement.execute("CREATE INDEX idx_orders_customer ON orders(customer_id)");
-            statement.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, status TEXT NOT NULL, "
-                    + "category TEXT, amount REAL)");
+            statement.execute("CREATE TABLE line_items (order_id INTEGER NOT NULL, sku TEXT NOT NULL, qty INTEGER, "
+                    + "PRIMARY KEY (order_id, sku), FOREIGN KEY (order_id) REFERENCES orders(id))");
+            statement.execute("CREATE INDEX idx_li_order_sku ON line_items(order_id, sku)");
+            statement.execute("CREATE INDEX idx_li_order ON line_items(order_id)");
+            statement.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, status TEXT NOT NULL, category TEXT, amount REAL)");
+            statement.execute("CREATE TABLE audit (note TEXT)");
             statement.execute("CREATE VIEW v_customer_totals AS SELECT c.id, c.name, SUM(o.total) AS total "
                     + "FROM customers c LEFT JOIN orders o ON o.customer_id = c.id GROUP BY c.id, c.name");
+            statement.execute("CREATE TRIGGER trg_orders_audit INSERT ON orders BEGIN INSERT INTO audit VALUES ('new'); END");
+            statement.execute("CREATE TRIGGER trg_customers_rename AFTER UPDATE OF name ON customers "
+                    + "BEGIN INSERT INTO audit VALUES ('rename'); END");
             statement.execute("INSERT INTO customers(id, name, email) VALUES (1, 'Alice', 'a@example.com'), "
                     + "(2, 'Боб', 'b@example.com')");
-            statement.execute("INSERT INTO orders(id, customer_id, total) VALUES (1, 1, 10.5), (2, 1, 20.0), (3, 2, 5.0)");
+            statement.execute("INSERT INTO orders(customer_id, total) VALUES (1, 10.5), (1, 20.0), (2, 5.0)");
+            statement.execute("INSERT INTO line_items VALUES (1, 'a', 1), (1, 'b', 2), (2, 'a', 3)");
             statement.execute("""
                     WITH RECURSIVE g(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM g WHERE n < 100)
                     INSERT INTO events(id, status, category, amount)
@@ -154,68 +148,85 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
         }
     }
 
-    // ---------------- schemas and structure ----------------
+    // ---------------- structure ----------------
 
     @Test
-    void schemalessDatabaseIsOneLogicalSchema() {
+    void theDatabaseIsSchemaMain() {
         assertThat(textValues(array(metadataTools().listSchemas(connection(), false).schemas())))
-                .containsExactly("PUBLIC");
+                .containsExactly("main");
+        ArrayNode tables = array(metadataTools().listTables(connection(), "main", "%", null).tables());
+        assertThat(field(findByField(tables, "name", "orders"), "schema").asText()).isEqualTo("main");
+        assertInvalidArgument(() -> metadataTools().listTables(connection(), "temp", "%", null), "no schemas");
 
-        ArrayNode tables = array(metadataTools().listTables(connection(), null, "%", null).tables());
-        ObjectNode customers = (ObjectNode) findByField(tables, "name", "customers");
-        assertThat(customers).isNotNull();
-        assertThat(field(customers, "schema").asText()).isEqualTo("PUBLIC");
-        assertThat(findByField(tables, "name", "v_customer_totals")).isNotNull();
+        ObjectNode qualified = object(queryTools().executeQuery(connection(),
+                "SELECT COUNT(*) AS n FROM main.orders", null, null, null, 5));
+        assertThat(field(row(qualified, 0), "n").asInt()).isEqualTo(3);
     }
 
     @Test
-    void describesKeysAndIndexesFromDatabaseMetaData() {
+    void describesKeysFromPragmas() {
+        ObjectNode items = object(metadataTools().describeTable(connection(), null, "line_items"));
+        assertThat(textValues((ArrayNode) field(field(items, "primaryKey"), "columns"))).containsExactly("order_id", "sku");
+        ObjectNode fk = (ObjectNode) ((ArrayNode) field(items, "foreignKeys")).get(0);
+        assertThat(field(fk, "referencedSchema").asText()).isEqualTo("main");
+        assertThat(field(fk, "referencedTable").asText()).isEqualTo("orders");
+
+        // "REFERENCES customers" without columns points at the parent's primary key.
         ObjectNode orders = object(metadataTools().describeTable(connection(), null, "orders"));
-        assertThat(textValues((ArrayNode) field(field(orders, "primaryKey"), "columns"))).containsExactly("id");
-        ObjectNode fk = (ObjectNode) ((ArrayNode) field(orders, "foreignKeys")).get(0);
-        assertThat(field(fk, "referencedTable").asText()).isEqualTo("customers");
-        assertThat(field(fk, "referencedSchema").asText()).isEqualTo("PUBLIC");
-        assertThat(findByField((ArrayNode) field(orders, "indexes"), "name", "idx_orders_customer")).isNotNull();
+        ObjectNode ordersFk = (ObjectNode) ((ArrayNode) field(orders, "foreignKeys")).get(0);
+        assertThat(textValues((ArrayNode) field(ordersFk, "referencedColumns"))).containsExactly("id");
+
+        ObjectNode customers = object(metadataTools().describeTable(connection(), null, "customers"));
+        assertThat(field(customers, "uniqueConstraints").toString()).contains("email");
+        assertThat(findByField((ArrayNode) field(customers, "referencedBy"), "fromTable", "orders")).isNotNull();
+    }
+
+    @Test
+    void readsViewsTriggersAndSequencesFromSqliteSchema() {
+        assertThat(metadataTools().getViewDefinition(connection(), null, "v_customer_totals"))
+                .startsWith("CREATE VIEW v_customer_totals").contains("LEFT JOIN orders");
+
+        ObjectNode orders = object(metadataTools().describeTable(connection(), null, "orders"));
+        ObjectNode insertTrigger = (ObjectNode) findByField((ArrayNode) field(orders, "triggers"),
+                "name", "trg_orders_audit");
+        assertThat(field(insertTrigger, "timing").asText()).isEqualTo("BEFORE");
+        assertThat(textValues((ArrayNode) field(insertTrigger, "events"))).containsExactly("INSERT");
+
+        ObjectNode customers = object(metadataTools().describeTable(connection(), null, "customers"));
+        ObjectNode updateTrigger = (ObjectNode) findByField((ArrayNode) field(customers, "triggers"),
+                "name", "trg_customers_rename");
+        assertThat(field(updateTrigger, "timing").asText()).isEqualTo("AFTER");
+        assertThat(textValues((ArrayNode) field(updateTrigger, "events"))).containsExactly("UPDATE");
+        assertThat(metadataTools().getTriggerDefinition(connection(), null, "customers", "trg_customers_rename"))
+                .contains("AFTER UPDATE OF name ON customers");
+
+        ArrayNode sequences = array(metadataTools().listSequences(connection(), null).sequences());
+        assertThat(textValues(sequences, "name")).containsExactly("orders");
 
         ArrayNode search = array(metadataTools().searchObjects(connection(), "CUSTOMER").objects());
         assertThat(findByField(search, "name", "customers")).isNotNull();
         assertThat(findByField(search, "name", "v_customer_totals")).isNotNull();
-    }
 
-    @Test
-    void catalogSourcesAreUnsupported() {
-        assertUnsupported(() -> metadataTools().getViewDefinition(connection(), null, "v_customer_totals"),
-                "view definitions");
-        assertUnsupported(() -> metadataTools().listSequences(connection(), null), "sequences");
-        assertUnsupported(() -> queryAnalysisTools().explainQuery(connection(),
-                "SELECT * FROM customers", null, null, false), "plans");
-        assertUnsupported(() -> queryAnalysisTools().analyzePlan(connection(),
-                "SELECT * FROM customers", null, null, false), "plans");
         assertThat(array(metadataTools().listRoutines(connection(), null, null).routines())).isEmpty();
     }
 
-    // ---------------- queries ----------------
+    // ---------------- queries and plans ----------------
 
     @Test
-    void executesQueriesThroughTheExternalDriver() {
-        ObjectNode limited = object(queryTools().executeQuery(connection(),
-                "SELECT name FROM customers ORDER BY id", null, null, 1, 5));
-        assertThat(field(limited, "rowCount").asInt()).isEqualTo(1);
-        assertThat(field(limited, "truncated").asBoolean()).isTrue();
+    void plansComeFromExplainQueryPlan() {
+        String plan = queryAnalysisTools().explainQuery(connection(),
+                "SELECT o.total FROM orders o JOIN customers c ON c.id = o.customer_id WHERE c.name = :name",
+                null, Map.of("name", "Alice"), false);
+        assertThat(plan).startsWith("QUERY PLAN\n").contains("SCAN").contains("--");
 
-        ObjectNode named = object(queryTools().executeQuery(connection(),
-                "SELECT name FROM customers WHERE id = :id", null, Map.of("id", 2), null, 5));
-        assertThat(field(row(named, 0), "name").asText()).isEqualTo("Боб");
-
-        ObjectNode sample = object(sampleTools().sampleRows(connection(), null, "events", 3));
-        assertThat(field(sample, "rowCount").asInt()).isEqualTo(3);
-
-        ObjectNode valid = object(queryAnalysisTools().validateQuery(connection(), "SELECT * FROM orders", null, null));
-        assertThat(field(valid, "valid").asBoolean()).isTrue();
+        ObjectNode summary = object(queryAnalysisTools().analyzePlan(connection(),
+                "SELECT * FROM events WHERE amount > 10", null, null, false));
+        assertThat(field(summary, "engine").asText()).isEqualTo("sqlite");
+        assertThat(field(summary, "fullScans").toString()).contains("events");
     }
 
     @Test
-    void writesAreRejectedByTheGuardAndTheReadOnlyUrl() throws SQLException {
+    void writesAreRejectedByTheGuardAndBySqlite() throws SQLException {
         assertRejected(() -> queryTools().executeQuery(connection(), "DELETE FROM customers", null, null, null, null),
                 "Only SELECT");
         try (Connection connection = dataSource.getConnection();
@@ -224,61 +235,47 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
                     .isInstanceOf(SQLException.class)
                     .hasMessageContaining("readonly");
         }
-    }
-
-    @Test
-    void theDriverComesFromItsOwnClassLoader() throws SQLException {
-        try (Connection connection = dataSource.getConnection()) {
-            assertThat(connection.getMetaData().getDatabaseProductName()).isEqualTo("SQLite");
-            // The server's own copy of the driver class is a different class altogether.
-            assertThat(connection.isWrapperFor(org.sqlite.SQLiteConnection.class)).isFalse();
-        }
+        ObjectNode cyrillic = object(queryTools().executeQuery(connection(),
+                "SELECT name FROM customers WHERE id = ?", java.util.List.of(2), null, null, 5));
+        assertThat(field(row(cyrillic, 0), "name").asText()).isEqualTo("Боб");
     }
 
     // ---------------- statistics and distribution ----------------
 
     @Test
-    void statsFallBackToMetadataAndCounts() {
+    void statsCountRowsAndMeasurePages() {
         ObjectNode table = object(statsTools().tableStats(connection(), null, "events"));
-        assertThat(field(table, "found").asBoolean()).isTrue();
         assertThat(field(table, "estimatedRows").asLong()).isEqualTo(100L);
+        assertThat(field(table, "tableSizeBytes").asLong()).isPositive();
 
-        ArrayNode indexes = (ArrayNode) field(object(statsTools().indexStats(connection(), null, "orders")), "indexes");
-        ObjectNode index = (ObjectNode) findByField(indexes, "indexName", "idx_orders_customer");
-        assertThat(index).isNotNull();
-        assertThat(textValues((ArrayNode) field(index, "columns"))).containsExactly("customer_id");
+        ArrayNode indexes = (ArrayNode) field(object(statsTools().indexStats(connection(), null, "line_items")), "indexes");
+        ObjectNode composite = (ObjectNode) findByField(indexes, "indexName", "idx_li_order_sku");
+        assertThat(textValues((ArrayNode) field(composite, "columns"))).containsExactly("order_id", "sku");
+        assertThat(field(composite, "sizeBytes").asLong()).isPositive();
 
-        ObjectNode unused = object(statsTools().unusedIndexes(connection(), null, null));
-        assertThat(field(unused, "supported").asBoolean()).isFalse();
+        ObjectNode redundant = object(statsTools().redundantIndexes(connection(), null, "line_items"));
+        assertThat(findByField((ArrayNode) field(redundant, "findings"), "shadowedIndex", "idx_li_order")).isNotNull();
     }
 
     @Test
-    void distributionUsesPortableSqlAndClientSidePercentiles() {
-        ObjectNode distribution = object(distributionTools().columnDistribution(connection(), null, "events", "status", 5));
-        ObjectNode ok = (ObjectNode) findByField((ArrayNode) field(distribution, "values"), "value", "OK");
-        assertThat(field(ok, "frequency").asInt()).isEqualTo(90);
-
+    void distributionUsesWindowFunctionsAndExactCounts() {
         ObjectNode histogram = object(distributionTools().columnHistogram(connection(), null, "events", "amount"));
         assertThat(field(histogram, "percentileFunction").asText()).isEqualTo("percentile_disc");
-        assertThat(field(histogram, "totalRows").asInt()).isEqualTo(100);
-        assertThat(field(histogram, "min").asDouble()).isCloseTo(0.1, within(1e-9));
         assertThat(field(histogram, "p50").asDouble()).isCloseTo(60.0, within(1e-9));
-        assertThat(field(histogram, "max").asDouble()).isCloseTo(135.0, within(1e-9));
+        assertThat(field(histogram, "min").asDouble()).isCloseTo(0.1, within(1e-9));
+
+        ObjectNode distribution = object(distributionTools().columnDistribution(connection(), null, "events", "status", 1));
+        assertThat(((ArrayNode) field(distribution, "values"))).hasSize(1);
 
         ObjectNode selectivity = object(distributionTools().estimateSelectivity(connection(),
                 null, "events", "status = 'FAIL'"));
         assertThat(field(selectivity, "estimatedRows").asLong()).isEqualTo(10L);
         assertThat(field(selectivity, "note").asText()).startsWith("Exact counts");
-
-        ObjectNode join = object(distributionTools().joinCardinality(connection(),
-                null, "customers", "id", null, "orders", "customer_id", "INNER"));
-        assertThat(field(join, "estimatedRows").asLong()).isEqualTo(3L);
     }
 
-    @Test
-    void schemaContextFollowsForeignKeys() {
-        ObjectNode paths = object(schemaContextTools().findJoinPaths(connection(),
-                null, "orders", null, "customers", null, null, null, false));
-        assertThat(((ArrayNode) field(paths, "paths")).size()).isGreaterThan(0);
+    private java.util.List<String> textValues(ArrayNode array, String fieldName) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        array.forEach(node -> out.add(node.get(fieldName).asText()));
+        return out;
     }
 }

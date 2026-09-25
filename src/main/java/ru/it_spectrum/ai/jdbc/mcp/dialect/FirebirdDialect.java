@@ -187,36 +187,10 @@ public class FirebirdDialect implements SqlDialect {
         return "percentile_disc";
     }
 
-    /**
-     * One pass with window functions: {@code ROW_NUMBER} over the non-null values, and each
-     * percentile {@code p} is the smallest value whose rank reaches {@code CEILING(p * n)} — the
-     * definition of {@code percentile_disc}.
-     */
+    /** See {@link RankPercentiles}. */
     @Override
     public String histogramQuery(String qualifiedTable, String quotedColumn, String percentileFunction) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT COUNT(*) AS total_rows,
-                       COUNT(v) AS non_null_rows,
-                       MIN(v) AS min_value,
-                       MAX(v) AS max_value""");
-        String[][] percentiles = {{"0.25", "p25"}, {"0.5", "p50"}, {"0.75", "p75"},
-                {"0.9", "p90"}, {"0.95", "p95"}, {"0.99", "p99"}};
-        for (String[] p : percentiles) {
-            sql.append(",\n       MIN(CASE WHEN rn >= CEILING(").append(p[0])
-                    .append(" * cnt) THEN v END) AS ").append(p[1]);
-        }
-        sql.append("""
-
-                FROM (
-                    SELECT v,
-                           CASE WHEN v IS NULL THEN NULL
-                                ELSE ROW_NUMBER() OVER (
-                                    PARTITION BY CASE WHEN v IS NULL THEN 1 ELSE 0 END ORDER BY v)
-                           END AS rn,
-                           COUNT(v) OVER () AS cnt
-                    FROM (SELECT %s AS v FROM %s) b
-                ) r""".formatted(quotedColumn, qualifiedTable));
-        return sql.toString();
+        return RankPercentiles.histogramQuery(qualifiedTable, quotedColumn);
     }
 
     // ---------------- catalog ----------------

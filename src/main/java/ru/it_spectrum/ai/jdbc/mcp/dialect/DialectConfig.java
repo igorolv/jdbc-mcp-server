@@ -8,6 +8,7 @@ import ru.it_spectrum.ai.jdbc.mcp.plan.FirebirdPlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
+import ru.it_spectrum.ai.jdbc.mcp.plan.SqlitePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.SqlServerPlanParser;
 import tools.jackson.databind.ObjectMapper;
 
@@ -31,6 +32,7 @@ public class DialectConfig {
             case ORACLE -> new OraclePlanParser();
             case MSSQL -> new SqlServerPlanParser();
             case FIREBIRD -> new FirebirdPlanParser();
+            case SQLITE -> new SqlitePlanParser();
             case GENERIC -> (result, analyzed) -> {
                 throw new UnsupportedFeatureException("Generic JDBC connections have no execution plans");
             };

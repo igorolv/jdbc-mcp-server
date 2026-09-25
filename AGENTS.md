@@ -7,8 +7,9 @@
 > - Run tests: `./gradlew test` (single class: `./gradlew test --tests <FQCN>`)
 > - Full build: `./gradlew build`
 
-This is a local MCP server that provides read-only access to PostgreSQL, Oracle, SQL Server, and Firebird
-databases, and to any other JDBC database in generic mode (driver jar supplied via `driverPath`).
+This is a local MCP server that provides read-only access to PostgreSQL, Oracle, SQL Server, Firebird,
+and SQLite databases, and to any other JDBC database in generic mode (driver jar supplied via
+`driverPath`).
 It exposes 49 tools across ten groups. Tools may update the local SQLite catalog, but never the
 inspected database:
 
@@ -23,8 +24,8 @@ inspected database:
 - **Catalog administration** — rebuild the persistent structure snapshot and usage index into a distributable SQLite catalog.
 - **Connections** — list the databases this server serves and which one answers by default.
 
-The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, SQL Server, and Firebird
-(Jaybird) JDBC drivers are bundled inside the fat jar.
+The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, SQL Server, Firebird (Jaybird),
+and SQLite JDBC drivers are bundled inside the fat jar.
 
 When explicitly enabled, the server exposes a catalog manifest and parameterized table/column MCP
 resources in addition to tools. Every URI is namespaced by the connection name:
@@ -125,8 +126,9 @@ read-only user) and a password, then write `~/.jdbc-mcp-server/connections.json`
 URL shapes: PostgreSQL `jdbc:postgresql://<host>:5432/<database>`, Oracle
 `jdbc:oracle:thin:@//<host>:1521/<service>`, SQL Server
 `jdbc:sqlserver://<host>:1433;databaseName=<database>`, Firebird
-`jdbc:firebirdsql://<host>:3050//<path/to/db.fdb>`. The engine is detected from the prefix. Firebird
-has no schemas and other differences — read [Firebird](#firebird) before using it. Any other database
+`jdbc:firebirdsql://<host>:3050//<path/to/db.fdb>`, SQLite `jdbc:sqlite:/path/to/app.db`. The engine is
+detected from the prefix. Firebird and SQLite have no schemas and other differences — read
+[Firebird](#firebird) and [SQLite](#sqlite) before using them. Any other database
 is served as generic JDBC when its entry names a driver jar in `driverPath` — read
 [Generic JDBC](#generic-jdbc).
 
@@ -158,7 +160,7 @@ and SQL Server), `poolMaximumSize` (40), `poolMinimumIdle` (0), `poolConnectionT
 schema), `structureSnapshotOracleColumnQueryTimeoutSeconds` (300, `0` disables — Oracle's expensive
 bulk column query during a rebuild, kept apart from `queryTimeoutSeconds`), and the `usage*` fields
 listed under [Usage catalog tools](#usage-catalog-tools). `dialect` (`postgresql`, `oracle`, `mssql`,
-`firebird`, `generic`; default detected from the URL), `driverPath` and `driverClass` choose the
+`firebird`, `sqlite`, `generic`; default detected from the URL), `driverPath` and `driverClass` choose the
 engine and load a driver from outside the server jar. See the README for the full table.
 
 The structure snapshot persists structural metadata in the local SQLite `<catalog>.db` ("cache
@@ -415,8 +417,8 @@ These tools feed the `evidence` bundle (`observedQuery` / `semanticUsage` layers
 
 All tools are **read-only**. Any attempt to run a non-SELECT statement is rejected by the
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
-read-only, PostgreSQL uses `default_transaction_read_only=on`, and Firebird runs read-only
-transactions that the server enforces. On Oracle and SQL Server, JDBC read-only mode is best-effort;
+read-only, PostgreSQL uses `default_transaction_read_only=on`, Firebird runs read-only
+transactions that the server enforces, and SQLite files are opened with `open_mode=1`. On Oracle and SQL Server, JDBC read-only mode is best-effort;
 use a dedicated read-only database user for the strongest guarantee.
 
 ### Firebird
@@ -456,15 +458,38 @@ How Firebird differs from the other engines:
   planner estimates (bounded by `queryTimeoutSeconds`); the `note` says so.
 - **`columnHistogram`** computes discrete percentiles (`percentile_disc`) with window functions.
 - **Statistics** are limited to index selectivity as of the last `SET STATISTICS` / restore:
-  `tableStats.estimatedRows` is derived from the most selective unique index (empty when the table
-  has none); there are no sizes or usage counters, and `unusedIndexes` is unsupported.
+  `tableStats.estimatedRows` is derived from the most selective unique index, or an exact
+  `COUNT(*)` when the table has none; there are no sizes or usage counters, and `unusedIndexes` is
+  unsupported.
 - **Routines** list stored procedures, PSQL functions, packages and legacy UDFs; a UDF's
   "definition" is its library entry point.
 
+### SQLite
+
+A plain `jdbc:sqlite:/path/to/app.db` URL is served by the bundled sqlite-jdbc driver — the one the
+server's own catalog uses, so the SQLite version is the one that driver embeds (3.51.3). No
+`driverPath` and no credentials are needed.
+
+- **Read-only by the database.** Unless the URL sets `open_mode` itself, the server adds
+  `open_mode=1` (`SQLITE_OPEN_READONLY`): writes fail inside SQLite (`attempt to write a readonly
+  database`), and a mistyped path is an error instead of a new, empty database file.
+- **Schema `main`.** SQLite's JDBC driver reports no schemas, so the database is presented as the one
+  schema SQLite itself calls `main` (`main.orders` is valid SQL). Omit `schema` or pass `main`.
+  Attached databases are not listed.
+- **Catalog.** View and trigger definitions are the `CREATE` texts from `sqlite_schema`; keys, UNIQUE
+  constraints and indexes come from the `pragma_*` functions, sizes from `dbstat`. SQLite keeps no
+  constraint names: the primary key has none, foreign keys are named `fk_<table>_<n>`. CHECK
+  constraints live only in the `CREATE TABLE` text and are not reported. "Sequences" are the
+  `AUTOINCREMENT` counters, named after their table. SQLite has no stored routines.
+- **Plans** come from `EXPLAIN QUERY PLAN` (the query is prepared, not run), rendered like the
+  `sqlite3` shell; they carry no costs or row estimates, so `analyzePlan` reports every full scan.
+- **Row counts** are exact `COUNT(*)` — in `tableStats`, `estimateSelectivity` and `joinCardinality`
+  alike; `columnHistogram` computes discrete percentiles with window functions.
+
 ### Generic JDBC
 
-Any other database with a JDBC driver — H2, HSQLDB, Derby, DB2, MySQL/MariaDB, SQLite, Informix, and
-so on — can be served in **generic** mode. Point `driverPath` at the driver jar (or a directory of
+Any other database with a JDBC driver — H2, HSQLDB, Derby, DB2, MySQL/MariaDB, Informix, and so on —
+can be served in **generic** mode. Point `driverPath` at the driver jar (or a directory of
 jars); a URL no built-in dialect recognizes is then served as generic JDBC. `"dialect": "generic"`
 forces generic mode even for a URL a built-in dialect would take.
 
@@ -482,7 +507,7 @@ forces generic mode even for a URL a built-in dialect would take.
 |---|---|
 | `driverPath` | A driver jar, or a directory whose `*.jar` files are all loaded. Relative paths are relative to `connections.json`. The jars get a class loader of their own, so they never clash with the bundled drivers |
 | `driverClass` | The `java.sql.Driver` class; optional — by default the registered driver that accepts the URL is used |
-| `dialect` | `postgresql`, `oracle`, `mssql`, `firebird`, or `generic`; optional — by default detected from the URL. `driverPath` also works with a built-in dialect, e.g. a newer Oracle driver |
+| `dialect` | `postgresql`, `oracle`, `mssql`, `firebird`, `sqlite`, or `generic`; optional — by default detected from the URL. `driverPath` also works with a built-in dialect, e.g. a newer Oracle driver |
 
 Generic mode answers from `DatabaseMetaData` and portable SQL only, so it is slower and less
 complete than a real dialect:
@@ -496,11 +521,11 @@ complete than a real dialect:
 - **Unsupported** (error kind `unsupported`): plans (`explainQuery`, `analyzePlan`), view / routine /
   trigger definitions, sequences, and unused-index detection. CHECK constraints and triggers are not
   reported.
-- **No schemas?** A database without them (SQLite, MySQL) is presented as one logical schema: its
-  current catalog (MySQL's database) or `PUBLIC`.
+- **No schemas?** A database without them (MySQL, for instance) is presented as one logical schema:
+  its current catalog (MySQL's database) or `PUBLIC`.
 - **Read-only is best-effort:** the guard, plus `Connection.setReadOnly` where the driver honours it.
-  Make the connection itself read-only where the driver allows it — for example SQLite
-  `jdbc:sqlite:/data/app.db?open_mode=1` — or use a read-only database user.
+  Make the connection itself read-only where the driver allows it (a read-only URL option), or use
+  a read-only database user.
 
 ## Error responses
 
@@ -628,6 +653,8 @@ Notes on the structure snapshot:
   case. Pass `CUSTOMERS` rather than `customers`.
 - **Firebird: empty `describeTable`, or "Firebird has no schemas"** — same upper-case rule; omit
   `schema` or pass `PUBLIC`.
+- **SQLite: "unable to open database file"** — the path in the URL does not exist (the read-only
+  open never creates a file). Use an absolute path; forward slashes work on Windows.
 - **Firebird: "unsupported on-disk structure"** — serve the file with the Firebird version that
   matches its ODS (3 → ODS 12, 4/5 → ODS 13), or `gbak` backup/restore it onto a newer server.
 - **Oracle write attempt reached the database** — this should normally be blocked by the guard first.

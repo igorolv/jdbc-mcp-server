@@ -93,7 +93,7 @@ class FirebirdDialectTest {
         String sql = dialect.histogramQuery("\"EVENTS\"", "\"AMOUNT\"", "percentile_disc");
         assertThat(sql)
                 .contains("ROW_NUMBER() OVER")
-                .contains("MIN(CASE WHEN rn >= CEILING(0.5 * cnt) THEN v END) AS p50")
+                .contains("MIN(CASE WHEN rn >= 0.5 * cnt THEN v END) AS p50")
                 .contains("FROM (SELECT \"AMOUNT\" AS v FROM \"EVENTS\") b")
                 .doesNotContain("WITHIN GROUP");
     }

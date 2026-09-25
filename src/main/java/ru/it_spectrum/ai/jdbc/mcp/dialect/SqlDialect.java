@@ -32,6 +32,7 @@ public interface SqlDialect {
             case ORACLE -> new OracleDialect();
             case MSSQL -> new SqlServerDialect();
             case FIREBIRD -> new FirebirdDialect();
+            case SQLITE -> new SqliteDialect();
             case GENERIC -> new GenericDialect(null);
         };
     }

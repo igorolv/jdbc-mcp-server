@@ -68,6 +68,12 @@ public class StatsService {
             return TableStats.notFound(effectiveSchema, table);
         }
         Map<String, Object> row = r.rows().getFirst();
+        if (getCI(row, "estimated_rows") == null && !dialect.plannerRowEstimates()) {
+            // Engines without planner statistics (SQLite; Firebird tables without a unique index)
+            // answer with an exact count, like their selectivity estimates.
+            row = new LinkedHashMap<>(row);
+            row.put("estimated_rows", exactRowCount(effectiveSchema, table));
+        }
         Object segmentBytes = null;
         String segmentBytesError = null;
 
@@ -127,12 +133,19 @@ public class StatsService {
             return TableStats.notFound(schema, table);
         }
         if (row.get("estimated_rows") == null) {
-            QueryResult count = executor.query("SELECT COUNT(*) AS counted_rows FROM "
-                    + dialect.qualify(schema, table), List.of(), 1, null);
-            row.put("estimated_rows", count.rows().isEmpty() ? null
-                    : getCI(count.rows().getFirst(), "counted_rows"));
+            row.put("estimated_rows", exactRowCount(schema, table));
         }
         return tableStatsFromRow(row, null, null);
+    }
+
+    /** {@code COUNT(*)} through the read-only guard: it scans the table, bounded by the query timeout. */
+    private Object exactRowCount(String schema, String table) throws SQLException {
+        if (!SIMPLE_IDENT.matcher(table).matches()) {
+            throw new IllegalArgumentException("Illegal table name: '" + table + "'");
+        }
+        QueryResult count = executor.query("SELECT COUNT(*) AS counted_rows FROM "
+                + dialect.qualify(schema, table), List.of(), 1, null);
+        return count.rows().isEmpty() ? null : getCI(count.rows().getFirst(), "counted_rows");
     }
 
     private TableStats tableStatsFromRow(Map<String, Object> row, Object segmentBytes,
