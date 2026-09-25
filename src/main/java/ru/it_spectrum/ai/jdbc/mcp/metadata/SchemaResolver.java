@@ -18,6 +18,11 @@ import java.sql.SQLException;
  *       and SQL Server, connecting user (uppercase) for Oracle.</li>
  * </ol>
  *
+ * <p>On a schemaless engine ({@link SqlDialect#supportsSchemas()} is {@code false}) the only valid
+ * answer is {@link SqlDialect#logicalSchema()}: a blank argument resolves to it, the same name in any
+ * case is accepted, and any other name is rejected rather than silently answered from the one
+ * namespace the database has.
+ *
  * <p>Replaces the three identical private {@code resolveSchema} helpers that used to live in
  * {@code MetadataService}, {@code StatsService} and {@code DistributionService}.
  */
@@ -35,6 +40,14 @@ public class SchemaResolver {
     }
 
     public String resolve(String schema) throws SQLException {
+        if (!dialect.supportsSchemas()) {
+            String logical = dialect.logicalSchema();
+            if (schema == null || schema.isBlank() || schema.trim().equalsIgnoreCase(logical)) {
+                return logical;
+            }
+            throw new IllegalArgumentException(dialect.kind().displayName() + " has no schemas; omit "
+                    + "'schema' or pass '" + logical + "' (got '" + schema + "')");
+        }
         if (schema != null && !schema.isBlank()) return schema;
         if (properties.defaultSchema() != null && !properties.defaultSchema().isBlank()) {
             return properties.defaultSchema();

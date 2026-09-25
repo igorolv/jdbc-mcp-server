@@ -115,4 +115,28 @@ class ReadOnlyGuardTest {
                 "WITH moved AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM moved"))
                 .isEqualTo("INSERT");
     }
+
+    /**
+     * JSqlParser's own parseStatements(String) leaks its non-daemon executor thread whenever
+     * parsing fails; a guard that falls back to the lexical check must not leak one per call.
+     */
+    @Test
+    void unparseableStatementsDoNotLeakParserThreads() throws InterruptedException {
+        long before = liveNonDaemonThreads();
+        for (int i = 0; i < 5; i++) {
+            guard.check("SELECT name FROM customers WHERE name STARTING WITH 'A'");
+        }
+        long after = liveNonDaemonThreads();
+        for (int i = 0; i < 50 && after > before; i++) {
+            Thread.sleep(20); // shutdownNow() lets the idle worker exit asynchronously
+            after = liveNonDaemonThreads();
+        }
+        assertThat(after).isLessThanOrEqualTo(before);
+    }
+
+    private static long liveNonDaemonThreads() {
+        return Thread.getAllStackTraces().keySet().stream()
+                .filter(t -> t.isAlive() && !t.isDaemon())
+                .count();
+    }
 }

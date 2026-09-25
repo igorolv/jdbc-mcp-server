@@ -59,6 +59,9 @@ public class AdminTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "rebuildCatalog", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "rebuildCatalog", start, e.getMessage());
+            throw errors.argumentException(e);
         } catch (RuntimeException e) {
             ToolLogger.failed(log, "rebuildCatalog", start, e.getMessage());
             throw errors.unexpectedException(e);

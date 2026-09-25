@@ -81,6 +81,11 @@ public class QueryAnalysisTools {
                 ToolLogger.completed(log, "explainQuery", start);
                 return result;
             }
+            if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.DRIVER_API) {
+                String result = driverPlan(ctx, normalizedSql, params, namedParams);
+                ToolLogger.completed(log, "explainQuery", start);
+                return result;
+            }
             String statementId = newExplainStatementId();
             String explainSql = ctx.dialect().buildExplain(normalizedSql, doAnalyze, statementId);
             String displaySql = ctx.dialect().explainDisplayQuery(statementId);
@@ -118,6 +123,9 @@ public class QueryAnalysisTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "explainQuery", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "explainQuery", start, e.getMessage());
+            throw errors.argumentException(e);
         } catch (Exception e) {
             ToolLogger.failed(log, "explainQuery", start, e.getMessage());
             throw errors.unexpectedException(e);
@@ -150,6 +158,14 @@ public class QueryAnalysisTools {
             if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.SESSION_SHOWPLAN) {
                 ParsedPlan parsed = structuredSqlServerPlan(ctx, normalizedSql, params, namedParams);
                 PlanAnalysisSummary result = PlanAnalyzer.summarize(parsed);
+                ToolLogger.completed(log, "analyzePlan", start);
+                return result;
+            }
+            if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.DRIVER_API) {
+                String planText = driverPlan(ctx, normalizedSql, params, namedParams);
+                QueryResult planRows = new QueryResult(List.of("PLAN"), List.of("VARCHAR"),
+                        List.of(Map.of("PLAN", planText)), false, 1);
+                PlanAnalysisSummary result = PlanAnalyzer.summarize(ctx.planParser().parse(planRows, false));
                 ToolLogger.completed(log, "analyzePlan", start);
                 return result;
             }
@@ -422,6 +438,19 @@ public class QueryAnalysisTools {
                 runStatement(ctx, conn, "SET SHOWPLAN_TEXT OFF");
             }
         });
+    }
+
+    /**
+     * Plan of a prepared (never executed) statement from the driver. Parameters only need to be
+     * placeholders here: named ones are rewritten to {@code ?}, values are not bound.
+     */
+    private String driverPlan(ConnectionContext ctx, String sql, List<Object> params,
+                              Map<String, Object> namedParams) throws SQLException {
+        SqlParameterBindingResolver.Binding binding = resolveBinding(sql, params, namedParams);
+        String positionalSql = binding.namedParams() != null
+                ? NamedParameterRewriter.rewrite(sql, binding.namedParams()).sql()
+                : sql;
+        return ctx.executor().withConnection(conn -> ctx.dialect().driverPlan(conn, positionalSql));
     }
 
     private ParsedPlan structuredSqlServerPlan(ConnectionContext ctx, String sql, List<Object> params,

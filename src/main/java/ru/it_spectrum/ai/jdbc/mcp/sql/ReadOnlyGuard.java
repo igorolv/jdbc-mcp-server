@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Lightweight syntactic SQL guard. Intended to protect the database from accidental
@@ -103,7 +105,16 @@ public class ReadOnlyGuard {
                             "(Set jdbc.readonly-guard=off to disable this client-side check.)");
         }
 
-        return CCJSqlParserUtil.parseStatements(stripped);
+        // JSqlParser's parseStatements(String) runs the parser on a fresh non-daemon executor and
+        // skips its shutdown when parsing fails, leaking one live thread per statement it cannot
+        // parse (dialect syntax such as Firebird's STARTING WITH) and keeping the JVM alive after
+        // stdin closes. Own the executor so it is always shut down.
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            return CCJSqlParserUtil.parseStatements(stripped, executor, null);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private void checkParsedStatements(Statements statements) {

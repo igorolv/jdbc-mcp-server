@@ -26,6 +26,7 @@ public interface SqlDialect {
             case POSTGRESQL -> new PostgresDialect();
             case ORACLE -> new OracleDialect();
             case MSSQL -> new SqlServerDialect();
+            case FIREBIRD -> new FirebirdDialect();
         };
     }
 
@@ -42,11 +43,55 @@ public interface SqlDialect {
          * The plan comes from running the query itself on a session switched into a plan-only
          * mode ({@code SET SHOWPLAN_TEXT / SHOWPLAN_XML ON} on SQL Server).
          */
-        SESSION_SHOWPLAN
+        SESSION_SHOWPLAN,
+        /**
+         * The engine has no EXPLAIN statement; the driver prepares the query and reports its plan
+         * through a vendor API ({@link #driverPlan}). Firebird via Jaybird.
+         */
+        DRIVER_API
     }
 
     default PlanCapture planCapture() {
         return PlanCapture.EXPLAIN_STATEMENT;
+    }
+
+    /**
+     * Prepare {@code sql} (positional {@code ?} placeholders only) without executing it and return
+     * the engine's textual plan. Only called when {@link #planCapture()} is {@link PlanCapture#DRIVER_API}.
+     */
+    default String driverPlan(Connection connection, String sql) throws SQLException {
+        throw new UnsupportedOperationException(kind() + " plans are not captured through the driver");
+    }
+
+    /**
+     * Whether plans carry the optimizer's row estimates. When {@code false}, the selectivity and
+     * join-cardinality tools fall back to exact {@code COUNT(*)} queries, which execute.
+     */
+    default boolean plannerRowEstimates() {
+        return true;
+    }
+
+    /**
+     * Whether the engine has schemas. When {@code false}, the whole database is presented as one
+     * logical schema named {@link #logicalSchema()}: tools accept and report that name,
+     * {@link #qualify} leaves it out of generated SQL, and {@link #wrapConnection} hides the
+     * {@code null} schema columns of {@link java.sql.DatabaseMetaData} behind it.
+     */
+    default boolean supportsSchemas() {
+        return true;
+    }
+
+    /** The single schema name of a schemaless engine; {@code null} for engines with schemas. */
+    default String logicalSchema() {
+        return null;
+    }
+
+    /**
+     * Wrap a pooled connection before metadata code sees it. Schemaless engines return a
+     * connection whose {@link java.sql.DatabaseMetaData} speaks in terms of {@link #logicalSchema()}.
+     */
+    default Connection wrapConnection(Connection connection) {
+        return connection;
     }
 
     /**
@@ -78,6 +123,14 @@ public interface SqlDialect {
             return quoteIdentifier(table);
         }
         return quoteIdentifier(schema) + "." + quoteIdentifier(table);
+    }
+
+    /**
+     * The percentile function {@link #histogramQuery} computes for a column: interpolated
+     * {@code percentile_cont} for numeric columns, {@code percentile_disc} otherwise.
+     */
+    default String histogramPercentileFunction(boolean numeric) {
+        return numeric ? "percentile_cont" : "percentile_disc";
     }
 
     /**

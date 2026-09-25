@@ -88,6 +88,9 @@ public class StatsTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "indexStats", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "indexStats", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -113,6 +116,9 @@ public class StatsTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "unusedIndexes", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "unusedIndexes", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -137,6 +143,9 @@ public class StatsTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "redundantIndexes", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "redundantIndexes", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -162,6 +171,9 @@ public class StatsTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "fkIndexCoverage", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "fkIndexCoverage", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 }

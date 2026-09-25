@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.dialect;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
+import ru.it_spectrum.ai.jdbc.mcp.plan.FirebirdPlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.OraclePlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PlanParser;
 import ru.it_spectrum.ai.jdbc.mcp.plan.PostgresPlanParser;
@@ -23,6 +24,7 @@ public class DialectConfig {
             case POSTGRESQL -> new PostgresPlanParser(mapper);
             case ORACLE -> new OraclePlanParser();
             case MSSQL -> new SqlServerPlanParser();
+            case FIREBIRD -> new FirebirdPlanParser();
         };
     }
 }

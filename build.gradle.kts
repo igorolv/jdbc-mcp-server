@@ -31,6 +31,8 @@ dependencies {
     runtimeOnly(libs.ojdbc11)
     runtimeOnly(libs.orai18n)
     runtimeOnly(libs.mssql.jdbc)
+    // Firebird: compile-time too — the plan tools call Jaybird's FirebirdPreparedStatement API
+    implementation(libs.jaybird)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.testcontainers.junit)

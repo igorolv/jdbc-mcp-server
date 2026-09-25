@@ -79,6 +79,15 @@ public final class PlanAnalyzer {
         List<PlanNodeSummary> out = new ArrayList<>();
         for (PlanNode p : nodes) {
             if (!isFullScan(p)) continue;
+            if (p.estimatedRows() == null && p.actualRowsTotal() == null) {
+                // Firebird plans carry no row estimates: every full scan is worth a look.
+                out.add(nodeSummary(
+                        p, null,
+                        "full scan (the engine reports no row estimate)",
+                        null, null, null, null, null, null
+                ));
+                continue;
+            }
             long rows = orZero(p.estimatedRows()).longValue();
             if (rows < FULL_SCAN_BIG_ROWS && orZero(p.actualRowsTotal()).longValue() < FULL_SCAN_BIG_ROWS) {
                 continue;
@@ -171,8 +180,9 @@ public final class PlanAnalyzer {
         String u = t.toUpperCase(Locale.ROOT);
         // PostgreSQL: "Seq Scan"; Oracle: "TABLE ACCESS FULL" (full unpartitioned) or
         // "TABLE ACCESS STORAGE FULL" (Exadata). SQL Server: table/index scan operators.
-        // Exclude partition-pruned variants.
+        // Firebird: "Full Scan". Exclude partition-pruned variants.
         return "SEQ SCAN".equals(u)
+                || u.equals("FULL SCAN")
                 || u.equals("TABLE ACCESS FULL")
                 || u.equals("TABLE ACCESS STORAGE FULL")
                 || u.equals("TABLE SCAN")

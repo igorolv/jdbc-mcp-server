@@ -63,6 +63,9 @@ public class MetadataTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "listSchemas", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "listSchemas", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -89,6 +92,9 @@ public class MetadataTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "listTables", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "listTables", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -175,6 +181,9 @@ public class MetadataTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "getViewDefinition", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "getViewDefinition", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -199,6 +208,9 @@ public class MetadataTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "listRoutines", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "listRoutines", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -226,6 +238,9 @@ public class MetadataTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "getRoutineDefinition", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "getRoutineDefinition", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -249,6 +264,9 @@ public class MetadataTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "listSequences", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "listSequences", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 
@@ -273,6 +291,9 @@ public class MetadataTools {
         } catch (SQLException e) {
             ToolLogger.failed(log, "searchObjects", start, e.getMessage());
             throw errors.sqlException(e);
+        } catch (IllegalArgumentException e) {
+            ToolLogger.failed(log, "searchObjects", start, e.getMessage());
+            throw errors.argumentException(e);
         }
     }
 

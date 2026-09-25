@@ -8,17 +8,18 @@
 [![Glama score](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server/badges/score.svg)](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server)
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/igorolv/jdbc-mcp-server)
 
-A local MCP server for read-only access to PostgreSQL, Oracle, and Microsoft SQL Server databases.
+A local MCP server for read-only access to PostgreSQL, Oracle, Microsoft SQL Server, and Firebird
+databases.
 It lets AI agents such as Claude Code, Cursor, VS Code Copilot, and others write SQL queries,
 inspect execution plans, and explore database structure: tables, columns, indexes, foreign keys,
 views, functions, and sequences.
 
-PostgreSQL, Oracle, and Microsoft SQL Server JDBC drivers are bundled into the fat jar, so no
-extra driver installation is required.
+PostgreSQL, Oracle, Microsoft SQL Server, and Firebird (Jaybird) JDBC drivers are bundled into the
+fat jar, so no extra driver installation is required.
 
 The server exposes 49 MCP tools and can optionally expose catalog-qualified MCP resources for table
 and column metadata. Tools may update the local SQLite catalog, but they never write to the inspected
-PostgreSQL, Oracle, or SQL Server database.
+PostgreSQL, Oracle, SQL Server, or Firebird database.
 
 One server process can serve several databases: name them in
 [`connections.json`](#databases-and-credentials) and pass `connection` to any tool. The tool manifest
@@ -208,7 +209,54 @@ jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=...)(PORT=1521))(CON
 
 jdbc:sqlserver://db.example.com:1433;databaseName=myapp;encrypt=true;trustServerCertificate=false
 jdbc:sqlserver://db.example.com;databaseName=myapp;integratedSecurity=false
+
+jdbc:firebirdsql://db.example.com:3050//var/lib/firebird/data/myapp.fdb
+jdbc:firebirdsql://db.example.com/myapp?encoding=WIN1251
 ```
+
+Firebird has its own notes — schemas, plans, statistics, embedded databases: see [Firebird](#firebird).
+
+### Firebird
+
+Firebird 3.0 and later, through Jaybird 6 (bundled). Connect over the network with the pure-Java
+driver — `jdbc:firebirdsql://<host>:3050//<path/to/db.fdb>` — to a Firebird server; no native
+client library is needed. An embedded database (a `.fdb` / `.gdb` file opened in-process) can be
+served by starting a Firebird server of the matching version on a **copy** of the file (Firebird 3
+for ODS 12, Firebird 4/5 for ODS 13); the official `firebirdsql/firebird` Docker image works:
+
+```bash
+docker run -d --name fb3 -e FIREBIRD_ROOT_PASSWORD=<pw> \
+  -v /path/to/copy:/var/lib/firebird/data -p 3050:3050 firebirdsql/firebird:3.0.14
+```
+
+```json
+"legacy": {
+  "url": "jdbc:firebirdsql://localhost:3050//var/lib/firebird/data/app.gdb",
+  "username": "SYSDBA",
+  "password": "<pw>"
+}
+```
+
+How Firebird differs from the other engines:
+
+- **No schemas.** Firebird before 6.0 has none, so the database is presented as one logical schema,
+  `PUBLIC` (the schema Firebird 6 moves existing objects into). Omit `schema` or pass `PUBLIC`;
+  any other name is an `argument` error. Generated SQL never qualifies names with it.
+- **Identifiers.** Unquoted names are stored in upper case: pass `CUSTOMERS`, not `customers`.
+- **Encoding.** Unless the URL sets `encoding=` / `charSet=` / `lc_ctype=`, the server adds
+  `encoding=UTF8`, and Firebird converts from each column's character set (e.g. `WIN1251`).
+- **Read-only** is enforced by the server: Jaybird runs read-only transactions, which reject DML
+  and DDL (`attempted update during read-only transaction`).
+- **Plans** come from the prepared statement through Jaybird (Firebird has no `EXPLAIN`); they
+  carry no costs or row estimates, so `analyzePlan` reports every full scan.
+- **`estimateSelectivity` / `joinCardinality`** execute exact `COUNT(*)` queries instead of
+  planner estimates (bounded by `queryTimeoutSeconds`); the `note` says so.
+- **`columnHistogram`** computes discrete percentiles (`percentile_disc`) with window functions.
+- **Statistics** are limited to index selectivity as of the last `SET STATISTICS` / restore:
+  `tableStats.estimatedRows` is derived from the most selective unique index (empty when the table
+  has none); there are no sizes or usage counters, and `unusedIndexes` is unsupported.
+- **Routines** list stored procedures, PSQL functions, packages and legacy UDFs; a UDF's
+  "definition" is its library entry point.
 
 ## Why This Exists
 
@@ -253,7 +301,7 @@ hints alongside declared FKs. See *Usage Catalog* below.
                                             +---> ...
 
                                           read-only JDBC
-                                          PG / Oracle / SQL Server
+                                          PG / Oracle / SQL Server / Firebird
 ```
 
 The protocol is `stdio` only. The client starts the server as a child process. One process serves
@@ -538,7 +586,7 @@ SQLite `<catalog>.db`. Source files and database objects remain authoritative. U
 lookup rebuilds them.
 
 **Local-only writes.** The usage catalog never writes to the inspected JDBC database
-(PostgreSQL / Oracle / SQL Server). The existing `ReadOnlyGuard` and connection-level protections
+(PostgreSQL / Oracle / SQL Server / Firebird). The existing `ReadOnlyGuard` and connection-level protections
 remain in force.
 
 **Typed payload.** The canonical `source`, `parameters[]`, `outputs[]`, `fieldUsages[]` and nested
@@ -692,7 +740,8 @@ so that an agent does not casually acquire them.
 2. **`connection.setReadOnly(true)`.** Set by Hikari and again by this server on each checkout.
 3. **PostgreSQL: `default_transaction_read_only=on`.** Added to the JDBC URL automatically unless you already provided your own `options=`. Even server-side DDL is rejected.
 4. **Oracle: JDBC read-only hint.** Oracle JDBC treats `setReadOnly(true)` mostly as an advisory hint. The client-side guard and a dedicated read-only database user are the primary Oracle protections. Oracle `EXPLAIN PLAN` writes a static plan to `PLAN_TABLE`; this server scopes those reads with a generated `STATEMENT_ID`.
-5. **SQL Server: JDBC read-only hint plus SHOWPLAN estimated plans.** SQL Server also treats `setReadOnly(true)` as a hint. Use a least-privilege login/user for strong enforcement. `explainQuery` and `analyzePlan` use `SHOWPLAN_TEXT/XML`, which returns estimated plans without executing the statement.
+5. **Firebird: server-enforced read-only transactions.** Jaybird turns `setReadOnly(true)` into read-only transactions, which the server enforces for DML and DDL alike.
+6. **SQL Server: JDBC read-only hint plus SHOWPLAN estimated plans.** SQL Server also treats `setReadOnly(true)` as a hint. Use a least-privilege login/user for strong enforcement. `explainQuery` and `analyzePlan` use `SHOWPLAN_TEXT/XML`, which returns estimated plans without executing the statement.
 
 ### Maximum Protection: Use a Read-only Database User
 
@@ -752,6 +801,7 @@ user for the strongest guarantee.
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
 - Microsoft SQL Server JDBC 12.8.1
+- Firebird JDBC (Jaybird) 6.0.6
 - SQLite 3.51.3 WAL catalog (`<catalog>.db`) holding the usage index and persistent structure snapshot
 - Gradle 9.3.1 with version catalog
 
@@ -772,11 +822,11 @@ export JAVA_HOME="$HOME/.jdks/jdk-21.0.6"
 ./gradlew build
 ```
 
-Result: `build/libs/jdbc-mcp-server.jar` (includes PostgreSQL, Oracle, and SQL Server drivers).
+Result: `build/libs/jdbc-mcp-server.jar` (includes PostgreSQL, Oracle, SQL Server, and Firebird drivers).
 
 ### Integration Tests
 
-Integration tests start real PostgreSQL, Oracle Free, and SQL Server instances through
+Integration tests start real PostgreSQL, Oracle Free, SQL Server, and Firebird 3 instances through
 Testcontainers, so Docker is required. They are excluded from the regular build and run separately:
 
 ```bash
@@ -981,7 +1031,7 @@ snapshot would share one `<catalog>.db` file.
 |   |   +-- JdbcMcpProperties.java      - local data directory and catalog name
 |   |   +-- UsageProperties.java        - usage-catalog sources and native-object settings
 |   |   +-- StructureSnapshotProperties.java - schemas captured by rebuildCatalog
-|   |   +-- DatabaseKind.java           - PG/Oracle/SQL Server autodetection from URL
+|   |   +-- DatabaseKind.java           - PG/Oracle/SQL Server/Firebird autodetection from URL
 |   |   +-- DataSourceConfig.java       - Hikari pool builder + connection-level read-only mode
 |   |   +-- ConnectionsConfig.java      - global defaults and the connection registry bean
 |   +-- connection/
@@ -998,6 +1048,8 @@ snapshot would share one `<catalog>.db` file.
 |   |   +-- PostgresDialect.java        - EXPLAIN, pg_catalog, pg_get_viewdef
 |   |   +-- OracleDialect.java          - EXPLAIN PLAN, ALL_VIEWS, ALL_SOURCE, Oracle metadata queries
 |   |   +-- SqlServerDialect.java       - SHOWPLAN, sys catalog metadata, SQL Server pagination
+|   |   +-- FirebirdDialect.java        - RDB$ catalog queries, Jaybird plans, one logical schema
+|   |   +-- SchemalessConnections.java  - DatabaseMetaData view of a schemaless engine as PUBLIC
 |   |   +-- DialectConfig.java          - implementation selection by DatabaseKind
 |   +-- sql/
 |   |   +-- ReadOnlyGuard.java          - JSqlParser AST guard + lexical fallback
@@ -1048,5 +1100,7 @@ snapshot would share one `<catalog>.db` file.
 - **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** - the guard worked. This is expected for any write operation. If the query is truly read-only, for example a read-only function call through `SELECT func(...)`, it will pass. For fully non-trivial cases, you can disable the guard with `"readonlyGuard": "off"` on that connection.
 - **Oracle write attempt reached the database** - this should normally be blocked by the guard first. If `readonlyGuard` is `off`, rely on a read-only Oracle user; JDBC `setReadOnly(true)` is only a best-effort hint for Oracle.
 - **Empty `describeTable` / `listTables` result on Oracle** - Oracle stores object names in uppercase. Pass `CUSTOMERS`, not `customers`.
+- **Firebird: empty `describeTable`, or `argument` error "Firebird has no schemas"** - Firebird stores unquoted names in uppercase and has no schemas: pass `CUSTOMERS` and omit `schema` (or pass `PUBLIC`).
+- **Firebird: "unsupported on-disk structure"** - the server version does not match the file's ODS (Firebird 3 reads ODS 12 only, Firebird 4/5 read ODS 13). Serve the file with the matching Firebird version, or back it up with `gbak` and restore it on a newer one.
 - **SQL Server certificate errors** - set the JDBC URL encryption options explicitly, for example `encrypt=true;trustServerCertificate=false` with a trusted certificate, or `trustServerCertificate=true` only for local/dev use.
 - **SQL Server `unusedIndexes` unsupported** - this tool intentionally avoids `sys.dm_db_index_usage_stats` because it usually requires elevated state-view permissions. Use `indexStats`, `fkIndexCoverage`, and `redundantIndexes` for low-privilege SQL Server audits.

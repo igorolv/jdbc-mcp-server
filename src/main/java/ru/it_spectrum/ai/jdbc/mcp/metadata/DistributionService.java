@@ -125,7 +125,7 @@ public class DistributionService {
 
         String qTable = qualify(schema, table);
         String qCol   = quoteIdent(column);
-        String baseSql = "SELECT " + qCol + " AS value, COUNT(*) AS frequency " +
+        String baseSql = "SELECT " + qCol + " AS column_value, COUNT(*) AS frequency " +
                 "FROM " + qTable + " GROUP BY " + qCol +
                 " ORDER BY COUNT(*) DESC, " + qCol + " ASC";
         String sql = dialect.limitQuery(baseSql, n);
@@ -139,7 +139,7 @@ public class DistributionService {
             long freq = toLong(getCI(row, "frequency"));
             totalFromTop += freq;
             values.add(new ColumnDistribution.ValueEntry(
-                    getCI(row, "value"), freq, ratio(freq, totalRows)));
+                    getCI(row, "column_value"), freq, ratio(freq, totalRows)));
         }
 
         long other = Math.max(0L, totalRows - totalFromTop);
@@ -168,7 +168,7 @@ public class DistributionService {
         ColumnType type = fetchColumnType(effectiveSchema, table, column);
         String qTable = qualify(schema, table);
         String qCol   = quoteIdent(column);
-        String pct = type.numeric ? "percentile_cont" : "percentile_disc";
+        String pct = dialect.histogramPercentileFunction(type.numeric);
 
         String sql = dialect.histogramQuery(qTable, qCol, pct);
 
@@ -257,11 +257,12 @@ public class DistributionService {
         String effectiveSchema = resolveSchema(schema);
         String qTable = qualify(schema, table);
 
-        String filteredSql = "SELECT 1 FROM " + qTable + " WHERE (" + predicate + ")";
-        String baselineSql = "SELECT 1 FROM " + qTable;
+        String filteredFrom = "FROM " + qTable + " WHERE (" + predicate + ")";
+        String baselineFrom = "FROM " + qTable;
 
-        Long filtered = explainRootRows(filteredSql);
-        Long baseline = explainRootRows(baselineSql);
+        boolean exact = !dialect.plannerRowEstimates();
+        Long filtered = rowCount(filteredFrom);
+        Long baseline = rowCount(baselineFrom);
 
         Double selectivity = null;
         if (filtered != null && baseline != null && baseline > 0) {
@@ -270,6 +271,7 @@ public class DistributionService {
 
         return new SelectivityEstimate(effectiveSchema, table, predicate,
                 filtered, baseline, selectivity,
+                exact ? EXACT_COUNT_NOTE :
                 "Estimates come from the query planner and can be off if statistics are stale. " +
                         "Run ANALYZE (PostgreSQL) or DBMS_STATS.GATHER_TABLE_STATS (Oracle) for fresher numbers.");
     }
@@ -302,12 +304,12 @@ public class DistributionService {
         String rCol = quoteIdent(rightColumn);
         String joinKeyword = jt.equals("INNER") ? "JOIN" : jt + " JOIN";
 
-        String sql = "SELECT 1 FROM " + lTable + " L " + joinKeyword + " " + rTable + " R " +
+        String joinFrom = "FROM " + lTable + " L " + joinKeyword + " " + rTable + " R " +
                 "ON L." + lCol + " = R." + rCol;
 
-        Long estimated = explainRootRows(sql);
-        Long lBase = explainRootRows("SELECT 1 FROM " + lTable);
-        Long rBase = explainRootRows("SELECT 1 FROM " + rTable);
+        Long estimated = rowCount(joinFrom);
+        Long lBase = rowCount("FROM " + lTable);
+        Long rBase = rowCount("FROM " + rTable);
 
         Long cartesian = null;
         Double selectivityVsCartesian = null;
@@ -321,10 +323,30 @@ public class DistributionService {
         return new JoinCardinality(resolveSchema(fromSchema), fromTable, leftColumn, lBase,
                 resolveSchema(toSchema), toTable, rightColumn, rBase,
                 jt, estimated, cartesian, selectivityVsCartesian,
-                "Estimate from the query planner; actual rows may differ if statistics are stale.");
+                dialect.plannerRowEstimates()
+                        ? "Estimate from the query planner; actual rows may differ if statistics are stale."
+                        : EXACT_COUNT_NOTE);
     }
 
     // ---------------- internal helpers ----------------
+
+    private static final String EXACT_COUNT_NOTE =
+            "Exact counts: this engine's optimizer publishes no row estimates, so COUNT(*) was executed " +
+                    "(bounded by the connection's query timeout).";
+
+    /**
+     * Row count of {@code SELECT ... <fromClause>}: the planner's estimate for {@code SELECT 1}
+     * where plans carry one, otherwise an exact {@code COUNT(*)} run through the read-only guard —
+     * it executes, so the query timeout applies.
+     */
+    private Long rowCount(String fromClause) throws SQLException {
+        if (dialect.plannerRowEstimates()) {
+            return explainRootRows("SELECT 1 " + fromClause);
+        }
+        QueryResult r = executor.query("SELECT COUNT(*) AS counted_rows " + fromClause,
+                List.of(), 1, null);
+        return r.rows().isEmpty() ? null : toLong(getCI(r.rows().getFirst(), "counted_rows"));
+    }
 
     /**
      * Runs a structured EXPLAIN on {@code sql} and returns the root node's estimated row count.

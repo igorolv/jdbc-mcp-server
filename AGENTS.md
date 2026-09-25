@@ -7,9 +7,10 @@
 > - Run tests: `./gradlew test` (single class: `./gradlew test --tests <FQCN>`)
 > - Full build: `./gradlew build`
 
-This is a local MCP server that provides read-only access to PostgreSQL, Oracle, and SQL Server databases.
+This is a local MCP server that provides read-only access to PostgreSQL, Oracle, SQL Server, and Firebird
+databases.
 It exposes 49 tools across ten groups. Tools may update the local SQLite catalog, but never the
-inspected PostgreSQL, Oracle, or SQL Server database:
+inspected database:
 
 - **Query** — execute SELECT/WITH/EXPLAIN, validate without running, get plain or LLM-summarized plans.
 - **Benchmark** — wall-clock cost of a query, optionally with `pg_stat_statements` deltas.
@@ -22,8 +23,8 @@ inspected PostgreSQL, Oracle, or SQL Server database:
 - **Catalog administration** — rebuild the persistent structure snapshot and usage index into a distributable SQLite catalog.
 - **Connections** — list the databases this server serves and which one answers by default.
 
-The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, and SQL Server JDBC drivers
-are bundled inside the fat jar.
+The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, SQL Server, and Firebird
+(Jaybird) JDBC drivers are bundled inside the fat jar.
 
 When explicitly enabled, the server exposes a catalog manifest and parameterized table/column MCP
 resources in addition to tools. Every URI is namespaced by the connection name:
@@ -123,7 +124,9 @@ read-only user) and a password, then write `~/.jdbc-mcp-server/connections.json`
 
 URL shapes: PostgreSQL `jdbc:postgresql://<host>:5432/<database>`, Oracle
 `jdbc:oracle:thin:@//<host>:1521/<service>`, SQL Server
-`jdbc:sqlserver://<host>:1433;databaseName=<database>`. The engine is detected from the prefix.
+`jdbc:sqlserver://<host>:1433;databaseName=<database>`, Firebird
+`jdbc:firebirdsql://<host>:3050//<path/to/db.fdb>`. The engine is detected from the prefix. Firebird
+has no schemas and other differences — read [Firebird](#firebird) before using it.
 
 **This file is the only place a database is configured.** There are no `JDBC_URL` / `JDBC_USERNAME` /
 `JDBC_PASSWORD` variables. A missing or empty file starts the server with no connections (warning
@@ -408,8 +411,51 @@ These tools feed the `evidence` bundle (`observedQuery` / `semanticUsage` layers
 
 All tools are **read-only**. Any attempt to run a non-SELECT statement is rejected by the
 client-side guard before it reaches the database. In addition, the JDBC connection is marked
-read-only, and PostgreSQL uses `default_transaction_read_only=on`. On Oracle and SQL Server,
-JDBC read-only mode is best-effort; use a dedicated read-only database user for the strongest guarantee.
+read-only, PostgreSQL uses `default_transaction_read_only=on`, and Firebird runs read-only
+transactions that the server enforces. On Oracle and SQL Server, JDBC read-only mode is best-effort;
+use a dedicated read-only database user for the strongest guarantee.
+
+### Firebird
+
+Firebird 3.0 and later, through Jaybird 6 (bundled). Connect over the network with the pure-Java
+driver — `jdbc:firebirdsql://<host>:3050//<path/to/db.fdb>` — to a Firebird server; no native
+client library is needed. An embedded database (a `.fdb` / `.gdb` file opened in-process) can be
+served by starting a Firebird server of the matching version on a **copy** of the file (Firebird 3
+for ODS 12, Firebird 4/5 for ODS 13); the official `firebirdsql/firebird` Docker image works:
+
+```bash
+docker run -d --name fb3 -e FIREBIRD_ROOT_PASSWORD=<pw> \
+  -v /path/to/copy:/var/lib/firebird/data -p 3050:3050 firebirdsql/firebird:3.0.14
+```
+
+```json
+"legacy": {
+  "url": "jdbc:firebirdsql://localhost:3050//var/lib/firebird/data/app.gdb",
+  "username": "SYSDBA",
+  "password": "<pw>"
+}
+```
+
+How Firebird differs from the other engines:
+
+- **No schemas.** Firebird before 6.0 has none, so the database is presented as one logical schema,
+  `PUBLIC` (the schema Firebird 6 moves existing objects into). Omit `schema` or pass `PUBLIC`;
+  any other name is an `argument` error. Generated SQL never qualifies names with it.
+- **Identifiers.** Unquoted names are stored in upper case: pass `CUSTOMERS`, not `customers`.
+- **Encoding.** Unless the URL sets `encoding=` / `charSet=` / `lc_ctype=`, the server adds
+  `encoding=UTF8`, and Firebird converts from each column's character set (e.g. `WIN1251`).
+- **Read-only** is enforced by the server: Jaybird runs read-only transactions, which reject DML
+  and DDL (`attempted update during read-only transaction`).
+- **Plans** come from the prepared statement through Jaybird (Firebird has no `EXPLAIN`); they
+  carry no costs or row estimates, so `analyzePlan` reports every full scan.
+- **`estimateSelectivity` / `joinCardinality`** execute exact `COUNT(*)` queries instead of
+  planner estimates (bounded by `queryTimeoutSeconds`); the `note` says so.
+- **`columnHistogram`** computes discrete percentiles (`percentile_disc`) with window functions.
+- **Statistics** are limited to index selectivity as of the last `SET STATISTICS` / restore:
+  `tableStats.estimatedRows` is derived from the most selective unique index (empty when the table
+  has none); there are no sizes or usage counters, and `unusedIndexes` is unsupported.
+- **Routines** list stored procedures, PSQL functions, packages and legacy UDFs; a UDF's
+  "definition" is its library entry point.
 
 ## Error responses
 
@@ -534,6 +580,10 @@ Notes on the structure snapshot:
   Connection-level read-only flags stay on; Oracle and SQL Server treat them as best-effort.
 - **Oracle: empty `describeTable` / `listTables`** — Oracle stores unquoted identifiers in upper
   case. Pass `CUSTOMERS` rather than `customers`.
+- **Firebird: empty `describeTable`, or "Firebird has no schemas"** — same upper-case rule; omit
+  `schema` or pass `PUBLIC`.
+- **Firebird: "unsupported on-disk structure"** — serve the file with the Firebird version that
+  matches its ODS (3 → ODS 12, 4/5 → ODS 13), or `gbak` backup/restore it onto a newer server.
 - **Oracle write attempt reached the database** — this should normally be blocked by the guard first.
   If `readonlyGuard` is `off`, rely on a read-only Oracle user; JDBC `setReadOnly(true)` is only a
   best-effort hint for Oracle.

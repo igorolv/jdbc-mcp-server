@@ -89,7 +89,7 @@ public class SqlExecutor {
             if (prepareReadOnly) {
                 dialect.prepareReadOnly(conn);
             }
-            return handler.handle(conn);
+            return handler.handle(dialect.wrapConnection(conn));
         }
     }
 
