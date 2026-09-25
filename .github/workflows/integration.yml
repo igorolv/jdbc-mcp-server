@@ -1,7 +1,7 @@
 name: Integration tests
 
-# Runs the Testcontainers suite against real PostgreSQL, Oracle Free, and SQL Server images.
-# Too slow for every push (the Oracle image alone is several GB), so it runs nightly and on demand.
+# Runs the Testcontainers suite against real PostgreSQL, Oracle Free, SQL Server, and Firebird images.
+# Too slow for every push (the Oracle image alone is several GB), so it runs weekly and on demand.
 on:
   schedule:
     - cron: '0 3 * * 1'   # every Monday 03:00 UTC

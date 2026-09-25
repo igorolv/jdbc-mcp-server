@@ -163,7 +163,7 @@ schema), `structureSnapshotOracleColumnQueryTimeoutSeconds` (300, `0` disables �
 bulk column query during a rebuild, kept apart from `queryTimeoutSeconds`), and the `usage*` fields
 listed under [Usage catalog tools](#usage-catalog-tools). `dialect` (`postgresql`, `oracle`, `mssql`,
 `firebird`, `sqlite`, `generic`; default detected from the URL), `driverPath` and `driverClass` choose the
-engine and load a driver from outside the server jar. See the README for the full table. Unknown keys
+engine and load a driver from outside the server jar. See `docs/connections.md` for the full table. Unknown keys
 are ignored without a warning, so check field spelling when a setting seems to have no effect; the
 file is read only at startup.
 
@@ -259,7 +259,7 @@ of tools, and each call picks its database with `connection`:
 }
 ```
 
-Keep the file readable only by its owner — it holds database credentials. The README documents
+Keep the file readable only by its owner — it holds database credentials. `docs/connections.md` documents
 every per-connection field.
 
 **Example for Claude Code:**
