@@ -428,6 +428,49 @@ read-only, PostgreSQL uses `default_transaction_read_only=on`, Firebird runs rea
 transactions that the server enforces, and SQLite files are opened with `open_mode=1`. On Oracle and SQL Server, JDBC read-only mode is best-effort;
 use a dedicated read-only database user for the strongest guarantee.
 
+### PostgreSQL
+
+PostgreSQL 11 and later, through the bundled pgjdbc driver.
+
+- **Read-only inside the database:** the server appends `options=-c default_transaction_read_only=on`
+  to the URL. A URL with its own `options=` is left untouched and loses this — the setting must then
+  be part of that `options` value (see `docs/connections.md`).
+- **Names are matched as stored.** Unquoted identifiers are lower case: pass `orders`, not `ORDERS`.
+- **`analyze=true` executes the query** (`explainQuery`, `analyzePlan`), inside the read-only
+  transaction. Use it only when actual row counts are worth running the query; the default plan
+  does not execute anything.
+- The only engine with `unusedIndexes` (counters since the last statistics reset) and with
+  `pg_stat_statements` deltas in `timedQuery` (extension required, PostgreSQL 13+).
+
+### Oracle
+
+Oracle Database 12c and later, through the bundled `ojdbc11` driver.
+
+- **Names are upper case** and passed unquoted: `CUSTOMERS`, schema `APP_OWNER`. Without
+  `defaultSchema` the current user's schema is used — usually not the one that owns the tables, so
+  pass `schema` explicitly or check `listConnections` for the configured default.
+- **Metadata comes from the `ALL_*` views:** the server sees only objects the user was granted. An
+  "empty" schema usually means missing grants, not missing tables.
+- **Plans** are static estimates from `EXPLAIN PLAN` + `DBMS_XPLAN`; `analyze` is ignored.
+- **Statistics** reflect the last `DBMS_STATS` gather (`last_analyzed`); sizes appear only when the
+  user can read `DBA_SEGMENTS`. `unusedIndexes` is unsupported.
+- `getRoutineDefinition` on a package returns the package body.
+
+### SQL Server
+
+SQL Server 2012 and later, through the bundled `mssql-jdbc` driver.
+
+- **Names** are bracket-quoted; case sensitivity follows the database collation. The default schema
+  is the user's (`SCHEMA_NAME()`, usually `dbo`).
+- **Plans** are estimated (`SHOWPLAN_TEXT` / `SHOWPLAN_XML`, not executed); there is no actual-plan
+  mode, so `analyze` does not add runtime numbers. Requires the `SHOWPLAN` permission.
+- **View, routine and trigger sources** need `VIEW DEFINITION`; without it they are not visible.
+- **Statistics:** row counts and sizes only; `unusedIndexes` answers with a note (usage counters
+  need server-level state permissions).
+- **Connection fails with a TLS/certificate error:** the driver encrypts by default. The operator
+  must install a trusted certificate or set `trustServerCertificate=true` (dev servers only) in the
+  URL — this is a `connections.json` change, not something a tool argument can fix.
+
 ### Firebird
 
 Firebird 3.0 and later, through Jaybird 6 (bundled). Connect over the network with the pure-Java

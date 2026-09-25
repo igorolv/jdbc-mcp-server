@@ -185,8 +185,86 @@ jdbc:h2:tcp://db.example.com/~/inventory        (generic, with driverPath)
 More per-engine recipes — SSL, SIDs and TNS aliases, named instances, Windows paths, drivers for
 MySQL / MariaDB / H2 / Db2 — are in [docs/connections.md](docs/connections.md#recipes-per-engine).
 
-PostgreSQL, Oracle and SQL Server behave as you would expect. Firebird, SQLite and generic JDBC
-differ enough to read the notes below before using them.
+The notes below say, per engine, how read-only is enforced, how names are matched, where plans and
+statistics come from, and what the database user needs. Firebird, SQLite and generic JDBC differ the
+most from what you may expect — read their notes before using them.
+
+### PostgreSQL
+
+PostgreSQL 11 and later (the integration tests run on 16), through the bundled pgjdbc driver.
+
+- **Read-only inside the database.** The server appends
+  `options=-c default_transaction_read_only=on` to the URL, so every transaction of the session is
+  read-only in PostgreSQL itself and even DDL is rejected. A URL that sets its own `options=` is
+  left untouched and loses this protection; add the setting to your `options` value yourself — see
+  the [PostgreSQL recipe](docs/connections.md#postgresql).
+- **Names are matched as stored.** Unquoted identifiers are stored in lower case: pass `orders`, not
+  `ORDERS`; a table created as `"Orders"` is `Orders`.
+- **Plans.** `explainQuery` runs `EXPLAIN (VERBOSE, COSTS)`, `analyzePlan` reads the JSON form.
+  `analyze=true` adds `ANALYZE` (plus `BUFFERS` for `analyzePlan`) — the query is then **executed**,
+  inside the read-only transaction; it is the only way to get actual row counts and estimate errors.
+- **Statistics** come from `pg_class`, `pg_stat_user_tables` and `pg_stat_user_indexes`: sizes
+  including TOAST, live and dead tuples, last (auto)vacuum / analyze, sequential vs. index scans.
+  PostgreSQL is the only engine with `unusedIndexes`; its counters run since the last statistics
+  reset.
+- **`timedQuery`** adds per-query deltas from `pg_stat_statements` when the extension is installed
+  (PostgreSQL 13+ column names); without it the response says `available: false`.
+- **Catalog.** Partitioned tables, materialized views and foreign tables, `EXCLUDE` constraints,
+  comments from `pg_description`, function and procedure sources from `pg_get_functiondef`.
+- **User:** `CONNECT` on the database, `USAGE` on the schemas, `SELECT` on the tables — see the
+  [read-only role snippet](#maximum-protection-use-a-read-only-database-user).
+
+### Oracle
+
+Oracle Database 12c and later (the integration tests run on 23ai Free), through the bundled
+`ojdbc11` driver.
+
+- **Read-only is up to the guard and the user.** The Oracle driver treats `setReadOnly(true)` as a
+  hint. The guard lets only `SELECT` / `WITH` / `EXPLAIN` through; a
+  [read-only user](#maximum-protection-use-a-read-only-database-user) is the real protection.
+- **Names are upper case.** Unquoted identifiers fold to upper case and the server passes names
+  unquoted: use `CUSTOMERS` and `defaultSchema: "APP_OWNER"`. Without `defaultSchema` the current
+  user's schema is used — rarely the one that owns the application tables.
+- **Catalog from the `ALL_*` views**, so the server sees exactly what the user has been granted.
+  Table comments come through the driver's `remarksReporting`, column comments from
+  `ALL_COL_COMMENTS`. Column defaults are `LONG` values read through `DBMS_XMLGEN`, which is why
+  `rebuildCatalog` has its own `structureSnapshotOracleColumnQueryTimeoutSeconds`. For a package,
+  `getRoutineDefinition` returns the body rather than the spec.
+- **Plans.** `EXPLAIN PLAN SET STATEMENT_ID … FOR` into `PLAN_TABLE` (a session-private temporary
+  table in current versions, usable by a read-only user), displayed with `DBMS_XPLAN.DISPLAY`. Plans
+  are static optimizer estimates; `analyze` is ignored.
+- **Statistics** reflect the last `DBMS_STATS` gather (`last_analyzed`): row counts from
+  `ALL_TABLES`, index `distinct_keys`, `clustering_factor`, `blevel`, `leaf_blocks`. Sizes need
+  `DBA_SEGMENTS` (for example via `SELECT_CATALOG_ROLE`) and are left out without it.
+  `unusedIndexes` is unsupported — `ALL_INDEXES` has no scan counters; the response points to
+  `DBA_INDEX_USAGE` (12.2+) and `ALTER INDEX … MONITORING USAGE`.
+- **User:** `CREATE SESSION`, `SELECT` on the application tables (directly or through a role), and
+  `SELECT ANY DICTIONARY` or `SELECT_CATALOG_ROLE` for metadata and sizes.
+
+### SQL Server
+
+SQL Server 2012 and later (the integration tests run on 2022), through the bundled `mssql-jdbc`
+driver.
+
+- **Read-only is up to the guard and the login.** The driver treats `setReadOnly(true)` as a hint;
+  use a login whose user has only `SELECT`.
+- **Encryption is on by default.** Current `mssql-jdbc` versions default to `encrypt=true`, so a
+  server with a self-signed certificate fails the TLS handshake. Install a trusted certificate, or
+  add `trustServerCertificate=true` on local and dev servers only.
+- **Names** are always bracket-quoted; whether case matters follows the database collation (usually
+  it does not). Without `defaultSchema` the user's default schema (`SCHEMA_NAME()`, usually `dbo`)
+  is used.
+- **Catalog from the `sys.*` views.** View, routine and trigger sources come from `sys.sql_modules`
+  and are visible only with `VIEW DEFINITION`. Comments are the `MS_Description` extended
+  properties.
+- **Plans.** `SET SHOWPLAN_TEXT ON` / `SET SHOWPLAN_XML ON` on the same session: the statement is
+  compiled, not executed, and the plan is an estimate — there is no actual-plan mode. Needs the
+  `SHOWPLAN` permission.
+- **Statistics** come from `sys.tables`, `sys.indexes`, `sys.partitions` and the allocation units:
+  row counts and sizes. Index usage counters (`sys.dm_db_index_usage_stats`) need server-level state
+  permissions, so the server does not read them and `unusedIndexes` answers with a note.
+- **User:** `SELECT` on the schema, `VIEW DEFINITION`, `SHOWPLAN` — see the
+  [login snippet](#maximum-protection-use-a-read-only-database-user).
 
 ### Firebird
 
