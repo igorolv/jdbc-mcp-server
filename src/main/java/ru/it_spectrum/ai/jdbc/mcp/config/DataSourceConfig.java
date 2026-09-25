@@ -34,15 +34,60 @@ public final class DataSourceConfig {
      */
     public static HikariDataSource createDataSource(JdbcProperties properties, DatabaseKind kind,
                                                     String connectionName) {
+        return createDataSource(properties, kind, DriverProperties.DEFAULTS, connectionName);
+    }
+
+    /**
+     * With {@link DriverProperties#externalDriver()} the pool connects through a driver loaded from
+     * {@code driverPath} ({@link ExternalDriver}); the driver's class loader is closed with the pool.
+     */
+    public static HikariDataSource createDataSource(JdbcProperties properties, DatabaseKind kind,
+                                                    DriverProperties driver, String connectionName) {
         HikariConfig hikari = buildHikariConfig(properties, kind);
         if (connectionName != null && !connectionName.isBlank()) {
             hikari.setPoolName("jdbc-mcp-pool-" + connectionName);
         }
 
-        log.info("Creating lazy read-only JDBC pool (connection={}, url={}, user={}, maxSize={}, minIdle={})",
+        log.info("Creating lazy read-only JDBC pool (connection={}, url={}, user={}, maxSize={}, minIdle={}{})",
                 connectionName, maskUrl(hikari.getJdbcUrl()), properties.username(),
-                hikari.getMaximumPoolSize(), hikari.getMinimumIdle());
-        return new HikariDataSource(hikari);
+                hikari.getMaximumPoolSize(), hikari.getMinimumIdle(),
+                driver.externalDriver() ? ", driverPath=" + driver.driverPath() : "");
+        SqlDialect dialect = SqlDialect.forKind(kind);
+        // A dialect that applies read-only best-effort must also survive Hikari's own setReadOnly
+        // on every new connection, which such drivers may refuse.
+        boolean tolerateReadOnlyRefusal = !dialect.readOnlyPoolConnections();
+        String url = hikari.getJdbcUrl();
+        if (!driver.externalDriver()) {
+            if (tolerateReadOnlyRefusal) {
+                try {
+                    useDriver(hikari, new DriverDataSource(java.sql.DriverManager.getDriver(url), url,
+                            dialect.dataSourceProperties(), true));
+                } catch (java.sql.SQLException e) {
+                    throw new IllegalStateException("No bundled JDBC driver accepts " + maskUrl(url)
+                            + "; set \"driverPath\" to the driver jar", e);
+                }
+            }
+            return new HikariDataSource(hikari);
+        }
+        ExternalDriver external = ExternalDriver.load(driver.driverPath(), driver.driverClass(), url);
+        useDriver(hikari, external.dataSource(url, dialect.dataSourceProperties(), tolerateReadOnlyRefusal));
+        return new HikariDataSource(hikari) {
+            @Override
+            public void close() {
+                try {
+                    super.close();
+                } finally {
+                    external.close();
+                }
+            }
+        };
+    }
+
+    /** Connections come from {@code dataSource}; the URL and bean-style properties no longer apply. */
+    private static void useDriver(HikariConfig hikari, DataSource dataSource) {
+        hikari.setDataSource(dataSource);
+        hikari.setJdbcUrl(null);
+        hikari.getDataSourceProperties().clear();
     }
 
     public static HikariConfig buildHikariConfig(JdbcProperties properties, DatabaseKind kind) {
@@ -52,7 +97,9 @@ public final class DataSourceConfig {
         hikari.setJdbcUrl(dialect.applyUrlTweaks(properties.url()));
         hikari.setUsername(properties.username());
         hikari.setPassword(properties.password());
-        hikari.setReadOnly(true);
+        // Some drivers (SQLite) refuse setReadOnly on an open connection, which would make the pool
+        // fail every connection; their dialect applies it best-effort per checkout instead.
+        hikari.setReadOnly(dialect.readOnlyPoolConnections());
         hikari.setAutoCommit(true);
         hikari.setMaximumPoolSize(Math.max(1, properties.poolMaximumSize()));
         hikari.setMinimumIdle(Math.clamp(properties.poolMinimumIdle(), 0, properties.poolMaximumSize()));

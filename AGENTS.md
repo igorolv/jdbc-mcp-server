@@ -8,7 +8,7 @@
 > - Full build: `./gradlew build`
 
 This is a local MCP server that provides read-only access to PostgreSQL, Oracle, SQL Server, and Firebird
-databases.
+databases, and to any other JDBC database in generic mode (driver jar supplied via `driverPath`).
 It exposes 49 tools across ten groups. Tools may update the local SQLite catalog, but never the
 inspected database:
 
@@ -126,7 +126,9 @@ URL shapes: PostgreSQL `jdbc:postgresql://<host>:5432/<database>`, Oracle
 `jdbc:oracle:thin:@//<host>:1521/<service>`, SQL Server
 `jdbc:sqlserver://<host>:1433;databaseName=<database>`, Firebird
 `jdbc:firebirdsql://<host>:3050//<path/to/db.fdb>`. The engine is detected from the prefix. Firebird
-has no schemas and other differences — read [Firebird](#firebird) before using it.
+has no schemas and other differences — read [Firebird](#firebird) before using it. Any other database
+is served as generic JDBC when its entry names a driver jar in `driverPath` — read
+[Generic JDBC](#generic-jdbc).
 
 **This file is the only place a database is configured.** There are no `JDBC_URL` / `JDBC_USERNAME` /
 `JDBC_PASSWORD` variables. A missing or empty file starts the server with no connections (warning
@@ -155,7 +157,9 @@ and SQL Server), `poolMaximumSize` (40), `poolMinimumIdle` (0), `poolConnectionT
 `poolValidationTimeoutMs` (5000), `poolIdleTimeoutMs` (60000), `structureSnapshotSchemas` (default
 schema), `structureSnapshotOracleColumnQueryTimeoutSeconds` (300, `0` disables — Oracle's expensive
 bulk column query during a rebuild, kept apart from `queryTimeoutSeconds`), and the `usage*` fields
-listed under [Usage catalog tools](#usage-catalog-tools). See the README for the full table.
+listed under [Usage catalog tools](#usage-catalog-tools). `dialect` (`postgresql`, `oracle`, `mssql`,
+`firebird`, `generic`; default detected from the URL), `driverPath` and `driverClass` choose the
+engine and load a driver from outside the server jar. See the README for the full table.
 
 The structure snapshot persists structural metadata in the local SQLite `<catalog>.db` ("cache
 forever", no TTL); live stats are not cached. SQLite WAL lets several local MCP processes share one
@@ -457,6 +461,47 @@ How Firebird differs from the other engines:
 - **Routines** list stored procedures, PSQL functions, packages and legacy UDFs; a UDF's
   "definition" is its library entry point.
 
+### Generic JDBC
+
+Any other database with a JDBC driver — H2, HSQLDB, Derby, DB2, MySQL/MariaDB, SQLite, Informix, and
+so on — can be served in **generic** mode. Point `driverPath` at the driver jar (or a directory of
+jars); a URL no built-in dialect recognizes is then served as generic JDBC. `"dialect": "generic"`
+forces generic mode even for a URL a built-in dialect would take.
+
+```json
+"inventory": {
+  "url": "jdbc:h2:tcp://db.example.com/~/inventory",
+  "username": "reader",
+  "password": "<pw>",
+  "driverPath": "drivers/h2-2.3.232.jar",
+  "description": "Legacy inventory (H2)"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `driverPath` | A driver jar, or a directory whose `*.jar` files are all loaded. Relative paths are relative to `connections.json`. The jars get a class loader of their own, so they never clash with the bundled drivers |
+| `driverClass` | The `java.sql.Driver` class; optional — by default the registered driver that accepts the URL is used |
+| `dialect` | `postgresql`, `oracle`, `mssql`, `firebird`, or `generic`; optional — by default detected from the URL. `driverPath` also works with a built-in dialect, e.g. a newer Oracle driver |
+
+Generic mode answers from `DatabaseMetaData` and portable SQL only, so it is slower and less
+complete than a real dialect:
+
+- **Works:** schemas, tables, columns, primary and foreign keys, indexes, `describeTable`, the schema
+  context tools, queries, samples, `columnStats` / `columnDistribution` / `nullRatio`, FK index
+  coverage, redundant indexes, and routines listed without sources.
+- **Slower substitutes:** `estimateSelectivity` and `joinCardinality` run exact `COUNT(*)` queries
+  (bounded by `queryTimeoutSeconds`); `tableStats` counts rows unless the driver reports a table
+  statistic; `columnHistogram` streams the sorted column to the server and picks discrete percentiles.
+- **Unsupported** (error kind `unsupported`): plans (`explainQuery`, `analyzePlan`), view / routine /
+  trigger definitions, sequences, and unused-index detection. CHECK constraints and triggers are not
+  reported.
+- **No schemas?** A database without them (SQLite, MySQL) is presented as one logical schema: its
+  current catalog (MySQL's database) or `PUBLIC`.
+- **Read-only is best-effort:** the guard, plus `Connection.setReadOnly` where the driver honours it.
+  Make the connection itself read-only where the driver allows it — for example SQLite
+  `jdbc:sqlite:/data/app.db?open_mode=1` — or use a read-only database user.
+
 ## Error responses
 
 All tools share one error shape — a JSON object with at minimum `error` and `kind`:
@@ -469,6 +514,7 @@ All tools share one error shape — a JSON object with at minimum `error` and `k
 |---|---|
 | `sql` | The database returned a `SQLException` (syntax, missing object, permission, ...). |
 | `argument` | Tool argument was missing or malformed (raised by the tool/service). |
+| `unsupported` | The connection's engine cannot answer this at all — plans, view/routine/trigger sources or sequences on a generic JDBC connection. Do not retry with other arguments. |
 | `rejected` | The read-only guard blocked the SQL before sending it to the database. |
 | `not_found` | A `getViewDefinition` / `getRoutineDefinition` / `getTriggerDefinition` lookup matched nothing. The body adds `missing` and `name`. |
 | `driver` / `unexpected` / `plan_parse` | Internal driver / unhandled / plan-parser failure. |

@@ -1,5 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.tools;
 
+import ru.it_spectrum.ai.jdbc.mcp.dialect.UnsupportedFeatureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -12,7 +13,7 @@ import java.sql.SQLException;
  * Single source of truth for error responses returned by MCP tools.
  *
  * <p>All tools return JSON of the shape:
- * <pre>{"error": "...", "kind": "sql|argument|rejected|not_found|driver"}</pre>
+ * <pre>{"error": "...", "kind": "sql|argument|unsupported|rejected|not_found|driver"}</pre>
  *
  * <p>Helpers for the most common cases — call them instead of building strings inline so the
  * format stays consistent across QueryTools, MetadataTools, StatsTools, DistributionTools,
@@ -39,8 +40,17 @@ public class ToolErrors {
     }
 
     public String argument(IllegalArgumentException e) {
+        if (e instanceof UnsupportedFeatureException unsupported) {
+            return unsupported(unsupported);
+        }
         log.warn("Tool error [kind=argument]: {}", e.getMessage());
         return error("argument", e.getMessage());
+    }
+
+    /** The connection's engine cannot do this at all; retrying with other arguments will not help. */
+    public String unsupported(UnsupportedFeatureException e) {
+        log.warn("Tool error [kind=unsupported]: {}", e.getMessage());
+        return error("unsupported", e.getMessage());
     }
 
     public RuntimeException argumentException(IllegalArgumentException e) {
@@ -75,6 +85,9 @@ public class ToolErrors {
     }
 
     public String unexpected(Throwable e) {
+        if (e instanceof UnsupportedFeatureException unsupported) {
+            return unsupported(unsupported);
+        }
         String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         log.error("Tool error [kind=unexpected]: {}", msg, e);
         return error("unexpected", msg);
@@ -85,6 +98,9 @@ public class ToolErrors {
     }
 
     public String planParse(IllegalArgumentException e) {
+        if (e instanceof UnsupportedFeatureException unsupported) {
+            return unsupported(unsupported);
+        }
         log.warn("Tool error [kind=plan_parse]: {}", e.getMessage());
         return error("plan_parse", e.getMessage());
     }

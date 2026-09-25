@@ -23,6 +23,10 @@ public record ConnectionsFile(
      *
      * @param description free-form text shown by {@code listConnections} so an agent can pick a
      *                    database by meaning rather than by name
+     * @param dialect     explicit engine, overriding detection from the URL — see
+     *                    {@link ru.it_spectrum.ai.jdbc.mcp.config.DriverProperties}
+     * @param driverPath  driver jar or directory of jars for a database without a bundled driver
+     * @param driverClass driver class inside {@code driverPath}; optional
      */
     public record Entry(
             String url,
@@ -47,7 +51,10 @@ public record ConnectionsFile(
             Boolean usageNativeIncludeViews,
             Boolean usageNativeIncludeRoutines,
             Boolean usageNativeIncludeTriggers,
-            Integer usageNativeMaxObjects
+            Integer usageNativeMaxObjects,
+            String dialect,
+            String driverPath,
+            String driverClass
     ) {
     }
 }

@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import ru.it_spectrum.ai.jdbc.mcp.dialect.UnsupportedFeatureException;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.RoutineEntry;
@@ -70,21 +71,21 @@ private static final Logger log = LoggerFactory.getLogger(DatabaseNativeUsageSou
             if (properties.nativeIncludeViews()) {
                 long t = System.currentTimeMillis();
                 int before = out.size();
-                addViews(schema, out);
+                skipIfUnsupported("views", () -> addViews(schema, out));
                 log.info("DatabaseNative: {} views loaded from {} in {} ms (total records: {})",
                         out.size() - before, schema, System.currentTimeMillis() - t, out.size());
             }
             if (properties.nativeIncludeRoutines()) {
                 long t = System.currentTimeMillis();
                 int before = out.size();
-                addRoutines(schema, out);
+                skipIfUnsupported("routines", () -> addRoutines(schema, out));
                 log.info("DatabaseNative: {} routines loaded from {} in {} ms (total records: {})",
                         out.size() - before, schema, System.currentTimeMillis() - t, out.size());
             }
             if (properties.nativeIncludeTriggers()) {
                 long t = System.currentTimeMillis();
                 int before = out.size();
-                addTriggers(schema, out);
+                skipIfUnsupported("triggers", () -> addTriggers(schema, out));
                 log.info("DatabaseNative: {} triggers loaded from {} in {} ms (total records: {})",
                         out.size() - before, schema, System.currentTimeMillis() - t, out.size());
             }
@@ -92,6 +93,19 @@ private static final Logger log = LoggerFactory.getLogger(DatabaseNativeUsageSou
         log.info("DatabaseNative: total {} records loaded from {} schemas in {} ms",
                 out.size(), schemas.size(), System.currentTimeMillis() - phaseStart);
         return List.copyOf(out);
+    }
+
+    private interface Step {
+        void run() throws Exception;
+    }
+
+    /** A connection that cannot expose an object kind (generic JDBC) contributes none of it. */
+    private static void skipIfUnsupported(String what, Step step) throws Exception {
+        try {
+            step.run();
+        } catch (UnsupportedFeatureException e) {
+            log.info("DatabaseNative: skipping {}: {}", what, e.getMessage());
+        }
     }
 
     private List<String> schemas() throws Exception {

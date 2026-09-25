@@ -1,5 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.connection;
 
+import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
+import ru.it_spectrum.ai.jdbc.mcp.config.DriverProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.support.RootBeanDefinition;
@@ -67,6 +69,8 @@ public final class SpringConnectionContextFactory implements ConnectionContextFa
         registerPrimary(context, JdbcMcpProperties.class, definition::catalog);
         registerPrimary(context, UsageProperties.class, definition::usage);
         registerPrimary(context, StructureSnapshotProperties.class, definition::structureSnapshot);
+        registerPrimary(context, DriverProperties.class, definition::driver);
+        registerPrimary(context, DatabaseKind.class, definition::kind);
         context.register(ConnectionScopeConfig.class);
         context.scan(SCANNED_PACKAGES);
         try {

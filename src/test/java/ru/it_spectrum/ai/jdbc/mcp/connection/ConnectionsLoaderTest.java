@@ -207,4 +207,52 @@ class ConnectionsLoaderTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("connections.json");
     }
+
+    @Test
+    void externalDriversAndExplicitDialects() throws IOException {
+        Path drivers = Files.createDirectories(dataDir.resolve("drivers"));
+        Files.writeString(drivers.resolve("h2.jar"), "not really a jar");
+        List<ConnectionDefinition> loaded = load("""
+                {
+                  "connections": {
+                    "h2": {
+                      "url": "jdbc:h2:file:/data/app",
+                      "driverPath": "drivers/h2.jar",
+                      "driverClass": "org.h2.Driver"
+                    },
+                    "pg-generic": {
+                      "url": "jdbc:postgresql://db.example.com/app",
+                      "dialect": "Generic"
+                    },
+                    "no-driver": {
+                      "url": "jdbc:h2:file:/data/app"
+                    },
+                    "missing-jar": {
+                      "url": "jdbc:h2:file:/data/app",
+                      "driverPath": "drivers/absent.jar"
+                    },
+                    "bad-dialect": {
+                      "url": "jdbc:postgresql://db.example.com/app",
+                      "dialect": "mysql"
+                    }
+                  }
+                }
+                """);
+        Map<String, ConnectionDefinition> byName = new java.util.LinkedHashMap<>();
+        loaded.forEach(d -> byName.put(d.name(), d));
+
+        ConnectionDefinition h2 = byName.get("h2");
+        assertThat(h2.usable()).isTrue();
+        assertThat(h2.kind()).isEqualTo(DatabaseKind.GENERIC);
+        assertThat(h2.driver().driverPath()).isEqualTo(drivers.resolve("h2.jar").toString());
+        assertThat(h2.driver().driverClass()).isEqualTo("org.h2.Driver");
+
+        assertThat(byName.get("pg-generic").kind()).isEqualTo(DatabaseKind.GENERIC);
+        assertThat(byName.get("pg-generic").driver().externalDriver()).isFalse();
+
+        assertThat(byName.get("no-driver").usable()).isFalse();
+        assertThat(byName.get("no-driver").configError()).contains("driverPath");
+        assertThat(byName.get("missing-jar").configError()).contains("does not exist");
+        assertThat(byName.get("bad-dialect").configError()).contains("Unknown dialect 'mysql'");
+    }
 }

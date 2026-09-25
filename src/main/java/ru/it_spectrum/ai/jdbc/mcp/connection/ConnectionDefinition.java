@@ -2,6 +2,7 @@ package ru.it_spectrum.ai.jdbc.mcp.connection;
 
 import ru.it_spectrum.ai.jdbc.mcp.config.DataSourceConfig;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
+import ru.it_spectrum.ai.jdbc.mcp.config.DriverProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
@@ -27,7 +28,9 @@ import java.util.regex.Pattern;
  * @param catalog          local-catalog settings; {@code catalogName} equals {@link #name()}
  * @param usage            effective usage-catalog settings
  * @param structureSnapshot effective structure-snapshot settings
- * @param kind             engine detected from the URL, {@code null} when the URL is unusable
+ * @param driver           explicit dialect and external driver location, if any
+ * @param kind             engine named by {@code dialect} or detected from the URL, {@code null}
+ *                         when neither works
  * @param configError      why this connection cannot be used, {@code null} when it is fine
  */
 public record ConnectionDefinition(
@@ -37,9 +40,19 @@ public record ConnectionDefinition(
         JdbcMcpProperties catalog,
         UsageProperties usage,
         StructureSnapshotProperties structureSnapshot,
+        DriverProperties driver,
         DatabaseKind kind,
         String configError
 ) {
+
+    /** A connection served by a bundled driver, its dialect detected from the URL. */
+    public ConnectionDefinition(String name, String description, JdbcProperties jdbc,
+                                JdbcMcpProperties catalog, UsageProperties usage,
+                                StructureSnapshotProperties structureSnapshot,
+                                DatabaseKind kind, String configError) {
+        this(name, description, jdbc, catalog, usage, structureSnapshot, DriverProperties.DEFAULTS,
+                kind, configError);
+    }
 
     /**
      * Connection names end up in filesystem paths and in resource URIs, so keep them boring. One

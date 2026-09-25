@@ -9,7 +9,7 @@
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/igorolv/jdbc-mcp-server)
 
 A local MCP server for read-only access to PostgreSQL, Oracle, Microsoft SQL Server, and Firebird
-databases.
+databases — and, in [generic mode](#generic-jdbc), to any other database with a JDBC driver.
 It lets AI agents such as Claude Code, Cursor, VS Code Copilot, and others write SQL queries,
 inspect execution plans, and explore database structure: tables, columns, indexes, foreign keys,
 views, functions, and sequences.
@@ -174,6 +174,8 @@ Everything except `url` is optional; a field left out falls back to the built-in
 | Field | Default | Meaning |
 |---|---|---|
 | `url` | required | JDBC URL; also selects the engine |
+| `dialect` | from the URL | `postgresql`, `oracle`, `mssql`, `firebird`, or `generic` — see [Generic JDBC](#generic-jdbc) |
+| `driverPath`, `driverClass` | bundled drivers | Load the JDBC driver from a jar or directory instead — see [Generic JDBC](#generic-jdbc) |
 | `username`, `password` | none | Database credentials |
 | `description` | none | Free text returned by `listConnections` |
 | `defaultSchema` | the session schema | Schema used when a metadata tool call omits one |
@@ -257,6 +259,47 @@ How Firebird differs from the other engines:
   has none); there are no sizes or usage counters, and `unusedIndexes` is unsupported.
 - **Routines** list stored procedures, PSQL functions, packages and legacy UDFs; a UDF's
   "definition" is its library entry point.
+
+### Generic JDBC
+
+Any other database with a JDBC driver — H2, HSQLDB, Derby, DB2, MySQL/MariaDB, SQLite, Informix, and
+so on — can be served in **generic** mode. Point `driverPath` at the driver jar (or a directory of
+jars); a URL no built-in dialect recognizes is then served as generic JDBC. `"dialect": "generic"`
+forces generic mode even for a URL a built-in dialect would take.
+
+```json
+"inventory": {
+  "url": "jdbc:h2:tcp://db.example.com/~/inventory",
+  "username": "reader",
+  "password": "<pw>",
+  "driverPath": "drivers/h2-2.3.232.jar",
+  "description": "Legacy inventory (H2)"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `driverPath` | A driver jar, or a directory whose `*.jar` files are all loaded. Relative paths are relative to `connections.json`. The jars get a class loader of their own, so they never clash with the bundled drivers |
+| `driverClass` | The `java.sql.Driver` class; optional — by default the registered driver that accepts the URL is used |
+| `dialect` | `postgresql`, `oracle`, `mssql`, `firebird`, or `generic`; optional — by default detected from the URL. `driverPath` also works with a built-in dialect, e.g. a newer Oracle driver |
+
+Generic mode answers from `DatabaseMetaData` and portable SQL only, so it is slower and less
+complete than a real dialect:
+
+- **Works:** schemas, tables, columns, primary and foreign keys, indexes, `describeTable`, the schema
+  context tools, queries, samples, `columnStats` / `columnDistribution` / `nullRatio`, FK index
+  coverage, redundant indexes, and routines listed without sources.
+- **Slower substitutes:** `estimateSelectivity` and `joinCardinality` run exact `COUNT(*)` queries
+  (bounded by `queryTimeoutSeconds`); `tableStats` counts rows unless the driver reports a table
+  statistic; `columnHistogram` streams the sorted column to the server and picks discrete percentiles.
+- **Unsupported** (error kind `unsupported`): plans (`explainQuery`, `analyzePlan`), view / routine /
+  trigger definitions, sequences, and unused-index detection. CHECK constraints and triggers are not
+  reported.
+- **No schemas?** A database without them (SQLite, MySQL) is presented as one logical schema: its
+  current catalog (MySQL's database) or `PUBLIC`.
+- **Read-only is best-effort:** the guard, plus `Connection.setReadOnly` where the driver honours it.
+  Make the connection itself read-only where the driver allows it — for example SQLite
+  `jdbc:sqlite:/data/app.db?open_mode=1` — or use a read-only database user.
 
 ## Why This Exists
 
@@ -717,6 +760,7 @@ All tools return errors in the same shape: JSON with `error` and `kind` fields.
 |---|---|
 | `sql` | The database returned a `SQLException` for syntax, missing object, missing permission, and similar cases |
 | `argument` | Invalid tool argument |
+| `unsupported` | The connection's engine cannot answer this at all (e.g. plans on a generic JDBC connection); retrying with other arguments will not help |
 | `rejected` | The read-only guard blocked the query before it reached the database |
 | `not_found` | `getViewDefinition`, `getRoutineDefinition`, or `getTriggerDefinition` found nothing. The response body also includes `missing` and `name` |
 | `driver` / `unexpected` / `plan_parse` | Internal driver failure, unhandled failure, or plan parsing failure |
@@ -1049,6 +1093,7 @@ snapshot would share one `<catalog>.db` file.
 |   |   +-- OracleDialect.java          - EXPLAIN PLAN, ALL_VIEWS, ALL_SOURCE, Oracle metadata queries
 |   |   +-- SqlServerDialect.java       - SHOWPLAN, sys catalog metadata, SQL Server pagination
 |   |   +-- FirebirdDialect.java        - RDB$ catalog queries, Jaybird plans, one logical schema
+|   |   +-- GenericDialect.java         - any JDBC driver: DatabaseMetaData, portable SQL, traits read at runtime
 |   |   +-- SchemalessConnections.java  - DatabaseMetaData view of a schemaless engine as PUBLIC
 |   |   +-- DialectConfig.java          - implementation selection by DatabaseKind
 |   +-- sql/
@@ -1100,6 +1145,8 @@ snapshot would share one `<catalog>.db` file.
 - **`{"kind":"rejected","error":"Only SELECT / WITH / EXPLAIN statements are allowed"}`** - the guard worked. This is expected for any write operation. If the query is truly read-only, for example a read-only function call through `SELECT func(...)`, it will pass. For fully non-trivial cases, you can disable the guard with `"readonlyGuard": "off"` on that connection.
 - **Oracle write attempt reached the database** - this should normally be blocked by the guard first. If `readonlyGuard` is `off`, rely on a read-only Oracle user; JDBC `setReadOnly(true)` is only a best-effort hint for Oracle.
 - **Empty `describeTable` / `listTables` result on Oracle** - Oracle stores object names in uppercase. Pass `CUSTOMERS`, not `customers`.
+- **Generic JDBC: "No driver in ... accepts the URL"** - the jars in `driverPath` register no driver for that URL prefix. Check the URL, or name the class with `driverClass`.
+- **Generic JDBC: `kind: "unsupported"`** - the tool needs something JDBC does not expose portably (plans, view sources, sequences). See [Generic JDBC](#generic-jdbc) for what works.
 - **Firebird: empty `describeTable`, or `argument` error "Firebird has no schemas"** - Firebird stores unquoted names in uppercase and has no schemas: pass `CUSTOMERS` and omit `schema` (or pass `PUBLIC`).
 - **Firebird: "unsupported on-disk structure"** - the server version does not match the file's ODS (Firebird 3 reads ODS 12 only, Firebird 4/5 read ODS 13). Serve the file with the matching Firebird version, or back it up with `gbak` and restore it on a newer one.
 - **SQL Server certificate errors** - set the JDBC URL encryption options explicitly, for example `encrypt=true;trustServerCertificate=false` with a trusted certificate, or `trustServerCertificate=true` only for local/dev use.

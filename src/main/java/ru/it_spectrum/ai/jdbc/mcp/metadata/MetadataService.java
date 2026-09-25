@@ -6,6 +6,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
+import ru.it_spectrum.ai.jdbc.mcp.dialect.UnsupportedFeatureException;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.Column;
 import ru.it_spectrum.ai.jdbc.mcp.model.Opaque;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.CheckConstraint;
@@ -29,7 +30,9 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Collects schema / table / column / index / FK / view / routine / sequence metadata.
@@ -300,7 +303,7 @@ public class MetadataService {
         try (ResultSet rs = md.getImportedKeys(null, schema, table)) {
             while (rs.next()) {
                 String fkName = rs.getString("FK_NAME");
-                if (fkName == null) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
+                if (fkName == null || fkName.isBlank()) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
                 Pending p = byName.computeIfAbsent(fkName, k -> new Pending(
                         k, new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
                 p.referencedSchema()[0] = rs.getString("PKTABLE_SCHEM");
@@ -366,7 +369,7 @@ public class MetadataService {
         try (ResultSet rs = md.getExportedKeys(null, schema, table)) {
             while (rs.next()) {
                 String fkName = rs.getString("FK_NAME");
-                if (fkName == null) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
+                if (fkName == null || fkName.isBlank()) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
                 Pending p = byName.computeIfAbsent(fkName, k -> new Pending(
                         k, new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
                 p.fromSchema()[0] = rs.getString("FKTABLE_SCHEM");
@@ -662,31 +665,34 @@ public class MetadataService {
     private void fetchAllIndexesBulk(Connection conn, String schema,
                                      Map<String, List<Index>> indexesMap,
                                      Map<String, List<UniqueConstraint>> uniqueMap) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(dialect.indexStatsQuery(),
-                ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-            ps.setQueryTimeout(properties.queryTimeoutSeconds());
-            ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
-            ps.setString(1, schema == null ? "" : schema);
-            ps.setObject(2, null);
-            ps.setObject(3, null);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String table = rs.getString("table_name");
-                    String idxName = rs.getString("index_name");
-                    if (table == null || idxName == null) continue;
-                    boolean unique = toBool(rs.getObject("is_unique"));
-                    List<String> columns = splitCsv(rs.getObject("columns"));
-                    indexesMap.computeIfAbsent(table, k -> new ArrayList<>())
-                            .add(new Index(idxName, unique, columns));
-                    if (unique) {
-                        uniqueMap.computeIfAbsent(table, k -> new ArrayList<>())
-                                .add(new UniqueConstraint(idxName, columns));
+        String sql = dialect.indexStatsQuery();
+        if (sql != null) {
+            try (PreparedStatement ps = conn.prepareStatement(sql,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 100);
+                ps.setString(1, schema == null ? "" : schema);
+                ps.setObject(2, null);
+                ps.setObject(3, null);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String table = rs.getString("table_name");
+                        String idxName = rs.getString("index_name");
+                        if (table == null || idxName == null) continue;
+                        boolean unique = toBool(rs.getObject("is_unique"));
+                        List<String> columns = splitCsv(rs.getObject("columns"));
+                        indexesMap.computeIfAbsent(table, k -> new ArrayList<>())
+                                .add(new Index(idxName, unique, columns));
+                        if (unique) {
+                            uniqueMap.computeIfAbsent(table, k -> new ArrayList<>())
+                                    .add(new UniqueConstraint(idxName, columns));
+                        }
                     }
                 }
+                return;
+            } catch (SQLException ignored) {
+                // Fall back below. Some drivers are stricter about catalog views under low privileges.
             }
-            return;
-        } catch (SQLException ignored) {
-            // Fall back below. Some drivers are stricter about catalog views under low privileges.
         }
 
         DatabaseMetaData md = conn.getMetaData();
@@ -733,6 +739,10 @@ public class MetadataService {
 
         String sql = dialect.indexStatsQuery();
         for (String table : tableNames) {
+            if (sql == null) {
+                indexesFromMetadata(md, schema, table, indexesMap, uniqueMap);
+                continue;
+            }
             try (PreparedStatement ps = conn.prepareStatement(sql,
                     ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                 ps.setQueryTimeout(properties.queryTimeoutSeconds());
@@ -756,17 +766,23 @@ public class MetadataService {
                     }
                 }
             } catch (SQLException ignored) {
-                List<Index> indexes = fetchIndexes(md, schema, table);
-                indexesMap.put(table, indexes);
-                List<UniqueConstraint> unique = new ArrayList<>();
-                for (Index index : indexes) {
-                    if (index.unique()) {
-                        unique.add(new UniqueConstraint(index.name(), index.columns()));
-                    }
-                }
-                uniqueMap.put(table, unique);
+                indexesFromMetadata(md, schema, table, indexesMap, uniqueMap);
             }
         }
+    }
+
+    private void indexesFromMetadata(DatabaseMetaData md, String schema, String table,
+                                     Map<String, List<Index>> indexesMap,
+                                     Map<String, List<UniqueConstraint>> uniqueMap) throws SQLException {
+        List<Index> indexes = fetchIndexes(md, schema, table);
+        indexesMap.put(table, indexes);
+        List<UniqueConstraint> unique = new ArrayList<>();
+        for (Index index : indexes) {
+            if (index.unique()) {
+                unique.add(new UniqueConstraint(index.name(), index.columns()));
+            }
+        }
+        uniqueMap.put(table, unique);
     }
 
     private void fetchOracleIndexesForTables(Connection conn,
@@ -897,15 +913,19 @@ public class MetadataService {
         if (sql == null) {
             Map<String, List<Constraint>> out = new LinkedHashMap<>();
             String tableSql = dialect.tableConstraintsQuery();
-            if (tableSql == null) return out;
             DatabaseMetaData md = conn.getMetaData();
+            List<String> tables = new ArrayList<>();
             try (ResultSet rs = md.getTables(null, schema, "%",
                     new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"})) {
                 while (rs.next()) {
-                    String table = rs.getString("TABLE_NAME");
-                    List<Constraint> cons = fetchConstraints(conn, tableSql, schema, table);
-                    if (!cons.isEmpty()) out.put(table, cons);
+                    tables.add(rs.getString("TABLE_NAME"));
                 }
+            }
+            for (String table : tables) {
+                List<Constraint> cons = tableSql == null
+                        ? constraintsFromMetadata(md, schema, table)
+                        : fetchConstraints(conn, tableSql, schema, table);
+                if (!cons.isEmpty()) out.put(table, cons);
             }
             return out;
         }
@@ -932,6 +952,15 @@ public class MetadataService {
             Connection conn,
             String schema,
             Set<String> tableNames) throws SQLException {
+        if (dialect.tableConstraintsQuery() == null && dialect.schemaConstraintsQuery() == null) {
+            DatabaseMetaData md = conn.getMetaData();
+            Map<String, List<Constraint>> out = new LinkedHashMap<>();
+            for (String table : tableNames) {
+                List<Constraint> cons = constraintsFromMetadata(md, schema, table);
+                if (!cons.isEmpty()) out.put(table, cons);
+            }
+            return out;
+        }
         if (tableNames.size() > 100 || dialect.tableConstraintsQuery() == null) {
             Map<String, List<Constraint>> all = fetchAllConstraintsBulk(conn, schema);
             all.keySet().removeIf(table -> !containsTableName(tableNames, table));
@@ -1235,6 +1264,25 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
         return out;
     }
 
+    /**
+     * Keys the driver reports through {@link DatabaseMetaData}, for dialects without constraint SQL:
+     * the primary key and the imported foreign keys. CHECK constraints are not exposed by JDBC.
+     */
+    private List<Constraint> constraintsFromMetadata(DatabaseMetaData md, String schema, String table)
+            throws SQLException {
+        List<Constraint> out = new ArrayList<>();
+        PrimaryKey pk = fetchPrimaryKey(md, schema, table);
+        if (pk != null) {
+            out.add(new Constraint(pk.name(), "PRIMARY_KEY", pk.columns(),
+                    null, null, null, null, null, null));
+        }
+        for (ForeignKey fk : fetchImportedKeysJdbc(md, schema, table)) {
+            out.add(new Constraint(fk.name(), "FOREIGN_KEY", fk.columns(), null, null, null,
+                    fk.referencedSchema(), fk.referencedTable(), fk.referencedColumns()));
+        }
+        return out;
+    }
+
     private List<Constraint> fetchConstraints(Connection conn, String sql, String schema, String table)
             throws SQLException {
         List<Constraint> out = new ArrayList<>();
@@ -1452,7 +1500,12 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
 
     private String viewDefinitionLive(String schema, String name) throws SQLException {
         String effectiveSchema = resolveSchema(schema);
-        QueryResult r = executor.queryInternal(dialect.viewDefinitionQuery(),
+        String sql = dialect.viewDefinitionQuery();
+        if (sql == null) {
+            throw new UnsupportedFeatureException(dialect.kind().displayName()
+                    + " connections do not expose view definitions");
+        }
+        QueryResult r = executor.queryInternal(sql,
                 List.of(effectiveSchema == null ? "" : effectiveSchema, name), 5);
         if (r.rows().isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
@@ -1481,6 +1534,9 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
                     List.of(effectiveSchema == null ? "" : effectiveSchema), 10_000);
             return r.rows();
         }
+        if (dialect.viewDefinitionQuery() == null) {
+            return List.of();
+        }
         // fallback: per-view loading
         String effectiveSchema = resolveSchema(schema);
         List<TableEntry> viewEntries = listTables(effectiveSchema, "%",
@@ -1507,7 +1563,12 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
 
     private String routineSourceLive(String schema, String name) throws SQLException {
         String effectiveSchema = resolveSchema(schema);
-        QueryResult r = executor.queryInternal(dialect.routineSourceQuery(),
+        String sql = dialect.routineSourceQuery();
+        if (sql == null) {
+            throw new UnsupportedFeatureException(dialect.kind().displayName()
+                    + " connections do not expose routine sources");
+        }
+        QueryResult r = executor.queryInternal(sql,
                 List.of(effectiveSchema == null ? "" : effectiveSchema, name), 10_000);
         if (r.rows().isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
@@ -1524,6 +1585,10 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
     }
 
     private List<SequenceEntry> listSequencesLive(String schema) throws SQLException {
+        if (dialect.listSequencesQuery() == null) {
+            throw new UnsupportedFeatureException(dialect.kind().displayName()
+                    + " connections do not expose sequences");
+        }
         String effectiveSchema = schema == null || schema.isBlank() ? null : schema;
         QueryResult r = executor.queryInternal(dialect.listSequencesQuery(),
                 Arrays.asList(effectiveSchema, effectiveSchema), 500);
@@ -1543,6 +1608,9 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
     private List<RoutineEntry> listRoutinesLive(String schema, String namePattern) throws SQLException {
         String s = schema == null || schema.isBlank() ? null : schema;
         String p = namePattern == null || namePattern.isBlank() ? null : namePattern;
+        if (dialect.listRoutinesQuery() == null) {
+            return routinesFromMetadata(s, p);
+        }
         QueryResult r = executor.queryInternal(dialect.listRoutinesQuery(),
                 Arrays.asList(s, s, p, p), 500);
         List<RoutineEntry> out = new ArrayList<>(r.rows().size());
@@ -1562,6 +1630,9 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
     private List<SearchObjectEntry> searchObjectsLive(String namePattern) throws SQLException {
         String pattern = (namePattern == null || namePattern.isBlank())
                 ? "%" : namePattern.contains("%") ? namePattern : "%" + namePattern + "%";
+        if (dialect.searchObjectsQuery() == null) {
+            return searchObjectsFromMetadata(pattern);
+        }
         QueryResult r = executor.queryInternal(dialect.searchObjectsQuery(),
                 Arrays.asList(pattern, pattern), 200);
         List<SearchObjectEntry> out = new ArrayList<>(r.rows().size());
@@ -1588,7 +1659,10 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
 
     private String triggerDefinitionLive(String schema, String table, String trigger) throws SQLException {
         String sql = dialect.triggerDefinitionQuery();
-        if (sql == null) return null;
+        if (sql == null) {
+            throw new UnsupportedFeatureException(dialect.kind().displayName()
+                    + " connections do not expose triggers");
+        }
         QueryResult r = executor.queryInternal(sql, List.of(resolveSchema(schema), table, trigger), 10_000);
         if (r.rows().isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
@@ -1703,21 +1777,96 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
                 }
             }
 
+            boolean routineSources = dialect.routineSourceQuery() != null;
             for (RoutineEntry routine : listRoutinesLive(rawSchema, "%")) {
                 if (routine.name() == null) continue;
-                String source = routineSourceLive(rawSchema, routine.name());
+                String source = routineSources ? routineSourceLive(rawSchema, routine.name()) : null;
                 routines.add(new StructureSnapshotStore.RoutineRecord(
                         routine.schema() != null ? routine.schema() : effectiveSchema,
                         routine.name(), routine.type(), source));
             }
 
             triggers.addAll(schemaTriggersLive(rawSchema, true));
-            sequences.addAll(listSequencesLive(rawSchema));
+            if (dialect.listSequencesQuery() != null) {
+                sequences.addAll(listSequencesLive(rawSchema));
+            }
         }
 
         store.rebuild(new StructureSnapshotStore.StructureSnapshotData(
                 covered, tables, views, routines, triggers, sequences));
         return List.copyOf(covered);
+    }
+
+    /** Procedures and functions the driver reports, for dialects without routine SQL. */
+    private List<RoutineEntry> routinesFromMetadata(String schema, String namePattern) throws SQLException {
+        String pattern = namePattern == null ? "%" : namePattern;
+        return executor.withConnection(conn -> {
+            DatabaseMetaData md = conn.getMetaData();
+            List<RoutineEntry> out = new ArrayList<>();
+            try (ResultSet rs = md.getProcedures(null, schema, pattern)) {
+                while (rs.next()) {
+                    String s = rs.getString("PROCEDURE_SCHEM");
+                    if (schema == null && isSystemSchema(s)) continue;
+                    out.add(new RoutineEntry(s, rs.getString("PROCEDURE_NAME"), "PROCEDURE"));
+                }
+            } catch (SQLFeatureNotSupportedException ignored) {
+                // the driver does not list procedures
+            }
+            try (ResultSet rs = md.getFunctions(null, schema, pattern)) {
+                while (rs.next()) {
+                    String s = rs.getString("FUNCTION_SCHEM");
+                    if (schema == null && isSystemSchema(s)) continue;
+                    out.add(new RoutineEntry(s, rs.getString("FUNCTION_NAME"), "FUNCTION"));
+                }
+            } catch (SQLFeatureNotSupportedException ignored) {
+                // the driver does not list functions
+            }
+            out.sort(Comparator.comparing(RoutineEntry::name, String.CASE_INSENSITIVE_ORDER));
+            return out.size() > 500 ? new ArrayList<>(out.subList(0, 500)) : out;
+        });
+    }
+
+    /**
+     * Case-insensitive search over the tables, views and routines the driver reports, for dialects
+     * without search SQL. JDBC name patterns are case-sensitive on many drivers, so every object is
+     * listed and matched here — slower, but it finds {@code customers} for {@code CUSTOMER}.
+     */
+    private List<SearchObjectEntry> searchObjectsFromMetadata(String likePattern) throws SQLException {
+        Pattern matcher = likeToRegex(likePattern);
+        return executor.withConnection(conn -> {
+            DatabaseMetaData md = conn.getMetaData();
+            List<SearchObjectEntry> out = new ArrayList<>();
+            try (ResultSet rs = md.getTables(null, null, "%", new String[]{"TABLE", "VIEW", "MATERIALIZED VIEW"})) {
+                while (rs.next() && out.size() < 200) {
+                    String s = rs.getString("TABLE_SCHEM");
+                    String name = rs.getString("TABLE_NAME");
+                    if (isSystemSchema(s) || name == null || !matcher.matcher(name).matches()) continue;
+                    out.add(new SearchObjectEntry(s, name, rs.getString("TABLE_TYPE")));
+                }
+            }
+            if (out.size() < 200) {
+                for (RoutineEntry routine : routinesFromMetadata(null, null)) {
+                    if (out.size() >= 200) break;
+                    if (routine.name() != null && matcher.matcher(routine.name()).matches()) {
+                        out.add(new SearchObjectEntry(routine.schema(), routine.name(), routine.type()));
+                    }
+                }
+            }
+            return out;
+        });
+    }
+
+    /** SQL {@code LIKE} pattern ({@code %}, {@code _}) as a case-insensitive regex. */
+    private static Pattern likeToRegex(String like) {
+        StringBuilder regex = new StringBuilder();
+        for (char c : like.toCharArray()) {
+            switch (c) {
+                case '%' -> regex.append(".*");
+                case '_' -> regex.append('.');
+                default -> regex.append(Pattern.quote(String.valueOf(c)));
+            }
+        }
+        return Pattern.compile(regex.toString(), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL);
     }
 
     // ---------- helpers ----------

@@ -18,6 +18,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Object-level statistics aggregation. Wraps dialect-specific queries and does Java-side
@@ -32,6 +33,8 @@ import java.util.*;
 public class StatsService {
 
     private static final Logger log = LoggerFactory.getLogger(StatsService.class);
+
+    private static final Pattern SIMPLE_IDENT = Pattern.compile("[A-Za-z_][A-Za-z0-9_$#]*");
 
     private final SqlExecutor executor;
     private final SqlDialect dialect;
@@ -56,6 +59,9 @@ public class StatsService {
             throw new IllegalArgumentException("table must be provided");
         }
         String effectiveSchema = resolveSchema(schema);
+        if (dialect.tableStatsQuery() == null) {
+            return tableStatsFromMetadata(effectiveSchema, table);
+        }
         QueryResult r = executor.queryInternal(dialect.tableStatsQuery(),
                 List.of(effectiveSchema == null ? "" : effectiveSchema, table), 1);
         if (r.rows().isEmpty()) {
@@ -81,6 +87,52 @@ public class StatsService {
             }
         }
         return tableStatsFromRow(row, segmentBytes, segmentBytesError);
+    }
+
+    /**
+     * For dialects without statistics SQL: the table's type from {@link DatabaseMetaData#getTables},
+     * and its row count from the driver's table statistic ({@code getIndexInfo}, approximate) when it
+     * reports one — otherwise from an exact {@code COUNT(*)}, which scans the table.
+     */
+    private TableStats tableStatsFromMetadata(String schema, String table) throws SQLException {
+        if (!SIMPLE_IDENT.matcher(table).matches()) {
+            throw new IllegalArgumentException("Illegal table name: '" + table + "'");
+        }
+        Map<String, Object> row = executor.withConnection(conn -> {
+            DatabaseMetaData md = conn.getMetaData();
+            String type;
+            try (ResultSet rs = md.getTables(null, schema, table, null)) {
+                if (!rs.next()) return null;
+                type = rs.getString("TABLE_TYPE");
+            }
+            Long rows = null;
+            try (ResultSet rs = md.getIndexInfo(null, schema, table, false, true)) {
+                while (rs.next()) {
+                    if (rs.getShort("TYPE") == DatabaseMetaData.tableIndexStatistic) {
+                        long cardinality = rs.getLong("CARDINALITY");
+                        if (cardinality > 0) rows = cardinality;
+                    }
+                }
+            } catch (SQLException ignored) {
+                // no statistics from this driver; counted below
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("schema", schema);
+            out.put("table_name", table);
+            out.put("relkind", type);
+            out.put("estimated_rows", rows);
+            return out;
+        });
+        if (row == null) {
+            return TableStats.notFound(schema, table);
+        }
+        if (row.get("estimated_rows") == null) {
+            QueryResult count = executor.query("SELECT COUNT(*) AS counted_rows FROM "
+                    + dialect.qualify(schema, table), List.of(), 1, null);
+            row.put("estimated_rows", count.rows().isEmpty() ? null
+                    : getCI(count.rows().getFirst(), "counted_rows"));
+        }
+        return tableStatsFromRow(row, null, null);
     }
 
     private TableStats tableStatsFromRow(Map<String, Object> row, Object segmentBytes,
@@ -136,6 +188,9 @@ public class StatsService {
     public IndexStats indexStats(String schema, String table) throws SQLException {
         String effectiveSchema = resolveSchema(schema);
         String t = (table == null || table.isBlank()) ? null : table;
+        if (dialect.indexStatsQuery() == null) {
+            return indexStatsFromMetadata(effectiveSchema, t);
+        }
         QueryResult r = executor.queryInternal(dialect.indexStatsQuery(),
                 Arrays.asList(effectiveSchema == null ? "" : effectiveSchema, t, t), 5_000);
         List<IndexStats.IndexStatsRow> rows = new ArrayList<>();
@@ -161,6 +216,80 @@ public class StatsService {
             ));
         }
         return new IndexStats(rows);
+    }
+
+    /**
+     * For dialects without index statistics SQL: {@link DatabaseMetaData#getIndexInfo} per table,
+     * with the driver's cardinality as {@code distinct_keys} where it reports one. There are no
+     * sizes or usage counters. Without {@code table}, every table in the schema is read.
+     */
+    private IndexStats indexStatsFromMetadata(String schema, String table) throws SQLException {
+        return executor.withConnection(conn -> {
+            DatabaseMetaData md = conn.getMetaData();
+            List<String> tables = new ArrayList<>();
+            if (table != null) {
+                tables.add(table);
+            } else {
+                try (ResultSet rs = md.getTables(null, schema, "%", new String[]{"TABLE"})) {
+                    while (rs.next()) tables.add(rs.getString("TABLE_NAME"));
+                }
+            }
+            List<IndexStats.IndexStatsRow> rows = new ArrayList<>();
+            for (String t : tables) {
+                rows.addAll(indexRowsFromMetadata(md, schema, t));
+            }
+            return new IndexStats(rows);
+        });
+    }
+
+    private List<IndexStats.IndexStatsRow> indexRowsFromMetadata(DatabaseMetaData md, String schema,
+                                                               String table) throws SQLException {
+        String pkName = null;
+        Map<Short, String> pkBySeq = new TreeMap<>();
+        try (ResultSet rs = md.getPrimaryKeys(null, schema, table)) {
+            while (rs.next()) {
+                pkName = rs.getString("PK_NAME");
+                pkBySeq.put(rs.getShort("KEY_SEQ"), rs.getString("COLUMN_NAME"));
+            }
+        }
+        List<String> pkColumns = new ArrayList<>(pkBySeq.values());
+
+        record Pending(String type, boolean unique, Long cardinality, List<String> columns) {}
+        Map<String, Pending> byName = new LinkedHashMap<>();
+        try (ResultSet rs = md.getIndexInfo(null, schema, table, false, true)) {
+            while (rs.next()) {
+                short type = rs.getShort("TYPE");
+                String name = rs.getString("INDEX_NAME");
+                if (type == DatabaseMetaData.tableIndexStatistic || name == null) continue;
+                Pending p = byName.get(name);
+                if (p == null) {
+                    long cardinality = rs.getLong("CARDINALITY");
+                    p = new Pending(indexType(type), !rs.getBoolean("NON_UNIQUE"),
+                            cardinality > 0 ? cardinality : null, new ArrayList<>());
+                    byName.put(name, p);
+                }
+                String column = rs.getString("COLUMN_NAME");
+                if (column != null) p.columns().add(column);
+            }
+        }
+        List<IndexStats.IndexStatsRow> rows = new ArrayList<>();
+        for (Map.Entry<String, Pending> e : byName.entrySet()) {
+            Pending p = e.getValue();
+            boolean primary = e.getKey().equals(pkName)
+                    || p.unique() && !pkColumns.isEmpty() && p.columns().equals(pkColumns);
+            rows.add(new IndexStats.IndexStatsRow(schema, table, e.getKey(), p.type(),
+                    p.unique(), primary, p.columns(), 0L, null, null, null,
+                    p.cardinality(), null, null, null, null));
+        }
+        return rows;
+    }
+
+    private static String indexType(short jdbcType) {
+        return switch (jdbcType) {
+            case DatabaseMetaData.tableIndexClustered -> "CLUSTERED";
+            case DatabaseMetaData.tableIndexHashed -> "HASHED";
+            default -> "OTHER";
+        };
     }
 
     // ---------------- unusedIndexes ----------------

@@ -7,11 +7,13 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
+import ru.it_spectrum.ai.jdbc.mcp.config.DriverProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JsonConfig;
 import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.UsageProperties;
+import ru.it_spectrum.ai.jdbc.mcp.dialect.GenericDialect;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.PostgresDialect;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.MetadataService;
 import ru.it_spectrum.ai.jdbc.mcp.metadata.StructureSnapshotStore;
@@ -163,5 +165,39 @@ class SpringConnectionContextFactoryTest {
         StructureSnapshotProperties globalStructureSnapshotProperties() {
             return new StructureSnapshotProperties(List.of("global"), 1);
         }
+    }
+
+    /**
+     * The whole generic path as the server builds it: an SQLite file behind a driver jar in its own
+     * directory, the dialect and plan parser picked by kind, and the pool connecting through the
+     * external driver on first use.
+     */
+    @Test
+    void genericConnectionsConnectThroughTheirOwnDriver() throws Exception {
+        Path drivers = Files.createDirectories(dataDir.resolve("drivers"));
+        Files.copy(Path.of(org.sqlite.JDBC.class.getProtectionDomain().getCodeSource().getLocation().toURI()),
+                drivers.resolve("sqlite-jdbc.jar"));
+        Path db = dataDir.resolve("app.db");
+        try (var connection = java.sql.DriverManager.getConnection("jdbc:sqlite:" + db);
+             var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)");
+        }
+        parent = new AnnotationConfigApplicationContext(GlobalDefaults.class, JsonConfig.class,
+                JsonResponses.class);
+        ConnectionDefinition generic = new ConnectionDefinition("sqlite", null,
+                new JdbcProperties("jdbc:sqlite:" + db.toString().replace('\\', '/') + "?open_mode=1",
+                        null, null, null, 5, 17, 100, "strict", 2, 0, 5_000, 1_000, 60_000),
+                new JdbcMcpProperties(dataDir.toString(), "sqlite"),
+                new UsageProperties(false, List.of(), List.of(), false, false, false, 0),
+                new StructureSnapshotProperties(List.of(), 300),
+                new DriverProperties(null, drivers.toString(), null),
+                DatabaseKind.GENERIC, null);
+        context = new SpringConnectionContextFactory(parent).create(generic);
+
+        assertThat(context.dialect()).isInstanceOf(GenericDialect.class);
+        assertThat(context.bean(DriverProperties.class).driverPath()).isEqualTo(drivers.toString());
+        assertThat(context.metadata().listTables(null, "%", null))
+                .extracting(entry -> entry.schema() + "." + entry.name())
+                .containsExactly("PUBLIC.items");
     }
 }

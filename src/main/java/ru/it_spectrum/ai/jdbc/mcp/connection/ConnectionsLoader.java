@@ -3,6 +3,7 @@ package ru.it_spectrum.ai.jdbc.mcp.connection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
+import ru.it_spectrum.ai.jdbc.mcp.config.DriverProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcMcpProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.config.StructureSnapshotProperties;
@@ -59,7 +60,8 @@ public final class ConnectionsLoader {
                 throw new IllegalStateException("Connection '" + name + "' in " + connectionsFile
                         + " has no settings");
             }
-            definitions.put(name, fromFile(name, entry.getValue(), server, env));
+            definitions.put(name, fromFile(name, entry.getValue(), server, env,
+                    connectionsFile.toAbsolutePath().getParent()));
         }
         if (definitions.isEmpty()) {
             log.warn("No database connections configured: {} defines none under \"connections\". "
@@ -88,7 +90,8 @@ public final class ConnectionsLoader {
 
     private static ConnectionDefinition fromFile(String name, ConnectionsFile.Entry entry,
                                                  JdbcMcpProperties server,
-                                                 UnaryOperator<String> env) {
+                                                 UnaryOperator<String> env,
+                                                 Path connectionsDir) {
         JdbcProperties jdbcDefaults = JdbcProperties.DEFAULTS;
         UsageProperties usageDefaults = UsageProperties.DEFAULTS;
         StructureSnapshotProperties snapshotDefaults = StructureSnapshotProperties.DEFAULTS;
@@ -133,22 +136,47 @@ public final class ConnectionsLoader {
                         snapshotDefaults.oracleColumnQueryTimeoutSeconds()));
         String description = blankToNull(EnvironmentPlaceholders.resolve(
                 entry.description(), field + ".description", env));
-        return define(name, description, jdbc, server, usage, snapshot);
+        DriverProperties driver = new DriverProperties(
+                blankToNull(EnvironmentPlaceholders.resolve(entry.dialect(), field + ".dialect", env)),
+                resolveDriverPath(blankToNull(EnvironmentPlaceholders.resolve(
+                        entry.driverPath(), field + ".driverPath", env)), connectionsDir),
+                blankToNull(EnvironmentPlaceholders.resolve(entry.driverClass(), field + ".driverClass", env)));
+        return define(name, description, jdbc, server, usage, snapshot, driver);
+    }
+
+    /** A relative {@code driverPath} is relative to the connections file, not the working directory. */
+    private static String resolveDriverPath(String driverPath, Path connectionsDir) {
+        if (driverPath == null) {
+            return null;
+        }
+        String path = driverPath.trim();
+        if (path.startsWith("~")) {
+            path = System.getProperty("user.home", ".") + path.substring(1);
+        }
+        Path resolved = Path.of(path);
+        if (!resolved.isAbsolute() && connectionsDir != null) {
+            resolved = connectionsDir.resolve(resolved);
+        }
+        return resolved.normalize().toString();
     }
 
     private static ConnectionDefinition define(String name, String description, JdbcProperties jdbc,
                                                JdbcMcpProperties server, UsageProperties usage,
-                                               StructureSnapshotProperties snapshot) {
+                                               StructureSnapshotProperties snapshot,
+                                               DriverProperties driver) {
         DatabaseKind kind = null;
         String configError = null;
         try {
-            kind = DatabaseKind.fromUrl(jdbc.url());
+            kind = DatabaseKind.resolve(jdbc.url(), driver.dialect(), driver.externalDriver());
+            if (driver.externalDriver() && !Files.exists(Path.of(driver.driverPath()))) {
+                configError = "driverPath " + driver.driverPath() + " does not exist";
+            }
         } catch (IllegalArgumentException e) {
             configError = e.getMessage();
         }
         JdbcMcpProperties catalog = new JdbcMcpProperties(
                 server.dataDir(), name, server.connectionsFile());
-        return new ConnectionDefinition(name, description, jdbc, catalog, usage, snapshot, kind,
+        return new ConnectionDefinition(name, description, jdbc, catalog, usage, snapshot, driver, kind,
                 configError);
     }
 

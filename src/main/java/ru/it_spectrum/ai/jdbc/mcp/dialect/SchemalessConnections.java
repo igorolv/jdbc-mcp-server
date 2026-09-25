@@ -23,6 +23,9 @@ import java.util.Set;
  * <ul>
  *   <li>replaces every schema argument with {@code null} ("do not filter"), so a logical schema
  *       name never reaches a driver that would not understand it;</li>
+ *   <li>optionally pins a {@code null} catalog argument to the connection's own catalog — for
+ *       databases like MySQL, where the catalog is the database and {@code null} would list every
+ *       database on the server;</li>
  *   <li>reports the logical schema in every {@code *_SCHEM} column the driver leaves {@code null};</li>
  *   <li>lists exactly one schema from {@link DatabaseMetaData#getSchemas()}.</li>
  * </ul>
@@ -41,15 +44,21 @@ final class SchemalessConnections {
     }
 
     static Connection wrap(Connection connection, String logicalSchema) {
-        return proxy(Connection.class, new ConnectionHandler(connection, logicalSchema));
+        return wrap(connection, logicalSchema, null);
     }
 
-    private record ConnectionHandler(Connection target, String logicalSchema) implements InvocationHandler {
+    /** @param catalog catalog to use where callers pass {@code null}; {@code null} leaves them alone */
+    static Connection wrap(Connection connection, String logicalSchema, String catalog) {
+        return proxy(Connection.class, new ConnectionHandler(connection, logicalSchema, catalog));
+    }
+
+    private record ConnectionHandler(Connection target, String logicalSchema, String catalog)
+            implements InvocationHandler {
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             return switch (method.getName()) {
                 case "getMetaData" -> proxy(DatabaseMetaData.class,
-                        new MetaDataHandler(target.getMetaData(), (Connection) proxy, logicalSchema));
+                        new MetaDataHandler(target.getMetaData(), (Connection) proxy, logicalSchema, catalog));
                 case "getSchema" -> logicalSchema;
                 default -> call(target, method, args);
             };
@@ -57,7 +66,7 @@ final class SchemalessConnections {
     }
 
     private record MetaDataHandler(DatabaseMetaData target, Connection connection,
-                                   String logicalSchema) implements InvocationHandler {
+                                   String logicalSchema, String catalog) implements InvocationHandler {
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             String name = method.getName();
@@ -69,10 +78,13 @@ final class SchemalessConnections {
             }
             if (SCHEMA_AT_INDEX_1.contains(name) && args != null && args.length > 1) {
                 args = args.clone();
+                args[0] = pinCatalog(args[0]);
                 args[1] = null;
             } else if (name.equals("getCrossReference") && args != null && args.length == 6) {
                 args = args.clone();
+                args[0] = pinCatalog(args[0]);
                 args[1] = null;
+                args[3] = pinCatalog(args[3]);
                 args[4] = null;
             }
             Object result = call(target, method, args);
@@ -80,6 +92,10 @@ final class SchemalessConnections {
                 return proxy(ResultSet.class, new SchemaColumnHandler(rs, logicalSchema));
             }
             return result;
+        }
+
+        private Object pinCatalog(Object requested) {
+            return requested == null ? catalog : requested;
         }
     }
 

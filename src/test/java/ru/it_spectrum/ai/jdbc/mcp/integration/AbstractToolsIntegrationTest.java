@@ -142,6 +142,10 @@ abstract class AbstractToolsIntegrationTest {
         assertThrownToolError(call, "argument", expectedFragment);
     }
 
+    protected final void assertUnsupported(ThrowingCallable call, String expectedFragment) {
+        assertThrownToolError(call, "unsupported", expectedFragment);
+    }
+
     protected final void assertErrorKind(Object response, String expectedKind) {
         ObjectNode body = object(response);
         assertThat(field(body, "kind").asText()).isEqualTo(expectedKind);

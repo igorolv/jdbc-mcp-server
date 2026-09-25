@@ -20,13 +20,19 @@ import java.util.Map;
  */
 public interface SqlDialect {
 
-    /** The dialect for a detected engine — the single place that maps a kind to its implementation. */
+    /**
+     * The dialect for a detected engine — the single place that maps a kind to its implementation.
+     * A {@link GenericDialect} from here has no data source to learn the database's traits from;
+     * it only answers the pool-building questions ({@link #applyUrlTweaks}, {@link #dataSourceProperties},
+     * {@link #readOnlyPoolConnections}). {@code DialectConfig} builds the full one per connection.
+     */
     static SqlDialect forKind(DatabaseKind kind) {
         return switch (kind) {
             case POSTGRESQL -> new PostgresDialect();
             case ORACLE -> new OracleDialect();
             case MSSQL -> new SqlServerDialect();
             case FIREBIRD -> new FirebirdDialect();
+            case GENERIC -> new GenericDialect(null);
         };
     }
 
@@ -48,7 +54,9 @@ public interface SqlDialect {
          * The engine has no EXPLAIN statement; the driver prepares the query and reports its plan
          * through a vendor API ({@link #driverPlan}). Firebird via Jaybird.
          */
-        DRIVER_API
+        DRIVER_API,
+        /** No plans at all (generic JDBC): plan tools answer {@code unsupported}. */
+        UNSUPPORTED
     }
 
     default PlanCapture planCapture() {
@@ -103,6 +111,15 @@ public interface SqlDialect {
         return url;
     }
 
+    /**
+     * Whether the pool marks every connection read-only. Drivers that reject
+     * {@link Connection#setReadOnly} on an open connection would fail every checkout; their dialect
+     * returns {@code false} and applies it best-effort in {@link #prepareReadOnly}.
+     */
+    default boolean readOnlyPoolConnections() {
+        return true;
+    }
+
     /** Driver properties the pool always sets for this engine (e.g. Oracle {@code remarksReporting}). */
     default Map<String, String> dataSourceProperties() {
         return Map.of();
@@ -134,7 +151,9 @@ public interface SqlDialect {
     }
 
     /**
-     * Single-row percentile summary for {@code columnHistogram}. Expected columns:
+     * Single-row percentile summary for {@code columnHistogram}, or {@code null} when the engine
+     * has no SQL for it — the percentiles are then computed client-side from a sorted scan.
+     * Expected columns:
      * {@code total_rows}, {@code non_null_rows}, {@code min_value}, {@code max_value},
      * {@code p25}, {@code p50}, {@code p75}, {@code p90}, {@code p95}, {@code p99}.
      *

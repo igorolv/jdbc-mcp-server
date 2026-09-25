@@ -171,6 +171,9 @@ public class DistributionService {
         String pct = dialect.histogramPercentileFunction(type.numeric);
 
         String sql = dialect.histogramQuery(qTable, qCol, pct);
+        if (sql == null) {
+            return histogramFromSortedScan(effectiveSchema, table, column, type, pct, qTable, qCol);
+        }
 
         QueryResult r = executor.queryInternal(sql, Collections.emptyList(), 1);
 
@@ -188,6 +191,56 @@ public class DistributionService {
                 getCI(row, "min_value"), getCI(row, "max_value"),
                 getCI(row, "p25"), getCI(row, "p50"), getCI(row, "p75"),
                 getCI(row, "p90"), getCI(row, "p95"), getCI(row, "p99"));
+    }
+
+    private static final double[] PERCENTILES = {0.25, 0.5, 0.75, 0.9, 0.95, 0.99};
+
+    /**
+     * Discrete percentiles without SQL support: counts first, then the non-null values streamed in
+     * sorted order, keeping the value at each rank {@code CEILING(p * n)}. The whole column crosses
+     * the wire, so the query timeout bounds it on large tables.
+     */
+    private ColumnHistogram histogramFromSortedScan(String schema, String table, String column,
+                                                    ColumnType type, String pct,
+                                                    String qTable, String qCol) throws SQLException {
+        QueryResult counts = executor.queryInternal("SELECT COUNT(*) AS total_rows, COUNT(" + qCol
+                + ") AS non_null_rows FROM " + qTable, Collections.emptyList(), 1);
+        Map<String, Object> countRow = counts.rows().isEmpty() ? Map.of() : counts.rows().getFirst();
+        long total = toLong(getCI(countRow, "total_rows"));
+        long nonNull = toLong(getCI(countRow, "non_null_rows"));
+        long nulls = total - nonNull;
+        Object[] values = new Object[PERCENTILES.length + 2]; // min, max, then the percentiles
+        if (nonNull > 0) {
+            long[] ranks = new long[PERCENTILES.length];
+            for (int i = 0; i < ranks.length; i++) {
+                ranks[i] = Math.max(1, (long) Math.ceil(PERCENTILES[i] * nonNull));
+            }
+            String sql = "SELECT " + qCol + " FROM " + qTable + " WHERE " + qCol + " IS NOT NULL ORDER BY " + qCol;
+            executor.withConnection(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(sql,
+                        ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                    if (properties.queryTimeoutSeconds() > 0) ps.setQueryTimeout(properties.queryTimeoutSeconds());
+                    ps.setFetchSize(properties.fetchSize() > 0 ? properties.fetchSize() : 500);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        long rank = 0;
+                        Object last = null;
+                        while (rs.next()) {
+                            rank++;
+                            last = rs.getObject(1);
+                            if (rank == 1) values[0] = last;
+                            for (int i = 0; i < ranks.length; i++) {
+                                if (ranks[i] == rank) values[i + 2] = last;
+                            }
+                        }
+                        values[1] = last;
+                    }
+                }
+                return null;
+            });
+        }
+        return new ColumnHistogram(schema, table, column,
+                type.typeName, pct, total, nonNull, nulls, ratio(nulls, total),
+                values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7]);
     }
 
     // ---------------- nullRatio ----------------
