@@ -261,6 +261,12 @@ any number of named databases, all declared in the
 [connections file](#databases-and-credentials); a connection's pool is opened the first time a tool
 call names it.
 
+Tool calls on one stdio session run sequentially. The MCP Java SDK 2.0.0 used by Spring AI 2.0.1
+can lose responses when several concurrently executed tools finish at the same time, so the server
+keeps `immediateExecution(true)` until the SDK fixes this. A client's `notifications/cancelled` is
+not propagated to JDBC `Statement.cancel()`; the configured `queryTimeoutSeconds` (or a tool call's
+`timeoutSeconds` override) remains the server-side limit for a running SQL statement.
+
 ## MCP Resources
 
 When `JDBC_MCP_RESOURCES_ENABLED=true`, the server exposes — for every configured connection that
@@ -741,7 +747,7 @@ user for the strongest guarantee.
 
 ## Stack
 
-- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.0-M6 (`stdio` transport)
+- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.1 (`stdio` transport)
 - HikariCP through Spring Boot `starter-jdbc`
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10
