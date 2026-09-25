@@ -70,7 +70,9 @@ class PostgresIntegrationMetadataToolsTest extends AbstractPostgresToolsIntegrat
     @Test
     void listsRoutinesSequencesAndSearchResults() {
         ArrayNode routines = array(metadataTools().listRoutines(connection(), "public", "customer_count%").routines());
-        assertThat(findByField(routines, "name", "customer_count_fn")).isNotNull();
+        ObjectNode routine = (ObjectNode) findByField(routines, "name", "customer_count_fn");
+        assertThat(routine).isNotNull();
+        assertThat(field(routine, "type").asText()).isEqualTo("FUNCTION");
 
         String source = metadataTools().getRoutineDefinition(connection(), "public", "customer_count_fn");
         assertThat(source).contains("COUNT(*)").contains("customers");

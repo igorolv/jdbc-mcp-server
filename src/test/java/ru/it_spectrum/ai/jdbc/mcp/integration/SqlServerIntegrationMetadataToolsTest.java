@@ -54,7 +54,9 @@ class SqlServerIntegrationMetadataToolsTest extends AbstractSqlServerToolsIntegr
     @Test
     void listsRoutinesSequencesAndSearchResults() {
         ArrayNode routines = array(metadataTools().listRoutines(connection(), "dbo", "customer_count%").routines());
-        assertThat(findByField(routines, "name", "customer_count_fn")).isNotNull();
+        ObjectNode routine = (ObjectNode) findByField(routines, "name", "customer_count_fn");
+        assertThat(routine).isNotNull();
+        assertThat(field(routine, "type").asText()).isEqualTo("SQL_STORED_PROCEDURE");
 
         String source = metadataTools().getRoutineDefinition(connection(), "dbo", "customer_count_fn");
         assertThat(source).contains("COUNT(*)").contains("customers");

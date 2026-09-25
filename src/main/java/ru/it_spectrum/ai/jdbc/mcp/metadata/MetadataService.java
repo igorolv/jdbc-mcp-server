@@ -1550,7 +1550,7 @@ private Map<String, List<ForeignKey>> fetchOracleUserForeignKeysForTables(Connec
             out.add(new RoutineEntry(
                     asString(getCI(row, "schema")),
                     asString(getCI(row, "name")),
-                    asString(getCI(row, "type"))));
+                    asString(getCI(row, "kind"))));
         }
         return out;
     }

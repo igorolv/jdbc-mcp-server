@@ -65,6 +65,9 @@ class DatabaseNativeUsageSourceProviderTest {
         List<QueryUsage> records = provider.load();
 
         assertThat(records)
+                .extracting(record -> record.source().kind())
+                .containsExactly("database-function", "database-function");
+        assertThat(records)
                 .extracting(record -> record.source().unit())
                 .containsExactly("stmt1", "stmt2");
         assertThat(records)
@@ -73,6 +76,21 @@ class DatabaseNativeUsageSourceProviderTest {
         assertThat(records)
                 .extracting(record -> record.sourceMeta().get("statementKind"))
                 .containsExactly("SELECT", "SELECT");
+    }
+
+    @Test
+    void identifiesProceduresByTheirNativeKind() throws Exception {
+        UsageProperties properties = properties(false, true, false);
+        MetadataService metadata = mock(MetadataService.class);
+        when(metadata.defaultSchema()).thenReturn("public");
+        when(metadata.listRoutines("public", "%")).thenReturn(List.of(
+                new RoutineEntry("public", "refresh_customers", "PROCEDURE")));
+        when(metadata.routineSource("public", "refresh_customers")).thenReturn("SELECT id FROM customers");
+
+        List<QueryUsage> records = new DatabaseNativeUsageSourceProvider(properties, metadata).load();
+
+        assertThat(records).singleElement().satisfies(record ->
+                assertThat(record.source().kind()).isEqualTo("database-procedure"));
     }
 
     @Test

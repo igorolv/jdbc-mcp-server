@@ -136,7 +136,7 @@ class SqliteStructureSnapshotStoreTest {
                 .isEqualTo("SELECT * FROM customer WHERE status = 'ACTIVE'");
 
         assertThat(store.routines("public", "%", boom()))
-                .extracting(RoutineEntry::name).containsExactly("calc_total");
+                .extracting(RoutineEntry::type).containsExactly("FUNCTION");
         assertThat(store.routineSource("public", "calc_total", boom()))
                 .isEqualTo("BEGIN RETURN 1; END");
 
@@ -196,6 +196,20 @@ class SqliteStructureSnapshotStoreTest {
         List<TableEntry> live = List.of(new TableEntry("public", "other", "TABLE"));
         assertThat(store.listTables("public", "%", new String[]{"TABLE"}, () -> live)).isEqualTo(live);
         assertThat(store.peekDescribeTable("public", "customer")).isNull();
+    }
+
+    @Test
+    void rebuildPreservesTypesOfSameNamedRoutines() throws Exception {
+        store.rebuild(new StructureSnapshotData(
+                List.of("public"), List.of(), List.of(),
+                List.of(new RoutineRecord("public", "calculate", "FUNCTION", "SELECT 1"),
+                        new RoutineRecord("public", "calculate", "PROCEDURE", "SELECT 2")),
+                List.of(), List.of()));
+
+        assertThat(store.routines("public", "calculate", boom()))
+                .extracting(RoutineEntry::type).containsExactly("FUNCTION", "PROCEDURE");
+        assertThat(store.searchObjects("calculate", boom()))
+                .extracting(SearchObjectEntry::type).containsExactly("FUNCTION", "PROCEDURE");
     }
 
     private void rebuildWithCustomer() throws Exception {

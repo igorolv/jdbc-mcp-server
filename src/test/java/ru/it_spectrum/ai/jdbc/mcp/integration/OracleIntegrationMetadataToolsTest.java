@@ -70,7 +70,9 @@ class OracleIntegrationMetadataToolsTest extends AbstractOracleToolsIntegrationT
     @Test
     void listsRoutinesSequencesAndSearchResults() {
         ArrayNode routines = array(metadataTools().listRoutines(connection(), schema(), "CUSTOMER_COUNT%").routines());
-        assertThat(findByField(routines, "name", "CUSTOMER_COUNT_FN")).isNotNull();
+        ObjectNode routine = (ObjectNode) findByField(routines, "name", "CUSTOMER_COUNT_FN");
+        assertThat(routine).isNotNull();
+        assertThat(field(routine, "type").asText()).isEqualTo("FUNCTION");
 
         String source = metadataTools().getRoutineDefinition(connection(), schema(), "CUSTOMER_COUNT_FN");
         assertThat(source).contains("COUNT(*)").contains("RETURN v_count");

@@ -74,7 +74,8 @@ class PostgresMultiConnectionIntegrationTest {
         seed(ORDERS, "CREATE TABLE orders_only (id SERIAL PRIMARY KEY, sku TEXT NOT NULL)",
                 "INSERT INTO orders_only(sku) VALUES ('a'), ('b'), ('c')");
         seed(BILLING, "CREATE TABLE billing_only (id SERIAL PRIMARY KEY, invoice TEXT NOT NULL)",
-                "INSERT INTO billing_only(invoice) VALUES ('i-1')");
+                "INSERT INTO billing_only(invoice) VALUES ('i-1')",
+                "CREATE PROCEDURE refresh_billing() LANGUAGE SQL AS $$ SELECT 1 $$");
 
         dataDir = Files.createTempDirectory("jdbc-mcp-multi-connection");
         Files.writeString(dataDir.resolve("connections.json"), """
@@ -181,6 +182,12 @@ class PostgresMultiConnectionIntegrationTest {
 
         assertThat(snapshotTables("orders@dev")).contains("orders_only").doesNotContain("billing_only");
         assertThat(snapshotTables("billing")).contains("billing_only").doesNotContain("orders_only");
+        assertThat(metadataTools.listRoutines("billing", "public", "refresh_billing").routines())
+                .singleElement().satisfies(routine ->
+                        assertThat(routine.type()).isEqualTo("PROCEDURE"));
+        assertThat(metadataTools.searchObjects("billing", "refresh_billing").objects())
+                .singleElement().satisfies(object ->
+                        assertThat(object.type()).isEqualTo("PROCEDURE"));
 
         UsageCatalogStatus status = usageTools.usageCatalogStatus("billing");
         assertThat(status.connection()).isEqualTo("billing");

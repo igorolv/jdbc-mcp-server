@@ -93,7 +93,9 @@ class FirebirdIntegrationToolsTest extends AbstractFirebirdToolsIntegrationTest 
                 .containsIgnoringCase("FROM customers c");
 
         ArrayNode routines = array(metadataTools().listRoutines(connection(), null, "customer_count%").routines());
-        assertThat(findByField(routines, "name", "CUSTOMER_COUNT_PROC")).isNotNull();
+        ObjectNode routine = (ObjectNode) findByField(routines, "name", "CUSTOMER_COUNT_PROC");
+        assertThat(routine).isNotNull();
+        assertThat(field(routine, "type").asText()).isEqualTo("PROCEDURE");
         assertThat(metadataTools().getRoutineDefinition(connection(), null, "CUSTOMER_COUNT_PROC"))
                 .contains("COUNT(*)");
 
