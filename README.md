@@ -8,8 +8,8 @@
 [![Glama score](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server/badges/score.svg)](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server)
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/igorolv/jdbc-mcp-server)
 
-A local MCP server that gives AI agents — Claude Code, Cursor, VS Code Copilot, Qwen Code and
-others — **read-only** access to PostgreSQL, Oracle, Microsoft SQL Server, Firebird and SQLite, and,
+A local MCP server that gives AI agents — Claude Code, Codex CLI, OpenCode, VS Code with GitHub
+Copilot, Cursor and other MCP clients — **read-only** access to PostgreSQL, Oracle, Microsoft SQL Server, Firebird and SQLite, and,
 in [generic mode](#generic-jdbc), to any other database with a JDBC driver. Agents use it to explore
 the schema, write SQL against real tables and columns, inspect execution plans and audit indexes
 instead of guessing.
@@ -122,11 +122,15 @@ outweighs every other protection in this server.
 }
 ```
 
-For Claude Code that is one command:
+For Claude Code and Codex CLI that is one command:
 
 ```bash
-claude mcp add --scope user jdbc java -jar /path/to/jdbc-mcp-server.jar
+claude mcp add --scope user jdbc -- java -jar /path/to/jdbc-mcp-server.jar
+codex mcp add jdbc -- java -jar /path/to/jdbc-mcp-server.jar
 ```
+
+OpenCode, VS Code with Copilot, Copilot CLI, Cursor and others:
+[Connecting an AI Client](#connecting-an-ai-client).
 
 **4. Ask the agent for `listConnections`.** It answers with the databases this server serves; every
 other tool takes that name as its first argument:
@@ -135,8 +139,7 @@ other tool takes that name as its first argument:
 {"connection": "myapp", "sql": "SELECT count(*) FROM orders"}
 ```
 
-Full details: [Configuring Connections](#configuring-connections),
-[Connecting an AI Client](#connecting-an-ai-client), and the detailed
+Full details: [Configuring Connections](#configuring-connections) and the detailed
 [connections guide](docs/connections.md).
 
 ## Supported Databases
@@ -618,33 +621,165 @@ error message and its cause is listed in
 
 ## Connecting an AI Client
 
-Add this server to the client configuration:
+The server is a local stdio process, so every MCP client registers it the same way: the command is
+`java`, the arguments are `-jar <absolute-path>/jdbc-mcp-server.jar`, and there is no environment to
+set. The databases come from [`connections.json`](#configuring-connections), and keeping
+credentials out of the client config is
+[the point](#why-credentials-live-in-a-file-not-in-environment-variables). Add
+`JDBC_MCP_CONNECTIONS_FILE` only if you keep the file somewhere other than the default path.
+
+| Client | Status | Where the server is registered |
+|---|---|---|
+| [Claude Code](#claude-code) | tested | `claude mcp add` → `~/.claude.json` (user) or `.mcp.json` (project) |
+| [Codex CLI](#codex-cli) | tested | `~/.codex/config.toml` |
+| [OpenCode](#opencode) | tested | `~/.config/opencode/opencode.json` (global) or `opencode.json` (project) |
+| [VS Code with GitHub Copilot](#vs-code-with-github-copilot) | not tested yet | `.vscode/mcp.json` (workspace) or the user `mcp.json` |
+| [GitHub Copilot CLI](#github-copilot-cli) | not tested yet | `~/.copilot/mcp-config.json` |
+| [Cursor, Claude Desktop, Qwen Code](#other-clients) | not tested yet | the client's `mcpServers` JSON |
+
+"Not tested yet" means the configuration follows the client's documented format for stdio
+servers, but nobody has run this server in it. Reports are welcome in
+[issues](https://github.com/igorolv/jdbc-mcp-server/issues).
+
+Once registered, ask the agent to call `listConnections`; it should list the entries of your
+`connections.json`.
+
+### Claude Code
+
+```bash
+claude mcp add --scope user jdbc -- java -jar /path/to/jdbc-mcp-server.jar
+```
+
+`--scope user` makes the server available in every project (stored in `~/.claude.json`); without it
+the server is added to the current project only. The `--` separates Claude Code's own options from
+the server command. `claude mcp list` shows whether the server started; inside a session, `/mcp`
+shows its status and reconnects it after you edit `connections.json`.
+
+To share the registration with a team, commit a project-scoped `.mcp.json`:
 
 ```json
 {
-  "command": "java",
-  "args": ["-jar", "<absolute-path>/jdbc-mcp-server.jar"],
-  "env": {}
+  "mcpServers": {
+    "jdbc": {
+      "type": "stdio",
+      "command": "java",
+      "args": ["-jar", "/path/to/jdbc-mcp-server.jar"]
+    }
+  }
 }
 ```
 
-There is nothing to put in `env`: the databases come from
-[`connections.json`](#configuring-connections), and keeping credentials out of the client config
-is [the point](#why-credentials-live-in-a-file-not-in-environment-variables). Add
-`JDBC_MCP_CONNECTIONS_FILE` only if you keep the file somewhere other than the default path.
+### Codex CLI
 
-### Where to Configure It
+```bash
+codex mcp add jdbc -- java -jar /path/to/jdbc-mcp-server.jar
+```
 
-| Client | Connection method |
-|---|---|
-| Claude Code | `claude mcp add --scope user jdbc java -jar /path/to/jdbc-mcp-server.jar` |
-| Qwen Code | `~/.qwen/settings.json` -> `"mcpServers"` -> `"jdbc"` |
-| VS Code | `.vscode/mcp.json` -> `"servers"` -> `"jdbc"` |
-| Cursor | `.cursor/mcp.json` -> `"mcpServers"` -> `"jdbc"` |
-| Claude Desktop | `claude_desktop_config.json` -> `"mcpServers"` -> `"jdbc"` |
+or directly in `~/.codex/config.toml`:
 
-For Claude Code, omitting `--scope user` adds the server only to the current project.
-Check the connection with `claude mcp list`. Restart the client after adding the server.
+```toml
+[mcp_servers.jdbc]
+command = "java"
+args = ["-jar", "/path/to/jdbc-mcp-server.jar"]
+# rebuildCatalog on a large schema can take minutes; the default tool timeout is 60 s
+tool_timeout_sec = 600
+```
+
+On Windows, write the path as a TOML literal string so backslashes need no escaping:
+`args = ["-jar", 'C:\tools\jdbc-mcp-server.jar']`. Codex gives a server 10 s to start
+(`startup_timeout_sec`); the JVM usually needs 2–3 s, but raise it on a slow machine — a server that
+misses the deadline is silently left out.
+
+### OpenCode
+
+In `~/.config/opencode/opencode.json` (or `opencode.jsonc`), or a project's `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "jdbc": {
+      "type": "local",
+      "command": ["java", "-jar", "/path/to/jdbc-mcp-server.jar"],
+      "enabled": true
+    }
+  }
+}
+```
+
+`command` is one array holding the program and its arguments. OpenCode waits 5 s for the tool list
+by default; add `"timeout": 15000` (milliseconds) if the server shows up without tools on a slow
+start.
+
+### VS Code with GitHub Copilot
+
+Not tested yet. In `.vscode/mcp.json` for one workspace, or in the user-level `mcp.json` opened
+with the **MCP: Open User Configuration** command for all workspaces:
+
+```json
+{
+  "servers": {
+    "jdbc": {
+      "type": "stdio",
+      "command": "java",
+      "args": ["-jar", "/path/to/jdbc-mcp-server.jar"]
+    }
+  }
+}
+```
+
+The top-level key is `servers`, not `mcpServers`. The tools are used by Copilot Chat in agent mode.
+**MCP: List Servers** starts, stops and restarts the server and shows its output.
+
+### GitHub Copilot CLI
+
+Not tested yet. In `~/.copilot/mcp-config.json` (or interactively with `/mcp add`):
+
+```json
+{
+  "mcpServers": {
+    "jdbc": {
+      "type": "local",
+      "command": "java",
+      "args": ["-jar", "/path/to/jdbc-mcp-server.jar"],
+      "tools": ["*"]
+    }
+  }
+}
+```
+
+A project can also carry the configuration in `.mcp.json` or `.github/mcp.json`.
+
+### Other clients
+
+Not tested yet. Cursor (`.cursor/mcp.json` or `~/.cursor/mcp.json`), Claude Desktop
+(`claude_desktop_config.json`) and Qwen Code (`~/.qwen/settings.json`) all use the common
+`mcpServers` shape:
+
+```json
+{
+  "mcpServers": {
+    "jdbc": {
+      "command": "java",
+      "args": ["-jar", "/path/to/jdbc-mcp-server.jar"]
+    }
+  }
+}
+```
+
+### Tips for every client
+
+- **Use absolute paths.** The client picks the working directory, so a relative jar path breaks.
+  In JSON, write Windows paths with forward slashes (`C:/tools/jdbc-mcp-server.jar`) or doubled
+  backslashes.
+- **Java 21+.** If `java` on the `PATH` is older, put the full path of a JDK 21+ binary in
+  `command`, e.g. `C:/Users/me/.jdks/jdk-21/bin/java.exe` or `/usr/lib/jvm/java-21/bin/java`.
+- **Restart after editing `connections.json`** — the file is read once at startup.
+- **When the client only says "failed to start"**, run the same command in a terminal; see
+  [Checking the configuration](#checking-the-configuration).
+- **Docker instead of a local JDK:** the command is `docker` with the arguments
+  `run -i --rm -v /home/me/.jdbc-mcp-server:/data ghcr.io/igorolv/jdbc-mcp-server:latest` — see
+  [Docker](#docker).
 
 ### Running by Hand
 

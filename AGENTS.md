@@ -218,15 +218,20 @@ Add the server to the client's MCP configuration:
 The databases come from `connections.json`, so there is nothing to put in `env` — add
 `JDBC_MCP_CONNECTIONS_FILE` only if the file lives somewhere other than the default path.
 
-**Where to put it:**
+**Where to put it** (the README section "Connecting an AI Client" has a complete snippet per client):
 
-| Client | Config file | Server key |
-|---|---|---|
-| Claude Code | `~/.claude/settings.json` → `"mcpServers"` | `"jdbc"` |
-| Qwen Code | `~/.qwen/settings.json` → `"mcpServers"` | `"jdbc"` |
-| VS Code (Copilot/Continue) | `.vscode/mcp.json` → `"servers"` | `"jdbc"` |
-| Cursor | `.cursor/mcp.json` → `"mcpServers"` | `"jdbc"` |
-| Claude Desktop | `claude_desktop_config.json` → `"mcpServers"` | `"jdbc"` |
+| Client | Status | How / where | Shape |
+|---|---|---|---|
+| Claude Code | tested | `claude mcp add --scope user jdbc -- java -jar <jar>` → `~/.claude.json`; project: `.mcp.json` | `"mcpServers"` → `"jdbc"`: `type: "stdio"`, `command`, `args` |
+| Codex CLI | tested | `codex mcp add jdbc -- java -jar <jar>` → `~/.codex/config.toml` | `[mcp_servers.jdbc]`: `command`, `args`; raise `tool_timeout_sec` (60 s default) for `rebuildCatalog` |
+| OpenCode | tested | `~/.config/opencode/opencode.json(c)`; project: `opencode.json` | `"mcp"` → `"jdbc"`: `type: "local"`, `command: ["java", "-jar", "<jar>"]` |
+| VS Code + GitHub Copilot | not tested yet | `.vscode/mcp.json`, or user `mcp.json` (**MCP: Open User Configuration**) | `"servers"` → `"jdbc"`: `type: "stdio"`, `command`, `args` |
+| GitHub Copilot CLI | not tested yet | `~/.copilot/mcp-config.json`, or `/mcp add` | `"mcpServers"` → `"jdbc"`: `type: "local"`, `command`, `args` |
+| Cursor / Claude Desktop / Qwen Code | not tested yet | `.cursor/mcp.json` / `claude_desktop_config.json` / `~/.qwen/settings.json` | `"mcpServers"` → `"jdbc"`: `command`, `args` |
+
+Use absolute paths. If `java` on the `PATH` is older than 21, put the full path of a JDK 21+ `java`
+binary in `command`. When editing a client config for the user, do not add database settings to its
+`env` — they belong in `connections.json`.
 
 **Several databases in one server.** Instead of registering one instance per database, write
 `~/.jdbc-mcp-server/connections.json` and register the server once — the manifest stays a single set
@@ -255,20 +260,14 @@ of tools, and each call picks its database with `connection`:
 Keep the file readable only by its owner — it holds database credentials. The README documents
 every per-connection field.
 
-**Example for Claude Code (`~/.claude/settings.json`):**
-```json
-{
-  "mcpServers": {
-    "jdbc": {
-      "command": "java",
-      "args": ["-jar", "<absolute-path-to>/jdbc-mcp-server.jar"],
-      "env": {}
-    }
-  }
-}
+**Example for Claude Code:**
+
+```bash
+claude mcp add --scope user jdbc -- java -jar <absolute-path-to>/jdbc-mcp-server.jar
 ```
 
-After updating the config, restart the client so it picks up the new MCP server.
+After updating the config, restart the client (or reconnect the server, e.g. `/mcp` in Claude Code)
+so it picks up the new MCP server; the same applies after editing `connections.json`.
 
 ## Available tools
 

@@ -251,8 +251,9 @@ small", "Warehouse replica, lags ~15 min", "Legacy billing, read-only archive si
 
 ### One file per project
 
-Register the server per project and give each project its own file through the client's config,
-for example a project-scoped `.mcp.json`:
+Register the server per project and give each project its own file through the client's config.
+For example, a Claude Code project-scoped `.mcp.json` (other clients take the same `env` entry in
+their own format — see [Connecting an AI Client](../README.md#connecting-an-ai-client)):
 
 ```json
 {
@@ -407,7 +408,8 @@ loading, and a SQLite file's existence are checked only when a connection is fir
 ## Changing a configuration
 
 - **The file is read once, at startup.** After editing it, restart the MCP server: restart the
-  client, or use its reconnect command (`/mcp` in Claude Code).
+  client, or use its reconnect command (`/mcp` in Claude Code, **MCP: List Servers** → restart in
+  VS Code).
 - **Adding** an entry costs nothing until it is used. **Removing** one leaves its
   `<data-dir>/<name>/` directory behind; delete it by hand if you no longer need it.
 - **Renaming** a connection starts it with an empty catalog, because the catalog is keyed by name.
