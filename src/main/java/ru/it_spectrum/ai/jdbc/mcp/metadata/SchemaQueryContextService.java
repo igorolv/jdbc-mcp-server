@@ -1,7 +1,6 @@
 package ru.it_spectrum.ai.jdbc.mcp.metadata;
 
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContext;
 import ru.it_spectrum.ai.jdbc.mcp.model.context.QueryContextColumn;
@@ -310,16 +309,14 @@ class SchemaQueryContextService extends SchemaContextSupport {
     }
 
     private String qualify(String schema, String table) {
-        if (schema == null || schema.isBlank()) return quoteIdent(table);
-        return quoteIdent(schema) + "." + quoteIdent(table);
+        if (schema != null && !schema.isBlank()) requireSimpleIdent(schema);
+        requireSimpleIdent(table);
+        return dialect.qualify(schema, table);
     }
 
-    private String quoteIdent(String id) {
+    private static void requireSimpleIdent(String id) {
         if (id == null || !id.matches("[A-Za-z_][A-Za-z0-9_$#]*")) {
             throw new IllegalArgumentException("Illegal identifier: '" + id + "'");
         }
-        if (dialect.kind() == DatabaseKind.ORACLE) return id;
-        if (dialect.kind() == DatabaseKind.MSSQL) return "[" + id + "]";
-        return "\"" + id + "\"";
     }
 }

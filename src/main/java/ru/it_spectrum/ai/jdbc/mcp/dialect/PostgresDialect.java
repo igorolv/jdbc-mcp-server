@@ -13,6 +13,20 @@ public class PostgresDialect implements SqlDialect {
         return DatabaseKind.POSTGRESQL;
     }
 
+    /**
+     * Force server-side read-only transactions via {@code options=-c default_transaction_read_only=on},
+     * so every transaction in the session is read-only on the server — this blocks even DDL.
+     * Leaves the URL untouched if the user already provided their own {@code options=} parameter.
+     */
+    @Override
+    public String applyUrlTweaks(String url) {
+        if (url == null || url.toLowerCase().contains("options=")) {
+            return url;
+        }
+        String extra = "options=-c%20default_transaction_read_only%3Don";
+        return url + (url.contains("?") ? "&" : "?") + extra;
+    }
+
     @Override
     public void prepareReadOnly(Connection connection) throws SQLException {
         // The pool already marks the connection read-only; on PG this is honoured by the driver.

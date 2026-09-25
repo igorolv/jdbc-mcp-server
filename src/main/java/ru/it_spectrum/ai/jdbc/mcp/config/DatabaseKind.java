@@ -4,9 +4,20 @@ package ru.it_spectrum.ai.jdbc.mcp.config;
  * Supported database engines. The concrete engine is auto-detected from the JDBC URL prefix.
  */
 public enum DatabaseKind {
-    POSTGRESQL,
-    ORACLE,
-    MSSQL;
+    POSTGRESQL("PostgreSQL"),
+    ORACLE("Oracle"),
+    MSSQL("SQL Server");
+
+    private final String displayName;
+
+    DatabaseKind(String displayName) {
+        this.displayName = displayName;
+    }
+
+    /** Human-readable engine name, as reported by {@code listConnections}. */
+    public String displayName() {
+        return displayName;
+    }
 
     /**
      * Detects the database kind by JDBC URL prefix.

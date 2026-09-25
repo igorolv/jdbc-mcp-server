@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.stats.FkIndexCoverage;
@@ -177,17 +176,9 @@ public class StatsService {
      * reports a diagnostic note instead of a list.
      */
     public UnusedIndexes unusedIndexes(String schema, Long minSizeBytes) throws SQLException {
-        if (dialect.kind() == DatabaseKind.ORACLE) {
-            return new UnusedIndexes(false, "Oracle does not publish per-index scan counters in ALL_INDEXES. " +
-                    "Use DBA_INDEX_USAGE (12.2+) or enable monitoring with " +
-                    "ALTER INDEX ... MONITORING USAGE and query V$OBJECT_USAGE.",
-                    null, 0, List.of());
-        }
-        if (dialect.kind() == DatabaseKind.MSSQL) {
-            return new UnusedIndexes(false, "SQL Server index usage counters come from sys.dm_db_index_usage_stats " +
-                    "and require server/database state permissions. This tool does not report " +
-                    "unused indexes for SQL Server from low-privilege metadata.",
-                    null, 0, List.of());
+        String unsupportedReason = dialect.unusedIndexesUnsupportedReason();
+        if (unsupportedReason != null) {
+            return new UnusedIndexes(false, unsupportedReason, null, 0, List.of());
         }
         IndexStats idx = indexStats(schema, null);
         List<UnusedIndexes.UnusedIndexEntry> unused = new ArrayList<>();

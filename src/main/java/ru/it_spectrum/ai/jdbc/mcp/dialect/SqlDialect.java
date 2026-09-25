@@ -5,6 +5,7 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Database-specific SQL generation and fix-ups. Each concrete implementation knows how to:
@@ -19,7 +20,98 @@ import java.util.List;
  */
 public interface SqlDialect {
 
+    /** The dialect for a detected engine — the single place that maps a kind to its implementation. */
+    static SqlDialect forKind(DatabaseKind kind) {
+        return switch (kind) {
+            case POSTGRESQL -> new PostgresDialect();
+            case ORACLE -> new OracleDialect();
+            case MSSQL -> new SqlServerDialect();
+        };
+    }
+
     DatabaseKind kind();
+
+    /** How the plan tools obtain an execution plan from this engine. */
+    enum PlanCapture {
+        /**
+         * The plan comes from executing {@link #buildExplain} / {@link #buildStructuredExplain},
+         * optionally followed by {@link #explainDisplayQuery} / {@link #structuredPlanQuery}.
+         */
+        EXPLAIN_STATEMENT,
+        /**
+         * The plan comes from running the query itself on a session switched into a plan-only
+         * mode ({@code SET SHOWPLAN_TEXT / SHOWPLAN_XML ON} on SQL Server).
+         */
+        SESSION_SHOWPLAN
+    }
+
+    default PlanCapture planCapture() {
+        return PlanCapture.EXPLAIN_STATEMENT;
+    }
+
+    /**
+     * Adjust the JDBC URL before the pool is built — e.g. PostgreSQL appends
+     * {@code default_transaction_read_only=on}. Must leave the URL untouched when the user
+     * already set the relevant option.
+     */
+    default String applyUrlTweaks(String url) {
+        return url;
+    }
+
+    /** Driver properties the pool always sets for this engine (e.g. Oracle {@code remarksReporting}). */
+    default Map<String, String> dataSourceProperties() {
+        return Map.of();
+    }
+
+    /**
+     * Quote an already validated simple identifier (letters, digits, {@code _ $ #}) so that it
+     * resolves to the object the catalog reports. Oracle returns it unquoted, because unquoted
+     * identifiers fold to upper case there and quoting would make the lookup case-sensitive.
+     */
+    default String quoteIdentifier(String identifier) {
+        return "\"" + identifier + "\"";
+    }
+
+    /** {@code schema.table} with both parts quoted; just the table when {@code schema} is blank. */
+    default String qualify(String schema, String table) {
+        if (schema == null || schema.isBlank()) {
+            return quoteIdentifier(table);
+        }
+        return quoteIdentifier(schema) + "." + quoteIdentifier(table);
+    }
+
+    /**
+     * Single-row percentile summary for {@code columnHistogram}. Expected columns:
+     * {@code total_rows}, {@code non_null_rows}, {@code min_value}, {@code max_value},
+     * {@code p25}, {@code p50}, {@code p75}, {@code p90}, {@code p95}, {@code p99}.
+     *
+     * @param qualifiedTable      output of {@link #qualify}
+     * @param quotedColumn        output of {@link #quoteIdentifier}
+     * @param percentileFunction  {@code percentile_cont} or {@code percentile_disc}
+     */
+    default String histogramQuery(String qualifiedTable, String quotedColumn, String percentileFunction) {
+        String p = percentileFunction;
+        String c = quotedColumn;
+        return "SELECT COUNT(*) AS total_rows, " +
+                "COUNT(" + c + ") AS non_null_rows, " +
+                "MIN(" + c + ") AS min_value, " +
+                "MAX(" + c + ") AS max_value, " +
+                p + "(0.25) WITHIN GROUP (ORDER BY " + c + ") AS p25, " +
+                p + "(0.5)  WITHIN GROUP (ORDER BY " + c + ") AS p50, " +
+                p + "(0.75) WITHIN GROUP (ORDER BY " + c + ") AS p75, " +
+                p + "(0.9)  WITHIN GROUP (ORDER BY " + c + ") AS p90, " +
+                p + "(0.95) WITHIN GROUP (ORDER BY " + c + ") AS p95, " +
+                p + "(0.99) WITHIN GROUP (ORDER BY " + c + ") AS p99 " +
+                "FROM " + qualifiedTable;
+    }
+
+    /**
+     * Why {@code unusedIndexes} cannot answer on this engine, or {@code null} when it can
+     * (the answer is then derived from the {@code idx_scans} column of {@link #indexStatsQuery()}).
+     */
+    default String unusedIndexesUnsupportedReason() {
+        return null;
+    }
 
     /**
      * Apply engine-specific read-only hardening to a checked-out connection. Called right before

@@ -16,6 +16,67 @@ public class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public PlanCapture planCapture() {
+        return PlanCapture.SESSION_SHOWPLAN;
+    }
+
+    @Override
+    public String quoteIdentifier(String identifier) {
+        return "[" + identifier + "]";
+    }
+
+    /**
+     * SQL Server exposes {@code PERCENTILE_CONT / PERCENTILE_DISC} only as window functions,
+     * so the percentiles are computed over a window and joined back to the aggregate row.
+     */
+    @Override
+    public String histogramQuery(String qualifiedTable, String quotedColumn, String percentileFunction) {
+        return """
+                WITH base AS (
+                    SELECT %1$s AS v
+                    FROM %2$s
+                ),
+                stats AS (
+                    SELECT COUNT(*) AS total_rows,
+                           COUNT(v) AS non_null_rows,
+                           MIN(v) AS min_value,
+                           MAX(v) AS max_value
+                    FROM base
+                ),
+                pct_values AS (
+                    SELECT DISTINCT
+                           %3$s(0.25) WITHIN GROUP (ORDER BY v) OVER () AS p25,
+                           %3$s(0.5)  WITHIN GROUP (ORDER BY v) OVER () AS p50,
+                           %3$s(0.75) WITHIN GROUP (ORDER BY v) OVER () AS p75,
+                           %3$s(0.9)  WITHIN GROUP (ORDER BY v) OVER () AS p90,
+                           %3$s(0.95) WITHIN GROUP (ORDER BY v) OVER () AS p95,
+                           %3$s(0.99) WITHIN GROUP (ORDER BY v) OVER () AS p99
+                    FROM base
+                    WHERE v IS NOT NULL
+                )
+                SELECT stats.total_rows,
+                       stats.non_null_rows,
+                       stats.min_value,
+                       stats.max_value,
+                       pct.p25,
+                       pct.p50,
+                       pct.p75,
+                       pct.p90,
+                       pct.p95,
+                       pct.p99
+                FROM stats
+                OUTER APPLY (SELECT TOP (1) * FROM pct_values) pct
+                """.formatted(quotedColumn, qualifiedTable, percentileFunction);
+    }
+
+    @Override
+    public String unusedIndexesUnsupportedReason() {
+        return "SQL Server index usage counters come from sys.dm_db_index_usage_stats " +
+                "and require server/database state permissions. This tool does not report " +
+                "unused indexes for SQL Server from low-privilege metadata.";
+    }
+
+    @Override
     public void prepareReadOnly(Connection connection) throws SQLException {
         // SQL Server treats Connection#setReadOnly mostly as a driver hint. The client-side
         // ReadOnlyGuard and a database read-only/login policy remain the primary protection.

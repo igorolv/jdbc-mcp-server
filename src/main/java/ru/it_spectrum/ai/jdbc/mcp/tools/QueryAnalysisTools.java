@@ -6,9 +6,9 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
+import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.lineage.QueryLineageResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.plan.PlanAnalysisSummary;
 import ru.it_spectrum.ai.jdbc.mcp.plan.ParsedPlan;
@@ -76,7 +76,7 @@ public class QueryAnalysisTools {
             String normalizedSql = QueryToolSupport.normalizeSql(sql);
             ctx.guard().check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
-            if (ctx.dialect().kind() == DatabaseKind.MSSQL) {
+            if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.SESSION_SHOWPLAN) {
                 String result = explainSqlServer(ctx, normalizedSql, params, namedParams);
                 ToolLogger.completed(log, "explainQuery", start);
                 return result;
@@ -147,7 +147,7 @@ public class QueryAnalysisTools {
             String normalizedSql = QueryToolSupport.normalizeSql(sql);
             ctx.guard().check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
-            if (ctx.dialect().kind() == DatabaseKind.MSSQL) {
+            if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.SESSION_SHOWPLAN) {
                 ParsedPlan parsed = structuredSqlServerPlan(ctx, normalizedSql, params, namedParams);
                 PlanAnalysisSummary result = PlanAnalyzer.summarize(parsed);
                 ToolLogger.completed(log, "analyzePlan", start);

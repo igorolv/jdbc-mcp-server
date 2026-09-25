@@ -6,7 +6,6 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionContext;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
@@ -73,29 +72,20 @@ public class SampleTools {
     // ---------------- helpers ----------------
 
     private String qualify(SqlDialect dialect, String schema, String table) {
-        if (schema == null || schema.isBlank()) {
-            return quoteIdent(dialect, table);
+        if (schema != null && !schema.isBlank()) {
+            requireSimpleIdent(schema);
         }
-        return quoteIdent(dialect, schema) + "." + quoteIdent(dialect, table);
+        requireSimpleIdent(table);
+        return dialect.qualify(schema, table);
     }
 
     /**
-     * Quote an identifier in a dialect-appropriate way. We accept only simple identifiers
-     * (letters/digits/underscores) here — the tool parameters come from an LLM and we do
-     * not want to allow arbitrary injection via a "quoted identifier".
+     * We accept only simple identifiers (letters/digits/underscores) here — the tool parameters
+     * come from an LLM and we do not want to allow arbitrary injection via a "quoted identifier".
      */
-    private String quoteIdent(SqlDialect dialect, String id) {
+    private static void requireSimpleIdent(String id) {
         if (!id.matches("[A-Za-z_][A-Za-z0-9_$#]*")) {
             throw new IllegalArgumentException("Illegal identifier: '" + id + "'");
         }
-        if (dialect.kind() == DatabaseKind.ORACLE) {
-            // Oracle stores unquoted identifiers in upper case; use the name as-is unquoted
-            // so existing tables (created without quotes) resolve normally.
-            return id;
-        }
-        if (dialect.kind() == DatabaseKind.MSSQL) {
-            return "[" + id + "]";
-        }
-        return "\"" + id + "\"";
     }
 }

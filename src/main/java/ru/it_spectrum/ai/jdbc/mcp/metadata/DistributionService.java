@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.config.JdbcProperties;
 import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 import ru.it_spectrum.ai.jdbc.mcp.model.distribution.ColumnDistribution;
@@ -171,19 +170,7 @@ public class DistributionService {
         String qCol   = quoteIdent(column);
         String pct = type.numeric ? "percentile_cont" : "percentile_disc";
 
-        String sql = dialect.kind() == DatabaseKind.MSSQL
-                ? sqlServerHistogramSql(qTable, qCol, pct)
-                : "SELECT COUNT(*) AS total_rows, " +
-                    "COUNT(" + qCol + ") AS non_null_rows, " +
-                    "MIN(" + qCol + ") AS min_value, " +
-                    "MAX(" + qCol + ") AS max_value, " +
-                    pct + "(0.25) WITHIN GROUP (ORDER BY " + qCol + ") AS p25, " +
-                    pct + "(0.5)  WITHIN GROUP (ORDER BY " + qCol + ") AS p50, " +
-                    pct + "(0.75) WITHIN GROUP (ORDER BY " + qCol + ") AS p75, " +
-                    pct + "(0.9)  WITHIN GROUP (ORDER BY " + qCol + ") AS p90, " +
-                    pct + "(0.95) WITHIN GROUP (ORDER BY " + qCol + ") AS p95, " +
-                    pct + "(0.99) WITHIN GROUP (ORDER BY " + qCol + ") AS p99 " +
-                    "FROM " + qTable;
+        String sql = dialect.histogramQuery(qTable, qCol, pct);
 
         QueryResult r = executor.queryInternal(sql, Collections.emptyList(), 1);
 
@@ -201,45 +188,6 @@ public class DistributionService {
                 getCI(row, "min_value"), getCI(row, "max_value"),
                 getCI(row, "p25"), getCI(row, "p50"), getCI(row, "p75"),
                 getCI(row, "p90"), getCI(row, "p95"), getCI(row, "p99"));
-    }
-
-    private String sqlServerHistogramSql(String qTable, String qCol, String pct) {
-        return """
-                WITH base AS (
-                    SELECT %1$s AS v
-                    FROM %2$s
-                ),
-                stats AS (
-                    SELECT COUNT(*) AS total_rows,
-                           COUNT(v) AS non_null_rows,
-                           MIN(v) AS min_value,
-                           MAX(v) AS max_value
-                    FROM base
-                ),
-                pct_values AS (
-                    SELECT DISTINCT
-                           %3$s(0.25) WITHIN GROUP (ORDER BY v) OVER () AS p25,
-                           %3$s(0.5)  WITHIN GROUP (ORDER BY v) OVER () AS p50,
-                           %3$s(0.75) WITHIN GROUP (ORDER BY v) OVER () AS p75,
-                           %3$s(0.9)  WITHIN GROUP (ORDER BY v) OVER () AS p90,
-                           %3$s(0.95) WITHIN GROUP (ORDER BY v) OVER () AS p95,
-                           %3$s(0.99) WITHIN GROUP (ORDER BY v) OVER () AS p99
-                    FROM base
-                    WHERE v IS NOT NULL
-                )
-                SELECT stats.total_rows,
-                       stats.non_null_rows,
-                       stats.min_value,
-                       stats.max_value,
-                       pct.p25,
-                       pct.p50,
-                       pct.p75,
-                       pct.p90,
-                       pct.p95,
-                       pct.p99
-                FROM stats
-                OUTER APPLY (SELECT TOP (1) * FROM pct_values) pct
-                """.formatted(qCol, qTable, pct);
     }
 
     // ---------------- nullRatio ----------------
@@ -384,7 +332,7 @@ public class DistributionService {
      * single-step PostgreSQL flow (JSON EXPLAIN is its own query).
      */
     private Long explainRootRows(String sql) throws SQLException {
-        if (dialect.kind() == DatabaseKind.MSSQL) {
+        if (dialect.planCapture() == SqlDialect.PlanCapture.SESSION_SHOWPLAN) {
             ParsedPlan parsed = executor.withConnection(conn -> {
                 runStatement(conn, "SET SHOWPLAN_XML ON");
                 try {
@@ -534,22 +482,14 @@ public class DistributionService {
     }
 
     private String qualify(String schema, String table) {
-        String s = (schema == null || schema.isBlank()) ? null : schema;
-        if (s == null) return quoteIdent(table);
-        return quoteIdent(s) + "." + quoteIdent(table);
+        if (schema != null && !schema.isBlank()) requireIdent("identifier", schema);
+        requireIdent("identifier", table);
+        return dialect.qualify(schema, table);
     }
 
     private String quoteIdent(String id) {
         requireIdent("identifier", id);
-        if (dialect.kind() == DatabaseKind.ORACLE) {
-            // Oracle stores unquoted identifiers in upper case - pass as-is so existing
-            // tables resolve without quoting.
-            return id;
-        }
-        if (dialect.kind() == DatabaseKind.MSSQL) {
-            return "[" + id + "]";
-        }
-        return "\"" + id + "\"";
+        return dialect.quoteIdentifier(id);
     }
 
     private static void requireIdent(String paramName, String value) {

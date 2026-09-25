@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionDefinition;
 import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.model.connection.ConnectionInfo;
@@ -49,7 +48,7 @@ public class ConnectionTools {
             infos.add(new ConnectionInfo(
                     definition.name(),
                     definition.description(),
-                    displayKind(definition.kind()),
+                    definition.kind() == null ? null : definition.kind().displayName(),
                     blankToNull(definition.jdbc().defaultSchema()),
                     definition.hasLocalSnapshot(),
                     connections.isInitialized(definition.name()),
@@ -61,16 +60,5 @@ public class ConnectionTools {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
-    }
-
-    private static String displayKind(DatabaseKind kind) {
-        if (kind == null) {
-            return null;
-        }
-        return switch (kind) {
-            case POSTGRESQL -> "PostgreSQL";
-            case ORACLE -> "Oracle";
-            case MSSQL -> "SQL Server";
-        };
     }
 }

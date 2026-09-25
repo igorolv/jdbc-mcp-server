@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.it_spectrum.ai.jdbc.mcp.dialect.SqlDialect;
 
 import javax.sql.DataSource;
 
@@ -13,9 +14,9 @@ import javax.sql.DataSource;
  * <p>Read-only enforcement at the connection layer:
  * <ul>
  *   <li>{@code hikariConfig.setReadOnly(true)} — connections are marked read-only at the pool level;</li>
- *   <li>For PostgreSQL, we append {@code options=-c default_transaction_read_only=on} to the URL
- *       (unless the user already specified {@code options=} themselves) so that every transaction
- *       in the session is read-only on the server side — this blocks even DDL.</li>
+ *   <li>The dialect may adjust the URL ({@link SqlDialect#applyUrlTweaks}) — PostgreSQL appends
+ *       {@code options=-c default_transaction_read_only=on} so that every transaction in the
+ *       session is read-only on the server side, which blocks even DDL.</li>
  *   <li>For Oracle and SQL Server, the upstream {@code ReadOnlyGuard} is the primary defense;
  *       pooled connections are still marked read-only as a best-effort JDBC hint.</li>
  * </ul>
@@ -45,9 +46,10 @@ public final class DataSourceConfig {
     }
 
     public static HikariConfig buildHikariConfig(JdbcProperties properties, DatabaseKind kind) {
+        SqlDialect dialect = SqlDialect.forKind(kind);
         HikariConfig hikari = new HikariConfig();
         hikari.setPoolName("jdbc-mcp-pool");
-        hikari.setJdbcUrl(applyDialectUrlTweaks(properties.url(), kind));
+        hikari.setJdbcUrl(dialect.applyUrlTweaks(properties.url()));
         hikari.setUsername(properties.username());
         hikari.setPassword(properties.password());
         hikari.setReadOnly(true);
@@ -59,12 +61,7 @@ public final class DataSourceConfig {
         hikari.setIdleTimeout(Math.max(10_000L, properties.idleTimeoutMs()));
         hikari.setInitializationFailTimeout(-1);
 
-        // Oracle does not populate DatabaseMetaData.getTables().REMARKS unless this driver
-        // property is enabled. Structure snapshot rebuilds rely on that field for table/view
-        // comments; column comments use a separate ALL_COL_COMMENTS query.
-        if (kind == DatabaseKind.ORACLE) {
-            hikari.addDataSourceProperty("remarksReporting", "true");
-        }
+        dialect.dataSourceProperties().forEach(hikari::addDataSourceProperty);
 
         if (properties.defaultSchema() != null && !properties.defaultSchema().isBlank()) {
             hikari.setSchema(properties.defaultSchema());
@@ -73,20 +70,9 @@ public final class DataSourceConfig {
         return hikari;
     }
 
-    /**
-     * For PostgreSQL, force server-side read-only transactions by default via JDBC URL options.
-     * Leaves the URL untouched if the user already provided their own {@code options=} parameter
-     * or for non-PG engines.
-     */
+    /** The URL the pool connects with: the configured one after {@link SqlDialect#applyUrlTweaks}. */
     public static String applyDialectUrlTweaks(String url, DatabaseKind kind) {
-        if (kind != DatabaseKind.POSTGRESQL || url == null) {
-            return url;
-        }
-        if (url.toLowerCase().contains("options=")) {
-            return url;
-        }
-        String extra = "options=-c%20default_transaction_read_only%3Don";
-        return url + (url.contains("?") ? "&" : "?") + extra;
+        return SqlDialect.forKind(kind).applyUrlTweaks(url);
     }
 
     /** Masks a {@code password=} parameter so a JDBC URL is safe to log or return to a client. */

@@ -5,12 +5,36 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 
 public class OracleDialect implements SqlDialect {
 
     @Override
     public DatabaseKind kind() {
         return DatabaseKind.ORACLE;
+    }
+
+    /**
+     * Oracle does not populate {@code DatabaseMetaData.getTables().REMARKS} unless this driver
+     * property is enabled. Structure snapshot rebuilds rely on that field for table/view comments;
+     * column comments use a separate {@code ALL_COL_COMMENTS} query.
+     */
+    @Override
+    public Map<String, String> dataSourceProperties() {
+        return Map.of("remarksReporting", "true");
+    }
+
+    /** Unquoted identifiers fold to upper case, so existing (unquoted) tables resolve as-is. */
+    @Override
+    public String quoteIdentifier(String identifier) {
+        return identifier;
+    }
+
+    @Override
+    public String unusedIndexesUnsupportedReason() {
+        return "Oracle does not publish per-index scan counters in ALL_INDEXES. " +
+                "Use DBA_INDEX_USAGE (12.2+) or enable monitoring with " +
+                "ALTER INDEX ... MONITORING USAGE and query V$OBJECT_USAGE.";
     }
 
     @Override

@@ -14,11 +14,7 @@ public class DialectConfig {
 
     @Bean
     public SqlDialect sqlDialect(DatabaseKind kind) {
-        return switch (kind) {
-            case POSTGRESQL -> new PostgresDialect();
-            case ORACLE -> new OracleDialect();
-            case MSSQL -> new SqlServerDialect();
-        };
+        return SqlDialect.forKind(kind);
     }
 
     @Bean
