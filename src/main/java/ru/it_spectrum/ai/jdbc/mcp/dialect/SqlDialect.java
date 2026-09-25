@@ -463,7 +463,7 @@ public interface SqlDialect {
     /** System schemas that should be hidden from {@code listSchemas} / {@code listTables} by default. */
     List<String> systemSchemas();
 
-    /** Default schema to use when {@code schema} parameter is null/blank and {@code JDBC_DEFAULT_SCHEMA} is unset. */
+    /** Default schema to use when {@code schema} parameter is null/blank and the connection sets no {@code defaultSchema}. */
     default String fallbackSchema(Connection connection) throws SQLException {
         return connection.getSchema();
     }

@@ -310,6 +310,6 @@ public class UsageTools {
     // ---------------------------------------------------------------------------------------
 
     private RuntimeException disabledException(String tool) {
-        return errors.argumentException(tool + ": usage catalog is disabled (set JDBC_USAGE_CATALOG_ENABLED=true to enable)");
+        return errors.argumentException(tool + ": usage catalog is disabled (set \"usageCatalogEnabled\": true on the connection to enable)");
     }
 }

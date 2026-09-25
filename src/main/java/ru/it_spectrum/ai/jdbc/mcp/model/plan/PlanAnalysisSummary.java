@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "LLM-friendly execution plan summary highlighting expensive nodes, full scans, estimation errors, nested-loop risks, and sort spills.")
 public record PlanAnalysisSummary(
-        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, or SQL Server.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, SQL Server, Firebird, or SQLite.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String engine,
         @Schema(description = "True when the plan includes actual execution metrics, not only estimates.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         boolean analyzed,

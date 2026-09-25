@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  *
  * @param name             connection name, also the local catalog directory name
  * @param description      free-form text from {@code connections.json}, surfaced by {@code listConnections}
- * @param jdbc             effective JDBC settings (file values merged over the global env defaults)
+ * @param jdbc             effective JDBC settings (file values merged over the built-in defaults)
  * @param catalog          local-catalog settings; {@code catalogName} equals {@link #name()}
  * @param usage            effective usage-catalog settings
  * @param structureSnapshot effective structure-snapshot settings

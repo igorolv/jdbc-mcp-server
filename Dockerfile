@@ -20,7 +20,7 @@ RUN ./gradlew --no-daemon bootJar
 
 FROM eclipse-temurin:21-jre
 LABEL org.opencontainers.image.source="https://github.com/igorolv/jdbc-mcp-server" \
-      org.opencontainers.image.description="Read-only JDBC MCP server for PostgreSQL, Oracle, and SQL Server" \
+      org.opencontainers.image.description="Read-only JDBC MCP server for PostgreSQL, Oracle, SQL Server, Firebird, SQLite, and any JDBC database" \
       org.opencontainers.image.licenses="Apache-2.0" \
       io.modelcontextprotocol.server.name="io.github.igorolv/jdbc-mcp-server"
 

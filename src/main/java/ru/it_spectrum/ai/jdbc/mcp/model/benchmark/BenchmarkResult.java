@@ -5,7 +5,7 @@ import java.util.List;
 
 @Schema(description = "Wall-clock benchmark result for a read-only query, including cold and warm run timing and the size of the last result set.")
 public record BenchmarkResult(
-        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, or SQL Server.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, SQL Server, Firebird, or SQLite.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String engine,
         @Schema(description = "Number of measured runs included in these timing statistics.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         int runs,

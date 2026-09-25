@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.igorolv/jdbc-mcp-server",
   "title": "JDBC MCP Server",
-  "description": "Read-only PostgreSQL, Oracle and SQL Server access for AI agents: SQL, plans, schema, index stats",
+  "description": "Read-only SQL, plans, schema for AI agents: PostgreSQL, Oracle, SQL Server, Firebird, SQLite, JDBC",
   "version": "0.0.0",
   "websiteUrl": "https://github.com/igorolv/jdbc-mcp-server#readme",
   "repository": {

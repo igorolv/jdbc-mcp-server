@@ -29,7 +29,7 @@ public record UsageCatalogDisabledResponse(
         List<?> kinds
 ) {
     private static final String DISABLED_ERROR =
-            "usage catalog is disabled (set JDBC_USAGE_CATALOG_ENABLED=true to enable)";
+            "usage catalog is disabled (set \"usageCatalogEnabled\": true on the connection to enable)";
 
     public static UsageCatalogDisabledResponse disabled(String tool) {
         return new UsageCatalogDisabledResponse(

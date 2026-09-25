@@ -54,8 +54,8 @@ public class QueryTools {
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
             @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
-            @McpToolParam(description = "Row limit (default JDBC_MAX_ROWS).", required = false) Integer limit,
-            @McpToolParam(description = "Timeout in seconds (default JDBC_QUERY_TIMEOUT_SECONDS).", required = false) Integer timeoutSeconds
+            @McpToolParam(description = "Row limit (default: the connection's maxRows).", required = false) Integer limit,
+            @McpToolParam(description = "Timeout in seconds (default: the connection's queryTimeoutSeconds).", required = false) Integer timeoutSeconds
     ) {
         log.info("Tool call: executeQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);

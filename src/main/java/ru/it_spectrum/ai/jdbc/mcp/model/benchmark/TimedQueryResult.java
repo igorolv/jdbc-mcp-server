@@ -6,7 +6,7 @@ import java.util.Map;
 
 @Schema(description = "Query execution result with wall-clock elapsed time and optional pg_stat_statements deltas for PostgreSQL.")
 public record TimedQueryResult(
-        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, or SQL Server.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(description = "Database engine that produced the result, such as PostgreSQL, Oracle, SQL Server, Firebird, or SQLite.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String engine,
         @Schema(description = "Wall-clock elapsed time for the query execution, in milliseconds.", requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
         double elapsedMs,

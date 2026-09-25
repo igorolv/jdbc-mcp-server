@@ -8,7 +8,7 @@ public record ConnectionInfo(
         String name,
         @Schema(description = "What this database is for, as configured by the operator.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String description,
-        @Schema(description = "Engine: PostgreSQL, Oracle or SQL Server. Absent when the URL is unusable.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        @Schema(description = "Engine: PostgreSQL, Oracle, SQL Server, Firebird, SQLite or Generic JDBC. Absent when the URL is unusable.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String kind,
         @Schema(description = "Schema used by metadata tools when a call omits one.", nullable = true, requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String defaultSchema,

@@ -19,7 +19,7 @@ the fat jar, so no extra driver installation is required.
 
 The server exposes 49 MCP tools and can optionally expose catalog-qualified MCP resources for table
 and column metadata. Tools may update the local SQLite catalog, but they never write to the inspected
-PostgreSQL, Oracle, SQL Server, or Firebird database.
+database.
 
 One server process can serve several databases: name them in
 [`connections.json`](#databases-and-credentials) and pass `connection` to any tool. The tool manifest
@@ -127,7 +127,9 @@ percent-encoded to `%40` in resource URIs; nothing else about the name changes �
 disk is the name as written.
 
 `url` is the only required field; the engine is detected from its prefix (`jdbc:postgresql:`,
-`jdbc:oracle:`, `jdbc:sqlserver:`). `description` is free text returned by `listConnections`, so an
+`jdbc:oracle:`, `jdbc:sqlserver:`, `jdbc:firebirdsql:` / `jdbc:firebird:`, `jdbc:sqlite:`). Any other
+URL needs a `driverPath` and is served as [generic JDBC](#generic-jdbc); `dialect` overrides the
+detection. `description` is free text returned by `listConnections`, so an
 agent can pick a database by meaning rather than by name — worth filling in.
 
 Any string value may reference an environment variable as `${VAR}`. A referenced variable that is
@@ -219,7 +221,8 @@ jdbc:sqlite:/data/app.db
 jdbc:sqlite:C:/data/app.db
 ```
 
-Firebird has its own notes — schemas, plans, statistics, embedded databases: see [Firebird](#firebird).
+Firebird, SQLite and generic JDBC differ from the other engines — schemas, plans, statistics: see
+[Firebird](#firebird), [SQLite](#sqlite) and [Generic JDBC](#generic-jdbc).
 
 ### Firebird
 
@@ -370,7 +373,7 @@ hints alongside declared FKs. See *Usage Catalog* below.
                                             +---> ...
 
                                           read-only JDBC
-                                          PG / Oracle / SQL Server / Firebird
+                              PG / Oracle / SQL Server / Firebird / SQLite / any JDBC
 ```
 
 The protocol is `stdio` only. The client starts the server as a child process. One process serves
@@ -654,8 +657,7 @@ SQLite `<catalog>.db`. Source files and database objects remain authoritative. U
 `invalidateUsageCatalogCache` after changing them; it clears the indexed usage rows and the next
 lookup rebuilds them.
 
-**Local-only writes.** The usage catalog never writes to the inspected JDBC database
-(PostgreSQL / Oracle / SQL Server / Firebird). The existing `ReadOnlyGuard` and connection-level protections
+**Local-only writes.** The usage catalog never writes to the inspected JDBC database. The existing `ReadOnlyGuard` and connection-level protections
 remain in force.
 
 **Typed payload.** The canonical `source`, `parameters[]`, `outputs[]`, `fieldUsages[]` and nested
@@ -813,6 +815,7 @@ so that an agent does not casually acquire them.
 5. **SQLite: the file is opened read-only.** `open_mode=1` is added to the URL unless you set `open_mode` yourself; SQLite then rejects every write.
 6. **Firebird: server-enforced read-only transactions.** Jaybird turns `setReadOnly(true)` into read-only transactions, which the server enforces for DML and DDL alike.
 7. **SQL Server: JDBC read-only hint plus SHOWPLAN estimated plans.** SQL Server also treats `setReadOnly(true)` as a hint. Use a least-privilege login/user for strong enforcement. `explainQuery` and `analyzePlan` use `SHOWPLAN_TEXT/XML`, which returns estimated plans without executing the statement.
+8. **Generic JDBC: best-effort.** The guard, plus `setReadOnly(true)` where the driver honours it. Use a read-only URL option where the driver has one, or a read-only database user.
 
 ### Maximum Protection: Use a Read-only Database User
 
@@ -898,7 +901,9 @@ Result: `build/libs/jdbc-mcp-server.jar` (includes PostgreSQL, Oracle, SQL Serve
 ### Integration Tests
 
 Integration tests start real PostgreSQL, Oracle Free, SQL Server, and Firebird 3 instances through
-Testcontainers, so Docker is required. They are excluded from the regular build and run separately:
+Testcontainers, so Docker is required. They are excluded from the regular build and run separately
+(the SQLite suites, including generic JDBC over an external SQLite driver, need no Docker and run
+with `./gradlew test`):
 
 ```bash
 ./gradlew integrationTest
@@ -1098,16 +1103,19 @@ snapshot would share one `<catalog>.db` file.
 +-- src/main/java/ru/it_spectrum/ai/jdbc/mcp/
 |   +-- JdbcMcpServerApplication.java   - Spring Boot entry point
 |   +-- config/
-|   |   +-- JdbcProperties.java         - connection settings from env
+|   |   +-- JdbcProperties.java         - one connection's JDBC settings (URL, credentials, limits, pool)
 |   |   +-- JdbcMcpProperties.java      - local data directory and catalog name
 |   |   +-- UsageProperties.java        - usage-catalog sources and native-object settings
 |   |   +-- StructureSnapshotProperties.java - schemas captured by rebuildCatalog
-|   |   +-- DatabaseKind.java           - PG/Oracle/SQL Server/Firebird autodetection from URL
+|   |   +-- DatabaseKind.java           - engine from `dialect` or the URL prefix; generic with driverPath
+|   |   +-- DriverProperties.java       - dialect / driverPath / driverClass of one connection
+|   |   +-- ExternalDriver.java         - loads driverPath jars in an isolated class loader
+|   |   +-- DriverDataSource.java       - DataSource over an external driver, bypassing DriverManager
 |   |   +-- DataSourceConfig.java       - Hikari pool builder + connection-level read-only mode
-|   |   +-- ConnectionsConfig.java      - global defaults and the connection registry bean
+|   |   +-- ConnectionsConfig.java      - the connection registry bean
 |   +-- connection/
 |   |   +-- ConnectionsFile.java        - connections.json shape
-|   |   +-- ConnectionsLoader.java      - file + env defaults -> connection definitions
+|   |   +-- ConnectionsLoader.java      - connections.json + built-in defaults -> connection definitions
 |   |   +-- EnvironmentPlaceholders.java - ${ENV_VAR} substitution
 |   |   +-- ConnectionDefinition.java   - one named database and its effective settings
 |   |   +-- ConnectionRegistry.java     - configured connections, lazily built, closed on shutdown
@@ -1122,7 +1130,9 @@ snapshot would share one `<catalog>.db` file.
 |   |   +-- FirebirdDialect.java        - RDB$ catalog queries, Jaybird plans, one logical schema
 |   |   +-- SqliteDialect.java          - open_mode=1, schema main, sqlite_schema/pragma catalog, EXPLAIN QUERY PLAN
 |   |   +-- GenericDialect.java         - any JDBC driver: DatabaseMetaData, portable SQL, traits read at runtime
-|   |   +-- SchemalessConnections.java  - DatabaseMetaData view of a schemaless engine as PUBLIC
+|   |   +-- SchemalessConnections.java  - DatabaseMetaData view of a schemaless engine as one logical schema
+|   |   +-- RankPercentiles.java        - window-function percentile_disc for Firebird and SQLite
+|   |   +-- UnsupportedFeatureException.java - reported as error kind "unsupported"
 |   |   +-- DialectConfig.java          - implementation selection by DatabaseKind
 |   +-- sql/
 |   |   +-- ReadOnlyGuard.java          - JSqlParser AST guard + lexical fallback
@@ -1142,6 +1152,8 @@ snapshot would share one `<catalog>.db` file.
 |   |   +-- PostgresPlanParser.java     - JSON EXPLAIN -> tree
 |   |   +-- OraclePlanParser.java       - PLAN_TABLE -> tree
 |   |   +-- SqlServerPlanParser.java    - SHOWPLAN_XML -> tree
+|   |   +-- FirebirdPlanParser.java     - Jaybird explained plan -> tree
+|   |   +-- SqlitePlanParser.java       - EXPLAIN QUERY PLAN -> tree
 |   |   +-- PlanAnalyzer.java           - summary: expensive / full scan / estimate error / nested loop / spill
 |   +-- usage/
 |   |   +-- CatalogDataSourceConfig.java - SQLite WAL datasource + schema init
@@ -1150,7 +1162,8 @@ snapshot would share one `<catalog>.db` file.
 |   |   +-- format/
 |   |   |   +-- QueryUsage.java         - canonical query usage record DTO
 |   +-- tools/
-|       +-- QueryTools.java             - executeQuery, explainQuery, analyzePlan, validateQuery, inspectQuery, queryLint, resolveQueryLineage
+|       +-- QueryTools.java             - executeQuery
+|       +-- QueryAnalysisTools.java     - explainQuery, analyzePlan, validateQuery, inspectQuery, queryLint, resolveQueryLineage
 |       +-- MetadataTools.java          - schemas / tables / describe / view / routines / sequences / search
 |       +-- AdminTools.java             - rebuildCatalog (build structure snapshot + usage index into a distributable <catalog>.db)
 |       +-- SampleTools.java            - sampleRows
@@ -1158,9 +1171,10 @@ snapshot would share one `<catalog>.db` file.
 |       +-- StatsTools.java             - tableStats, indexStats, unusedIndexes, redundantIndexes, fkIndexCoverage
 |       +-- BenchmarkTools.java         - benchmarkQuery, timedQuery
 |       +-- SchemaContextTools.java     - schemaBrief, tableContext, findJoinPaths, schemaLint, schemaGraph, queryContext, schemaGraphDot
+|       +-- ConnectionTools.java        - listConnections
 |       +-- UsageTools.java             - usageCatalogStatus, invalidateUsageCatalogCache, getQuery, listQueries, findQueriesBy(Table|Column), observedRelationships, listKnownTags/Domains/Kinds
 +-- src/main/resources/
-    +-- application.yml                 - MCP stdio + JDBC properties
+    +-- application.yml                 - MCP stdio + server-level settings (data dir, tool groups)
     +-- usage-catalog-schema.sql        - DDL for the usage-catalog index (in <catalog>.db)
     +-- structure-snapshot-schema.sql   - DDL for the persistent structure snapshot (in <catalog>.db)
     +-- logback-spring.xml              - logs to stderr because stdout is used by MCP

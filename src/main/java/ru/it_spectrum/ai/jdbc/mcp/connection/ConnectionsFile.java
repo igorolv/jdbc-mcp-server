@@ -6,9 +6,9 @@ import java.util.Map;
 /**
  * On-disk shape of {@code connections.json}.
  *
- * <p>Every field is optional except {@code url}: what a connection does not override is inherited
- * from the global environment-based defaults ({@code JdbcProperties}, {@code UsageProperties},
- * {@code StructureSnapshotProperties}). String values may reference environment variables as
+ * <p>Every field is optional except {@code url}: what a connection leaves out falls back to the
+ * built-in {@code DEFAULTS} of {@code JdbcProperties}, {@code UsageProperties} and
+ * {@code StructureSnapshotProperties}. String values may reference environment variables as
  * {@code ${VAR}} — see {@link EnvironmentPlaceholders}.
  *
  * @param connections connection name → definition; the name is also the local catalog directory
@@ -19,7 +19,7 @@ public record ConnectionsFile(
 ) {
 
     /**
-     * One connection entry. Fields mirror the global configuration properties they override.
+     * One connection entry. Fields mirror the properties records they populate.
      *
      * @param description free-form text shown by {@code listConnections} so an agent can pick a
      *                    database by meaning rather than by name

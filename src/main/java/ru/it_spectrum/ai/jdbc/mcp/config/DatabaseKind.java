@@ -66,7 +66,7 @@ public enum DatabaseKind {
     public static DatabaseKind fromUrl(String url) {
         if (url == null || url.isBlank()) {
             throw new IllegalArgumentException(
-                    "JDBC_URL is not set. Provide e.g. jdbc:postgresql://host:5432/db " +
+                    "The JDBC URL is empty. Provide e.g. jdbc:postgresql://host:5432/db " +
                             "or jdbc:oracle:thin:@//host:1521/service " +
                             "or jdbc:sqlserver://host:1433;databaseName=db " +
                             "or jdbc:firebirdsql://host:3050//path/to/db.fdb " +

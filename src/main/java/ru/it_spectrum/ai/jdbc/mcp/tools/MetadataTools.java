@@ -77,7 +77,7 @@ public class MetadataTools {
     )
     public ListTablesResult listTables(
             @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
-            @McpToolParam(description = "Omit to use JDBC_DEFAULT_SCHEMA or the current schema.", required = false) String schema,
+            @McpToolParam(description = "Omit to use the connection's defaultSchema or the current schema.", required = false) String schema,
             @McpToolParam(description = "JDBC pattern ('%' any, '_' one character).", required = false) String namePattern,
             @McpToolParam(description = "JDBC table types CSV (default TABLE,VIEW,MATERIALIZED VIEW): TABLE,VIEW,MATERIALIZED VIEW,SYSTEM TABLE,GLOBAL TEMPORARY,LOCAL TEMPORARY,ALIAS,SYNONYM", required = false) String types
     ) {
