@@ -385,7 +385,8 @@ public class SqliteDialect implements SqlDialect {
 
     /**
      * Timing and event are read from the {@code CREATE TRIGGER} header — the text before
-     * {@code ON <table>}. SQLite fires a trigger without a timing keyword {@code BEFORE}, and a
+     * {@code ON <table>}. Normalize line breaks and tabs first because SQLite preserves the
+     * original CREATE text. SQLite fires a trigger without a timing keyword {@code BEFORE}, and a
      * trigger handles exactly one event.
      */
     private static String triggersQuery(String tableFilter) {
@@ -400,8 +401,11 @@ public class SqliteDialect implements SqlDialect {
                        1 AS enabled,
                        sql AS definition
                 FROM (SELECT name, tbl_name, sql,
-                             ' ' || upper(substr(sql, 1, instr(upper(sql), ' ON '))) AS hdr
-                        FROM sqlite_schema WHERE type = 'trigger') tr
+                             substr(normalized, 1, instr(normalized, ' ON ')) AS hdr
+                        FROM (SELECT name, tbl_name, sql,
+                                     ' ' || upper(replace(replace(replace(sql, char(10), ' '),
+                                                                          char(13), ' '), char(9), ' ')) AS normalized
+                                FROM sqlite_schema WHERE type = 'trigger')) tr
                 WHERE %s %s
                 ORDER BY tbl_name, name
                 """.formatted(SCHEMA_LITERAL, ANY_SCHEMA, tableFilter);

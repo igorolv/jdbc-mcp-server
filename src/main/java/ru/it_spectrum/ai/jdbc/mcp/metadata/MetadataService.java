@@ -299,13 +299,13 @@ public class MetadataService {
             throws SQLException {
         record Pending(String name, List<String> columns, List<String> referencedColumns,
                        String[] referencedSchema, String[] referencedTable) {}
-        Map<String, Pending> byName = new LinkedHashMap<>();
+        Map<JdbcForeignKeyNames.Key, Pending> byName = new LinkedHashMap<>();
+        JdbcForeignKeyNames names = new JdbcForeignKeyNames();
         try (ResultSet rs = md.getImportedKeys(null, schema, table)) {
             while (rs.next()) {
-                String fkName = rs.getString("FK_NAME");
-                if (fkName == null || fkName.isBlank()) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
-                Pending p = byName.computeIfAbsent(fkName, k -> new Pending(
-                        k, new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
+                JdbcForeignKeyNames.Key key = names.key(rs);
+                Pending p = byName.computeIfAbsent(key, k -> new Pending(
+                        k.name(), new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
                 p.referencedSchema()[0] = rs.getString("PKTABLE_SCHEM");
                 p.referencedTable()[0] = rs.getString("PKTABLE_NAME");
                 p.columns().add(rs.getString("FKCOLUMN_NAME"));
@@ -365,13 +365,13 @@ public class MetadataService {
             throws SQLException {
         record Pending(String name, List<String> fromColumns, List<String> toColumns,
                        String[] fromSchema, String[] fromTable) {}
-        Map<String, Pending> byName = new LinkedHashMap<>();
+        Map<JdbcForeignKeyNames.Key, Pending> byName = new LinkedHashMap<>();
+        JdbcForeignKeyNames names = new JdbcForeignKeyNames();
         try (ResultSet rs = md.getExportedKeys(null, schema, table)) {
             while (rs.next()) {
-                String fkName = rs.getString("FK_NAME");
-                if (fkName == null || fkName.isBlank()) fkName = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
-                Pending p = byName.computeIfAbsent(fkName, k -> new Pending(
-                        k, new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
+                JdbcForeignKeyNames.Key key = names.key(rs);
+                Pending p = byName.computeIfAbsent(key, k -> new Pending(
+                        k.name(), new ArrayList<>(), new ArrayList<>(), new String[1], new String[1]));
                 p.fromSchema()[0] = rs.getString("FKTABLE_SCHEM");
                 p.fromTable()[0] = rs.getString("FKTABLE_NAME");
                 p.fromColumns().add(rs.getString("FKCOLUMN_NAME"));

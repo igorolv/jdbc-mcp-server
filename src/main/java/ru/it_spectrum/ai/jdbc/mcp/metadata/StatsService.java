@@ -446,12 +446,12 @@ public class StatsService {
     }
 
     private List<FkInfo> fetchFks(DatabaseMetaData md, String schema, String table) throws SQLException {
-        Map<String, FkInfo> byName = new LinkedHashMap<>();
+        Map<JdbcForeignKeyNames.Key, FkInfo> byName = new LinkedHashMap<>();
+        JdbcForeignKeyNames names = new JdbcForeignKeyNames();
         try (ResultSet rs = md.getImportedKeys(null, schema, table)) {
             while (rs.next()) {
-                String name = rs.getString("FK_NAME");
-                if (name == null) name = "fk_anon_" + rs.getString("FKCOLUMN_NAME");
-                FkInfo fk = byName.computeIfAbsent(name, FkInfo::new);
+                JdbcForeignKeyNames.Key key = names.key(rs);
+                FkInfo fk = byName.computeIfAbsent(key, k -> new FkInfo(k.name()));
                 fk.referencedSchema = rs.getString("PKTABLE_SCHEM");
                 fk.referencedTable  = rs.getString("PKTABLE_NAME");
                 short seq = rs.getShort("KEY_SEQ");

@@ -5,6 +5,8 @@ import ru.it_spectrum.ai.jdbc.mcp.config.DatabaseKind;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.function.Supplier;
 
@@ -69,6 +71,24 @@ class SqliteDialectTest {
             assertThat(plan).startsWith("QUERY PLAN\n")
                     .containsPattern("\\|--SEARCH t USING (COVERING )?INDEX")
                     .containsPattern("`--LIST SUBQUERY \\d+\n   (\\||`)--SCAN o");
+        }
+    }
+
+    @Test
+    void readsTriggerTimingAndEventAcrossLineBreaks() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:");
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE t (id INTEGER)");
+            statement.execute("CREATE TRIGGER trg AFTER UPDATE\n  ON t BEGIN SELECT 1; END");
+            try (PreparedStatement query = connection.prepareStatement(dialect.tableTriggersQuery())) {
+                query.setString(1, "main");
+                query.setString(2, "t");
+                try (ResultSet rows = query.executeQuery()) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString("timing")).isEqualTo("AFTER");
+                    assertThat(rows.getString("events")).isEqualTo("UPDATE");
+                }
+            }
         }
     }
 

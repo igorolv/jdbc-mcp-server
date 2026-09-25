@@ -128,10 +128,14 @@ class GenericJdbcPostgresToolsTest extends AbstractToolsIntegrationTest {
             statement.execute("CREATE INDEX idx_orders_customer ON orders(customer_id)");
             statement.execute("CREATE SCHEMA sales");
             statement.execute("CREATE TABLE sales.regions (id INT PRIMARY KEY, name TEXT)");
+            statement.execute("CREATE TABLE \"MixedCase\" (id INT PRIMARY KEY, label TEXT)");
+            statement.execute("CREATE TABLE mixedcase (id INT PRIMARY KEY, label TEXT)");
             statement.execute("CREATE FUNCTION customer_count() RETURNS BIGINT LANGUAGE sql "
                     + "AS 'SELECT COUNT(*) FROM customers'");
             statement.execute("INSERT INTO customers VALUES (1, 'Alice'), (2, 'Bob')");
             statement.execute("INSERT INTO orders VALUES (1, 1, 10.5), (2, 1, 20.0), (3, 2, 5.0)");
+            statement.execute("INSERT INTO \"MixedCase\" VALUES (1, 'exact')");
+            statement.execute("INSERT INTO mixedcase VALUES (2, 'folded')");
         }
     }
 
@@ -160,6 +164,17 @@ class GenericJdbcPostgresToolsTest extends AbstractToolsIntegrationTest {
 
         ObjectNode histogram = object(distributionTools().columnHistogram(connection(), "public", "orders", "total"));
         assertThat(field(histogram, "p50").asDouble()).isCloseTo(10.5, within(1e-9));
+    }
+
+    @Test
+    void mixedCaseMetadataNameDoesNotReadTheFoldedTable() {
+        ArrayNode tables = array(metadataTools().listTables(connection(), "public", "MixedCase", null).tables());
+        assertThat(findByField(tables, "name", "MixedCase")).isNotNull();
+
+        ObjectNode exact = object(sampleTools().sampleRows(connection(), "public", "MixedCase", 1));
+        assertThat(field(row(exact, 0), "label").asText()).isEqualTo("exact");
+        ObjectNode folded = object(sampleTools().sampleRows(connection(), "public", "MIXEDCASE", 1));
+        assertThat(field(row(folded, 0), "label").asText()).isEqualTo("folded");
     }
 
     @Test

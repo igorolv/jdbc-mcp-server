@@ -145,16 +145,19 @@ public class GenericDialect implements SqlDialect {
     }
 
     /**
-     * Quoted when the name is already in the case the database stores unquoted names in — an exact,
-     * reserved-word-safe match; otherwise left unquoted so the database folds it as it would any
-     * unquoted name. No quoting at all when the driver reports no quote string.
+     * Preserve mixed-case names reported by metadata: leaving {@code MixedCase} unquoted on a
+     * lower-case-folding database would address {@code mixedcase}, possibly a different table.
+     * All-upper/all-lower names in the opposite of the stored case remain unquoted so callers may
+     * still use the database's normal folding (for example {@code ORDERS} for {@code orders}).
      */
     @Override
     public String quoteIdentifier(String identifier) {
         Traits t = traits();
+        boolean allUpper = identifier.equals(identifier.toUpperCase(Locale.ROOT));
+        boolean allLower = identifier.equals(identifier.toLowerCase(Locale.ROOT));
         if (t.quote() == null
-                || t.storesUpper() && !identifier.equals(identifier.toUpperCase(Locale.ROOT))
-                || t.storesLower() && !identifier.equals(identifier.toLowerCase(Locale.ROOT))) {
+                || t.storesUpper() && allLower && !allUpper
+                || t.storesLower() && allUpper && !allLower) {
             return identifier;
         }
         return t.quote() + identifier + t.quote();

@@ -44,6 +44,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -134,6 +136,14 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
             statement.execute("CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)");
             statement.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, "
                     + "customer_id INTEGER REFERENCES customers(id), total REAL)");
+            statement.execute("CREATE TABLE composite_parent (a INTEGER, b INTEGER, PRIMARY KEY (a, b))");
+            statement.execute("CREATE TABLE composite_child (x INTEGER, y INTEGER, z INTEGER, w INTEGER, "
+                    + "FOREIGN KEY (x, y) REFERENCES composite_parent(a, b), "
+                    + "FOREIGN KEY (z, w) REFERENCES composite_parent(a, b))");
+            statement.execute("CREATE TABLE other_parent (id INTEGER PRIMARY KEY)");
+            statement.execute("CREATE TABLE shared_child (x INTEGER, "
+                    + "FOREIGN KEY (x) REFERENCES customers(id), "
+                    + "FOREIGN KEY (x) REFERENCES other_parent(id))");
             statement.execute("CREATE INDEX idx_orders_customer ON orders(customer_id)");
             statement.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, status TEXT NOT NULL, "
                     + "category TEXT, amount REAL)");
@@ -180,6 +190,40 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
         ArrayNode search = array(metadataTools().searchObjects(connection(), "CUSTOMER").objects());
         assertThat(findByField(search, "name", "customers")).isNotNull();
         assertThat(findByField(search, "name", "v_customer_totals")).isNotNull();
+    }
+
+    @Test
+    void keepsUnnamedCompositeForeignKeysTogether() {
+        ObjectNode child = object(metadataTools().describeTable(connection(), null, "composite_child"));
+        ArrayNode foreignKeys = (ArrayNode) field(child, "foreignKeys");
+        assertThat(foreignKeys).hasSize(2);
+        List<List<String>> childColumns = new ArrayList<>();
+        foreignKeys.forEach(fk -> {
+            childColumns.add(textValues((ArrayNode) field((ObjectNode) fk, "columns")));
+            assertThat(textValues((ArrayNode) field((ObjectNode) fk, "referencedColumns")))
+                    .containsExactly("a", "b");
+        });
+        assertThat(childColumns).containsExactlyInAnyOrder(List.of("x", "y"), List.of("z", "w"));
+
+        ObjectNode parent = object(metadataTools().describeTable(connection(), null, "composite_parent"));
+        ArrayNode incoming = (ArrayNode) field(parent, "referencedBy");
+        assertThat(incoming).hasSize(2);
+        List<List<String>> incomingColumns = new ArrayList<>();
+        incoming.forEach(fk -> incomingColumns.add(textValues(
+                (ArrayNode) field((ObjectNode) fk, "fromColumns"))));
+        assertThat(incomingColumns).containsExactlyInAnyOrder(List.of("x", "y"), List.of("z", "w"));
+
+        ObjectNode coverage = object(statsTools().fkIndexCoverage(connection(), null, "composite_child"));
+        assertThat(field(coverage, "foreignKeysTotal").asInt()).isEqualTo(2);
+        assertThat(field(coverage, "uncoveredCount").asInt()).isEqualTo(2);
+        ArrayNode uncovered = (ArrayNode) field(coverage, "uncovered");
+        List<List<String>> uncoveredColumns = new ArrayList<>();
+        uncovered.forEach(fk -> uncoveredColumns.add(textValues(
+                (ArrayNode) field((ObjectNode) fk, "fkColumns"))));
+        assertThat(uncoveredColumns).containsExactlyInAnyOrder(List.of("x", "y"), List.of("z", "w"));
+
+        ObjectNode shared = object(metadataTools().describeTable(connection(), null, "shared_child"));
+        assertThat((ArrayNode) field(shared, "foreignKeys")).hasSize(2);
     }
 
     @Test
