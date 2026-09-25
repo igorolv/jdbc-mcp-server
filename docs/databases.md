@@ -84,7 +84,7 @@ PostgreSQL 11 and later (the integration tests run on 16), through the bundled p
 - **Catalog.** Partitioned tables, materialized views and foreign tables, `EXCLUDE` constraints,
   comments from `pg_description`, function and procedure sources from `pg_get_functiondef`.
 - **User:** `CONNECT` on the database, `USAGE` on the schemas, `SELECT` on the tables — see the
-  [read-only role snippet](../README.md#maximum-protection-use-a-read-only-database-user).
+  [read-only role snippet](read-only.md#maximum-protection-use-a-read-only-database-user).
 
 ## Oracle
 
@@ -93,7 +93,7 @@ Oracle Database 12c and later (the integration tests run on 23ai Free), through 
 
 - **Read-only is up to the guard and the user.** The Oracle driver treats `setReadOnly(true)` as a
   hint. The guard lets only `SELECT` / `WITH` / `EXPLAIN` through; a
-  [read-only user](../README.md#maximum-protection-use-a-read-only-database-user) is the real protection.
+  [read-only user](read-only.md#maximum-protection-use-a-read-only-database-user) is the real protection.
 - **Names are upper case.** Unquoted identifiers fold to upper case and the server passes names
   unquoted: use `CUSTOMERS` and `defaultSchema: "APP_OWNER"`. Without `defaultSchema` the current
   user's schema is used — rarely the one that owns the application tables.
@@ -136,7 +136,7 @@ driver.
   row counts and sizes. Index usage counters (`sys.dm_db_index_usage_stats`) need server-level state
   permissions, so the server does not read them and `unusedIndexes` answers with a note.
 - **User:** `SELECT` on the schema, `VIEW DEFINITION`, `SHOWPLAN` — see the
-  [login snippet](../README.md#maximum-protection-use-a-read-only-database-user).
+  [login snippet](read-only.md#maximum-protection-use-a-read-only-database-user).
 
 ## Firebird
 

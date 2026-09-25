@@ -103,7 +103,7 @@ new response record, run that test plus `ToolOutputSchemaSmokeTest`.
 ## Prerequisites
 
 - JDK 21+ installed (check with `java -version`)
-- A database account. A **read-only** database user is strongly recommended — see the README
+- A database account. A **read-only** database user is strongly recommended — see `docs/read-only.md`
   for SQL snippets to create one in PostgreSQL, Oracle, or SQL Server.
 
 ## Step 1: Write the connections file before running the server
@@ -151,7 +151,7 @@ with `psql` or `sqlplus` and bypass the read-only guard entirely. Write the pass
 and `chmod 600` it. String values may reference an environment variable as `${VAR}`, but only use
 that when the value comes from outside the agent's reach (a systemd unit, a wrapper script, a secret
 manager) — never from the MCP client's `env` block, which defeats the purpose. See "Why credentials
-live in a file, not in environment variables" in the README.
+live in a file, not in environment variables" in `docs/read-only.md`.
 
 Per-connection fields, all optional, with their defaults: `defaultSchema` (session schema; Oracle
 upper-cases, SQL Server usually `dbo`), `queryTimeoutSeconds` (30, `0` disables), `maxRows` (1000;
@@ -220,7 +220,7 @@ Add the server to the client's MCP configuration:
 The databases come from `connections.json`, so there is nothing to put in `env` — add
 `JDBC_MCP_CONNECTIONS_FILE` only if the file lives somewhere other than the default path.
 
-**Where to put it** (the README section "Connecting an AI Client" has a complete snippet per client):
+**Where to put it** (`docs/clients.md` has a complete snippet per client):
 
 | Client | How / where | Shape |
 |---|---|---|

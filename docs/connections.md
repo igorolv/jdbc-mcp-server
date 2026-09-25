@@ -232,7 +232,7 @@ stay in the environment: they shape the tool manifest, which is shared by all co
   `sql.example.com\\SQLEXPRESS`.
 - `trustServerCertificate=true` switches off certificate checks. Use it only on a local or dev server.
 - `GRANT SHOWPLAN` lets `explainQuery` and `analyzePlan` work; see the
-  [read-only user snippets](../README.md#maximum-protection-use-a-read-only-database-user).
+  [read-only user snippets](read-only.md#maximum-protection-use-a-read-only-database-user).
 
 ### Firebird
 
@@ -381,7 +381,7 @@ small", "Warehouse replica, lags ~15 min", "Legacy billing, read-only archive si
 
 Register the server per project and give each project its own file through the client's config.
 For example, a Claude Code project-scoped `.mcp.json` (other clients take the same `env` entry in
-their own format — see [Connecting an AI Client](../README.md#connecting-an-ai-client)):
+their own format — see [Connecting an AI Client](clients.md)):
 
 ```json
 {
@@ -417,7 +417,7 @@ Any string value, not only `password`, may contain one or more `${VAR}` referenc
 
 The point of the connections file is to keep credentials away from the material an agent reads
 anyway: the MCP client's config and the shell environment (see
-[the reasoning](../README.md#why-credentials-live-in-a-file-not-in-environment-variables)). Setting
+[the reasoning](read-only.md#why-credentials-live-in-a-file-not-in-environment-variables)). Setting
 `${VAR}` from the client's `env` block undoes that. Use placeholders when the value comes from
 somewhere the agent does not look, such as a systemd unit, a secret manager, or a wrapper script
 registered as the MCP command:

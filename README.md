@@ -14,14 +14,11 @@ for PostgreSQL, Oracle, SQL Server, Firebird and SQLite (drivers bundled); other
 served through `DatabaseMetaData` with an external driver.
 
 **Contents:** [Features](#features) ·
-[Tools at a Glance](#tools-at-a-glance) ·
+[Typical Scenarios](#typical-scenarios) ·
 [Quickstart](#quickstart) ·
-[Configuring Connections](#configuring-connections) ·
-[Connecting an AI Client](#connecting-an-ai-client) ·
 [Architecture](#architecture) ·
 [MCP Tools](#mcp-tools) ·
 [MCP Resources](#mcp-resources) ·
-[Error Format](#error-format) ·
 [Read-only Protection](#read-only-protection) ·
 [Server Environment Variables](#server-environment-variables) ·
 [Build](#build) ·
@@ -36,7 +33,7 @@ served through `DatabaseMetaData` with an external driver.
 - **Write protection:** JSqlParser AST guard (single `SELECT` / `WITH` / `EXPLAIN`), plus
   session-, transaction- or file-level read-only mode where the engine supports it. Details:
   [Read-only Protection](#read-only-protection).
-- **Connections:** any number of databases in one [`connections.json`](#configuring-connections);
+- **Connections:** any number of databases in one [`connections.json`](docs/connections.md);
   every tool takes a `connection` argument; pools are created on first use. Credentials are not
   read from the environment.
 - **Tools:** 49, in 11 [groups](#tool-groups) that can be disabled individually: metadata, query
@@ -46,30 +43,22 @@ served through `DatabaseMetaData` with an external driver.
   [structure snapshot](#persistent-structure-snapshot) and an index of known application queries
   ([usage catalog](#usage-catalog)).
 - **Clients:** any MCP client with stdio transport; configuration examples for Claude Code, Codex
-  CLI, OpenCode, VS Code, Copilot CLI and Cursor in
-  [Connecting an AI Client](#connecting-an-ai-client).
+  CLI, OpenCode, VS Code, Copilot CLI, Cursor, Claude Desktop and Qwen Code in
+  [docs/clients.md](docs/clients.md).
 
-## Tools at a Glance
+## Typical Scenarios
 
-49 tools, none of which writes to the inspected database; every call names its `connection`.
-Parameters and output shapes: [MCP Tools](#mcp-tools).
+The agent picks the tools itself; these are the chains it usually follows. Every tool is described
+in [MCP Tools](#mcp-tools).
 
-| Task | Tools | What they give the agent |
+| Scenario | Example request | Tools |
 |---|---|---|
-| Pick a database | `listConnections` | The databases this server serves, what each is for, whether a local catalog exists |
-| Map an unfamiliar schema | `schemaBrief`, `queryContext`, `tableContext`, `findJoinPaths`, `schemaGraph`, `schemaGraphDot` | Relevant tables with keys and relationships in one call; FK join paths between two tables with ready `JOIN` conditions; an ERD in DOT |
-| Look up objects | `describeTable`, `listSchemas`, `listTables`, `searchObjects`, `listRoutines`, `listSequences`, `getViewDefinition`, `getRoutineDefinition`, `getTriggerDefinition` | Columns, keys, indexes, constraints, allowed values from CHECKs, triggers; sources of views, routines and triggers |
-| Write and check SQL | `inspectQuery`, `queryLint`, `resolveQueryLineage`, `validateQuery` | Parse without the database, lint against metadata and indexes, expand views down to base tables, prepare without running |
-| Run queries | `executeQuery`, `sampleRows` | `SELECT` / `WITH` / `EXPLAIN` with a row cap and a timeout; a few rows of a table |
-| Read plans | `explainQuery`, `analyzePlan` | The raw plan, or a compact summary: costliest nodes, full scans, estimate errors, risky nested loops, sort spills |
-| Understand the data | `columnStats`, `columnDistribution`, `columnHistogram`, `nullRatio`, `estimateSelectivity`, `joinCardinality` | Skew, percentiles, null ratios; predicate selectivity and join size estimated by the planner, without running the query |
-| Tune indexes and schema | `tableStats`, `indexStats`, `fkIndexCoverage`, `redundantIndexes`, `unusedIndexes`, `schemaLint` | Sizes and activity, FKs without a supporting index, redundant and unused indexes, a schema audit |
-| Measure | `benchmarkQuery`, `timedQuery` | Cold and warm wall-clock timings; `pg_stat_statements` deltas on PostgreSQL |
-| Learn from existing SQL | `findQueriesByTable`, `findQueriesByColumn`, `observedRelationships`, `listQueries`, `getQuery`, `listKnownTags`, `listKnownDomains`, `listKnownKinds` | How application queries use a table or column, observed join pairs, business domains and tags |
-| Maintain the local catalog | `rebuildCatalog`, `usageCatalogStatus`, `invalidateUsageCatalogCache` | Build the structure snapshot and usage index into one distributable SQLite file |
-
-Groups of tools can be switched off to shrink the manifest for small-context models — see
-[Tool Groups](#tool-groups).
+| Answer a data question | "How many orders did each region ship last month?" | `queryContext` or `schemaBrief` → `describeTable` → `findJoinPaths` → `validateQuery` → `executeQuery` |
+| Explore an unfamiliar schema | "What does the billing schema hold, and how are its tables related?" | `schemaBrief` → `tableContext` → `sampleRows` → `schemaGraphDot` |
+| Check a query before running it | "Is this report query correct, and which tables does it really read?" | `inspectQuery` → `queryLint` → `resolveQueryLineage` → `analyzePlan` |
+| Speed up a slow query | "Why is this query slow, and which index would help?" | `analyzePlan` → `tableStats`, `indexStats` → `estimateSelectivity`, `columnDistribution`, `joinCardinality` → `benchmarkQuery` |
+| Audit indexes and schema | "Find missing and redundant indexes in the orders schema." | `fkIndexCoverage`, `redundantIndexes`, `unusedIndexes`, `schemaLint` |
+| Learn from existing application SQL | "How does the application usually join customers and invoices?" | `findQueriesByTable`, `findQueriesByColumn`, `observedRelationships` |
 
 ## Quickstart
 
@@ -80,6 +69,9 @@ all JDBC drivers are bundled), or build it yourself:
 ```bash
 ./gradlew bootJar   # → build/libs/jdbc-mcp-server.jar
 ```
+
+No local JDK? Use the Docker image `ghcr.io/igorolv/jdbc-mcp-server` instead — see
+[Docker](docs/clients.md#docker).
 
 **2. Describe your databases** in `~/.jdbc-mcp-server/connections.json`
 (`%USERPROFILE%\.jdbc-mcp-server\connections.json` on Windows, `/data/connections.json` in the
@@ -144,7 +136,7 @@ Docker image) — one entry per database, keyed by the connection name:
 - `archive` opens a local Firebird file in-process: `nativeLibraryPath` is the directory holding
   `libfbclient.so` / `fbclient.dll` with its engine and plugins. Point it at a copy of the file —
   see [Firebird](docs/databases.md#firebird).
-- Use a [read-only database user](#maximum-protection-use-a-read-only-database-user): it is the only
+- Use a [read-only database user](docs/read-only.md#maximum-protection-use-a-read-only-database-user): it is the only
   protection that does not depend on this server. Keep the file readable only by its owner.
 
 Every field, naming rules, `${VAR}` secrets and several stands of one service:
@@ -167,285 +159,64 @@ claude mcp add --scope user jdbc -- java -jar /path/to/jdbc-mcp-server.jar
 codex mcp add jdbc -- java -jar /path/to/jdbc-mcp-server.jar
 ```
 
-OpenCode, VS Code with Copilot, Copilot CLI, Cursor and others:
-[Connecting an AI Client](#connecting-an-ai-client).
+OpenCode, VS Code with Copilot, Copilot CLI, Cursor, Claude Desktop, Qwen Code, and tips that apply
+to every client: [docs/clients.md](docs/clients.md).
 
-**4. Ask the agent for `listConnections`.** It answers with the databases this server serves; every
-other tool takes that name as its first argument:
+**4. Try it.** Ask the agent in plain words:
 
-```json
-{"connection": "orders", "sql": "SELECT count(*) FROM orders"}
-```
+- *"Which databases can you reach?"* — it calls `listConnections` and lists the entries of your
+  `connections.json` with their descriptions.
+- *"How many tables are there in `orders`?"* — it calls `listTables` on that connection and counts
+  them.
 
-## Configuring Connections
-
-Every database this server serves is an entry in one JSON file — see the sample in
-[Quickstart](#quickstart). Nothing about a database — URL, credentials, schema, timeouts, limits —
-comes from the environment. The [connections guide](docs/connections.md) covers the rest:
-
-- [where the file lives](docs/connections.md#where-the-file-lives) and how a missing or malformed
-  file is handled;
-- [every field](docs/connections.md#connection-fields) with its default, and a
-  [fully annotated entry](docs/connections.md#a-fully-annotated-entry);
-- [connection names](docs/connections.md#connection-names), including `<service>@<stand>`;
-- [recipes per engine](docs/connections.md#recipes-per-engine): SSL, Oracle SIDs and TNS aliases,
-  SQL Server named instances, Firebird embedded, SQLite paths, MySQL / MariaDB / H2 / Db2 drivers;
-- [several databases and environments](docs/connections.md#several-databases-and-environments) in
-  one server, or one file per project;
-- [secrets](docs/connections.md#secrets): `${VAR}` placeholders and file permissions;
-- [tuning](docs/connections.md#tuning-a-connection),
-  [checking a configuration](docs/connections.md#checking-a-configuration), and every
-  [configuration error](docs/connections.md#configuration-errors) with its cause.
-
-### Why credentials live in a file, not in environment variables
-
-The point of this server is that the agent reaches the database *only* through it: every statement
-goes through the read-only guard, every result is capped by `maxRows`, and nothing but
-`SELECT` / `WITH` / `EXPLAIN` gets through.
-
-Credentials in environment variables undermine exactly that. They are set on the server process by
-the MCP client, which means they also sit in the client's own configuration — a file agents read and
-edit as a matter of routine — and in the environment of whatever shell launched it. An agent that
-has seen a URL, a user and a password does not need the tools any more: `psql`, `sqlplus`, `sqlcmd`
-or three lines of Python connect straight to the database, with no guard, no row cap and no trace in
-this server's log.
-
-So the server accepts no database credentials from the environment at all — there are no `JDBC_URL`
-/ `JDBC_USERNAME` / `JDBC_PASSWORD` variables. They live in `connections.json`, which only the server
-reads.
-
-Be clear about what that does and does not buy:
-
-- It removes the easy path. Credentials stop being part of the material an agent routinely handles:
-  MCP client configs, shell environment, `env` dumps in logs and bug reports.
-- **It is not a sandbox.** An agent with shell access running as you can read the file; `chmod 600`
-  keeps out other users, not a process running as your user.
-- The guarantee that survives everything is a
-  [read-only database user](#maximum-protection-use-a-read-only-database-user). The file narrows the
-  attack surface; the database's own permissions close it.
-
-For the same reason, prefer a literal password in the file over a `${VAR}` reference whose variable
-would be set in the MCP client's `env` block — that puts the secret straight back where the agent
-looks. `${VAR}` earns its place when the value is injected from outside the agent's reach (a systemd
-unit, a wrapper script, a secret manager), or when the file itself is shared or committed and the
-secret must not be.
-
-## Connecting an AI Client
-
-The server is a local stdio process, so every MCP client registers it the same way: the command is
-`java`, the arguments are `-jar <absolute-path>/jdbc-mcp-server.jar`, and there is no environment to
-set. The databases come from [`connections.json`](#configuring-connections); credentials are kept
-out of the client config on purpose — see
-[why](#why-credentials-live-in-a-file-not-in-environment-variables). Add
-`JDBC_MCP_CONNECTIONS_FILE` only if you keep the file somewhere other than the default path.
-
-| Client | Where the server is registered |
-|---|---|
-| [Claude Code](#claude-code) | `claude mcp add` → `~/.claude.json` (user) or `.mcp.json` (project) |
-| [Codex CLI](#codex-cli) | `~/.codex/config.toml` |
-| [OpenCode](#opencode) | `~/.config/opencode/opencode.json` (global) or `opencode.json` (project) |
-| [VS Code with GitHub Copilot](#vs-code-with-github-copilot) | `.vscode/mcp.json` (workspace) or the user `mcp.json` |
-| [GitHub Copilot CLI](#github-copilot-cli) | `~/.copilot/mcp-config.json` |
-| [Cursor, Claude Desktop, Qwen Code](#other-clients) | the client's `mcpServers` JSON |
-
-Once registered, ask the agent to call `listConnections`; it should list the entries of your
-`connections.json`.
-
-### Claude Code
-
-```bash
-claude mcp add --scope user jdbc -- java -jar /path/to/jdbc-mcp-server.jar
-```
-
-`--scope user` makes the server available in every project (stored in `~/.claude.json`); without it
-the server is added to the current project only. The `--` separates Claude Code's own options from
-the server command. `claude mcp list` shows whether the server started; inside a session, `/mcp`
-shows its status and reconnects it after you edit `connections.json`.
-
-To share the registration with a team, commit a project-scoped `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "jdbc": {
-      "type": "stdio",
-      "command": "java",
-      "args": ["-jar", "/path/to/jdbc-mcp-server.jar"]
-    }
-  }
-}
-```
-
-### Codex CLI
-
-```bash
-codex mcp add jdbc -- java -jar /path/to/jdbc-mcp-server.jar
-```
-
-or directly in `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.jdbc]
-command = "java"
-args = ["-jar", "/path/to/jdbc-mcp-server.jar"]
-# rebuildCatalog on a large schema can take minutes; the default tool timeout is 60 s
-tool_timeout_sec = 600
-```
-
-On Windows, write the path as a TOML literal string so backslashes need no escaping:
-`args = ["-jar", 'C:\tools\jdbc-mcp-server.jar']`. Codex gives a server 10 s to start
-(`startup_timeout_sec`); the JVM usually needs 2–3 s, but raise it on a slow machine — a server that
-misses the deadline is silently left out.
-
-### OpenCode
-
-In `~/.config/opencode/opencode.json` (or `opencode.jsonc`), or a project's `opencode.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "jdbc": {
-      "type": "local",
-      "command": ["java", "-jar", "/path/to/jdbc-mcp-server.jar"],
-      "enabled": true
-    }
-  }
-}
-```
-
-`command` is one array holding the program and its arguments. OpenCode waits 5 s for the tool list
-by default; add `"timeout": 15000` (milliseconds) if the server shows up without tools on a slow
-start.
-
-### VS Code with GitHub Copilot
-
-In `.vscode/mcp.json` for one workspace, or in the user-level `mcp.json` opened
-with the **MCP: Open User Configuration** command for all workspaces:
-
-```json
-{
-  "servers": {
-    "jdbc": {
-      "type": "stdio",
-      "command": "java",
-      "args": ["-jar", "/path/to/jdbc-mcp-server.jar"]
-    }
-  }
-}
-```
-
-The top-level key is `servers`, not `mcpServers`. The tools are used by Copilot Chat in agent mode.
-**MCP: List Servers** starts, stops and restarts the server and shows its output.
-
-### GitHub Copilot CLI
-
-In `~/.copilot/mcp-config.json` (or interactively with `/mcp add`):
-
-```json
-{
-  "mcpServers": {
-    "jdbc": {
-      "type": "local",
-      "command": "java",
-      "args": ["-jar", "/path/to/jdbc-mcp-server.jar"],
-      "tools": ["*"]
-    }
-  }
-}
-```
-
-A project can also carry the configuration in `.mcp.json` or `.github/mcp.json`.
-
-### Other clients
-
-Cursor (`.cursor/mcp.json` or `~/.cursor/mcp.json`), Claude Desktop
-(`claude_desktop_config.json`) and Qwen Code (`~/.qwen/settings.json`) all use the common
-`mcpServers` shape:
-
-```json
-{
-  "mcpServers": {
-    "jdbc": {
-      "command": "java",
-      "args": ["-jar", "/path/to/jdbc-mcp-server.jar"]
-    }
-  }
-}
-```
-
-### Tips for every client
-
-- **Use absolute paths.** The client picks the working directory, so a relative jar path breaks.
-  In JSON, write Windows paths with forward slashes (`C:/tools/jdbc-mcp-server.jar`) or doubled
-  backslashes.
-- **Java 21+.** If `java` on the `PATH` is older, put the full path of a JDK 21+ binary in
-  `command`, e.g. `C:/Users/me/.jdks/jdk-21/bin/java.exe` or `/usr/lib/jvm/java-21/bin/java`.
-- **Restart after editing `connections.json`** — the file is read once at startup.
-- **When the client only says "failed to start"**, run the same command in a terminal; see
-  [Checking the configuration](docs/connections.md#checking-a-configuration).
-- **Docker instead of a local JDK:** the command is `docker` with the arguments
-  `run -i --rm -v /home/me/.jdbc-mcp-server:/data ghcr.io/igorolv/jdbc-mcp-server:latest` — see
-  [Docker](#docker).
-
-### Running by Hand
-
-```bash
-java -jar jdbc-mcp-server.jar
-```
-
-(Use `build/libs/jdbc-mcp-server.jar` if you built it locally, or the file downloaded from
-[Releases](https://github.com/igorolv/jdbc-mcp-server/releases/latest).)
-
-The server immediately starts listening for MCP over stdin/stdout; no port is opened. Logs are
-written to stderr and to `<data-dir>/logs/`. Running it by hand is mostly useful to
-[check a configuration](docs/connections.md#checking-a-configuration); `Ctrl-D` stops it.
-
-### Docker
-
-The image is published to GHCR with every release. Mount the directory holding `connections.json`
-at `/data` — it is also where the server keeps its local catalogs and logs:
-
-```bash
-docker run -i --rm -v ~/.jdbc-mcp-server:/data ghcr.io/igorolv/jdbc-mcp-server:latest
-```
-
-The same command is what an MCP client should launch (`-i` keeps stdin open for the stdio
-transport). JDBC URLs in `connections.json` must be reachable from inside the container: use the
-database host name, not `localhost`, or add `--network host` on Linux. SQLite files and driver jars
-must be inside the mounted directory or mounted separately — see
-[Running in Docker](docs/connections.md#running-in-docker). To build the image locally:
-
-```bash
-docker build -t jdbc-mcp-server .
-```
+If the first call against a database fails, see
+[Checking a configuration](docs/connections.md#checking-a-configuration).
 
 ## Architecture
 
 ```text
-                                                  +------------+
-                                            +---> | database A |
-+-------------+     stdio      +----------+ |     +------------+
-|  AI agent   | <------------> | jdbc-mcp | |     +------------+
-| (Claude Code|  stdin/stdout  |  server  |-+---> | database B |
-|  Cursor...) |                |  (Java)  | |     +------------+
-+-------------+                +----------+ |
-                                            +---> ...
-
-                                          read-only JDBC
-                              PG / Oracle / SQL Server / Firebird / SQLite / any JDBC
+ MCP client (Claude Code, Codex, VS Code, Cursor, ...)
+      |  JSON-RPC over stdin / stdout, no network port
+      v
++- jdbc-mcp-server: one JVM, started by the client ------------------------------+
+|                                                                                |
+|  MCP layer          49 tools in switchable groups, optional resources          |
+|      |              every call names its `connection`                          |
+|      v                                                                         |
+|  Connection registry  <-- connections.json, read once at startup               |
+|      |              a connection is built on its first call, then reused       |
+|      v                                                                         |
+|  Per-connection context                                                        |
+|   +- read-only guard (JSqlParser AST) -> SQL executor (row cap, timeout)       |
+|   +- dialect: PostgreSQL, Oracle, SQL Server, Firebird, SQLite, generic        |
+|   +- metadata, statistics, plan parser and analyzer                            |
+|   +- local catalog <data-dir>/<name>/<name>.db (SQLite, WAL):                  |
+|   |     structure snapshot + usage index of known queries                      |
+|   +- Hikari pool of read-only JDBC connections -----------------> database     |
++--------------------------------------------------------------------------------+
 ```
 
-The protocol is `stdio` only. The client starts the server as a child process. One process serves
-any number of named databases, all declared in the
-[connections file](#configuring-connections); a connection's pool is opened the first time a tool
-call names it.
-
-Tool calls on one stdio session run sequentially. The MCP Java SDK 2.0.0 used by Spring AI 2.0.1
-can lose responses when several concurrently executed tools finish at the same time, so the server
-keeps `immediateExecution(true)` until the SDK fixes this. A client's `notifications/cancelled` is
-not propagated to JDBC `Statement.cancel()`; the configured `queryTimeoutSeconds` (or a tool call's
-`timeoutSeconds` override) remains the server-side limit for a running SQL statement.
+- **One process, many databases.** The client starts the server as a child process and talks to it
+  over stdio. The databases come from [`connections.json`](docs/connections.md); a connection's
+  pool, local catalog and services are created only when a tool call first names it, so a database
+  that is down or misconfigured affects only the calls made against it.
+- **The SQL path.** Every statement goes through the read-only guard first, then runs on a
+  read-only JDBC connection with the connection's row cap and timeout. Engine-level protections are
+  described in [Read-only Protection](docs/read-only.md).
+- **Dialects.** Each engine has its own implementation of metadata queries, plans and statistics;
+  any other database is served in generic mode through `DatabaseMetaData` and portable SQL — see
+  [Supported Databases](docs/databases.md).
+- **Local catalog.** Structural metadata is persisted per connection in a SQLite file with no
+  expiry: `describeTable`, the schema context tools and `searchObjects` read covered schemas from it
+  and fall back to the live database otherwise. The same file holds the usage index. Live
+  statistics, samples and plans are never cached. See
+  [Persistent Structure Snapshot](#persistent-structure-snapshot) and [Usage Catalog](#usage-catalog).
+- **Execution model.** Tool calls on one stdio session run sequentially. The MCP Java SDK 2.0.0 used
+  by Spring AI 2.0.1 can lose responses when several concurrently executed tools finish at the same
+  time, so the server keeps `immediateExecution(true)` until the SDK fixes this. A client's
+  `notifications/cancelled` is not propagated to JDBC `Statement.cancel()`; the configured
+  `queryTimeoutSeconds` (or a tool call's `timeoutSeconds` override) remains the server-side limit
+  for a running SQL statement.
 
 ## MCP Tools
 
@@ -805,137 +576,56 @@ All tools are **read-only**; data is not modified.
 
 ## MCP Resources
 
-When `JDBC_MCP_RESOURCES_ENABLED=true`, the server exposes — for every usable configured connection —
-one concrete resource, the catalog manifest, and two parameterized resource templates:
+Besides tools, the server can publish the catalog as MCP resources, for clients that let the user
+attach a table's description to the context. Resources are **off by default**; set
+`JDBC_MCP_RESOURCES_ENABLED=true` to register them. The tools are the same either way.
 
-```text
-jdbc-mcp://catalog/<catalog>/manifest
-jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}
-jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}
-```
+Every usable connection publishes one resource and two resource templates:
 
-`<catalog>` is the percent-encoded connection name. It is fixed per connection when the server
-starts and is not a
-template variable clients can use to switch databases: a read resolves the connection from the URI it
-was given. This keeps resource URIs unambiguous both across the connections of one server and across
-several registered instances of this jar. The manifest reports database kind,
-snapshot version/build time/covered schemas, and the exact templates for its catalog. Table and
-column reads reuse `MetadataService`, so they have the same persistent-snapshot and live-fallback
-semantics as `describeTable`.
+| URI | Name | Content |
+|---|---|---|
+| `jdbc-mcp://catalog/<catalog>/manifest` | `<catalog>/manifest` | Database kind, the structure snapshot's version, build time and covered schemas, and the two templates below |
+| `jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}` | `<catalog>/table` | What `describeTable` returns: columns, keys, indexes, constraints, relationships, triggers |
+| `jdbc-mcp://catalog/<catalog>/schemas/{schema}/tables/{table}/columns/{column}` | `<catalog>/column` | One column with its primary-key position, unique constraints, indexes, outgoing and incoming foreign keys, and CHECK constraints |
 
-Tables are not listed one by one in `resources/list`: on a schema with thousands of tables that would
-turn the list into a dump of the catalog. Instead the server answers `completion/complete` for the
-template arguments — `schema`, then `table` (given `schema`), then `column` (given `schema` and
-`table`) — with case-insensitive prefix matches from the local structure snapshot, at most 100 values
-per response with `hasMore` set when there are more. Completions never contact the database and
-return nothing until the connection has a local catalog; since they read the snapshot on every call,
-a catalog built by `rebuildCatalog` is offered immediately, without a restart.
-
-Reading a table or column that does not exist fails with the MCP resource-not-found error
-(`-32002`, `data.uri` names the URI).
-
-Column resources include the column definition plus matching PK position, unique constraints,
-indexes, outgoing/incoming foreign keys, and CHECK constraints. URI path segments preserve case
-and use UTF-8 percent encoding. Resources are disabled by default; enabling them leaves the MCP
-tools unchanged.
-
-## Error Format
-
-All tools return errors in the same shape: JSON with `error` and `kind` fields.
-
-```json
-{"error": "Only SELECT / WITH / EXPLAIN statements are allowed", "kind": "rejected"}
-```
-
-| `kind` | When |
-|---|---|
-| `sql` | The database returned a `SQLException` for syntax, missing object, missing permission, and similar cases |
-| `argument` | Invalid tool argument |
-| `unsupported` | The connection's engine cannot answer this at all (e.g. plans on a generic JDBC connection); retrying with other arguments will not help |
-| `rejected` | The read-only guard blocked the query before it reached the database |
-| `not_found` | `getViewDefinition`, `getRoutineDefinition`, or `getTriggerDefinition` found nothing, or the table named in `describeTable`, `tableContext`, `findJoinPaths`, or `schemaLint` (with `table`) does not exist. The response body also includes `missing` and `name` |
-| `driver` / `unexpected` / `plan_parse` | Internal driver failure, unhandled failure, or plan parsing failure |
-
-`validateQuery` uses its own shape, without `kind`; `valid` is the discriminator.
-
-```json
-{"valid": true,  "parameters": 1, "columns": 3}
-{"valid": false, "stage": "guard|params|driver", "error": "..."}
-```
+- **`<catalog>` is the connection name**, UTF-8 percent-encoded (`ssj@dev` becomes `ssj%40dev`). It
+  is fixed per connection, not a template argument: a read resolves its connection from the URI, so
+  a URI never points at the wrong database — across the connections of one server or across several
+  registered instances. Schema, table and column segments are percent-encoded and keep their case.
+- **Tables are not listed.** `resources/list` holds only the manifests; a schema with thousands of
+  tables would otherwise turn it into a dump of the catalog. Clients discover names through
+  `completion/complete` on the template arguments — `schema`, then `table` (given `schema`), then
+  `column` (given both) — with case-insensitive prefix matches, at most 100 per response and
+  `hasMore` when there are more.
+- **Completions come from the local catalog** and never touch the database. Until a connection has
+  a catalog they return nothing and the manifest reports snapshot version `0`; a catalog built with
+  `rebuildCatalog` is picked up without a restart. Table and column reads work either way: like
+  `describeTable`, they answer from the snapshot and fall back to the live database.
+- **Metadata.** Every read carries `_meta` with `catalog`, `resourceSchemaVersion`,
+  `snapshotVersion` and, once a catalog exists, `snapshotBuiltAt`.
+- **Errors** use MCP error codes: a table or column that does not exist is `-32002` (resource not
+  found, `data.uri` names the URI); a malformed URI is `-32602` (invalid params).
 
 ## Read-only Protection
 
-Protection is layered and is designed primarily for accidental `DELETE` / `DROP` statements from
-an LLM, not for a malicious actor. A malicious actor already has the database URL, username, and
-password — which is also why the server
-[keeps credentials out of the environment](#why-credentials-live-in-a-file-not-in-environment-variables),
-so that an agent does not casually acquire them.
+The server never writes to the inspected database, and does not rely on one mechanism for that:
 
-1. **ReadOnlyGuard in project code.** Before sending SQL to the database, the server first parses it with JSqlParser and checks the AST. Only a single `SELECT`, `WITH`, or `EXPLAIN` is allowed. Write CTEs, `SELECT INTO`, and locking clauses such as `FOR UPDATE` are forbidden. If JSqlParser cannot parse dialect-specific SQL, the guard falls back to the older lexical check: first meaningful token, multi-statement rejection, comment skipping, and write-keyword detection outside strings and quoted identifiers.
-2. **`connection.setReadOnly(true)`.** Set by Hikari and again by this server on each checkout.
-3. **PostgreSQL: `default_transaction_read_only=on`.** Added to the JDBC URL automatically unless you already provided your own `options=`. Even server-side DDL is rejected.
-4. **Oracle: JDBC read-only hint.** Oracle JDBC treats `setReadOnly(true)` mostly as an advisory hint. The client-side guard and a dedicated read-only database user are the primary Oracle protections. Oracle `EXPLAIN PLAN` writes a static plan to `PLAN_TABLE`; this server scopes those reads with a generated `STATEMENT_ID`.
-5. **SQLite: the file is opened read-only.** `open_mode=1` is added to the URL unless you set `open_mode` yourself; SQLite then rejects every write.
-6. **Firebird: server-enforced read-only transactions.** Jaybird turns `setReadOnly(true)` into read-only transactions, which the server enforces for DML and DDL alike.
-7. **SQL Server: JDBC read-only hint plus SHOWPLAN estimated plans.** SQL Server also treats `setReadOnly(true)` as a hint. Use a least-privilege login/user for strong enforcement. `explainQuery` and `analyzePlan` use `SHOWPLAN_TEXT/XML`, which returns estimated plans without executing the statement.
-8. **Generic JDBC: best-effort.** The guard, plus `setReadOnly(true)` where the driver honours it. Use a read-only URL option where the driver has one, or a read-only database user.
+- a JSqlParser AST guard lets through a single `SELECT`, `WITH` or `EXPLAIN` and nothing else;
+- every JDBC connection is read-only, and PostgreSQL, Firebird and SQLite enforce it inside the
+  database (a read-only session or transaction, a file opened with `open_mode=1`);
+- database credentials are kept in `connections.json`, never in the MCP client config or the
+  environment, so an agent has no easy way around the server with `psql` or `sqlplus`.
 
-### Maximum Protection: Use a Read-only Database User
-
-A dedicated user with read-only permissions keeps the database protected even when the guard is
-disabled or bypassed.
-
-**PostgreSQL:**
-
-```sql
-CREATE ROLE ai_readonly LOGIN PASSWORD 'strong-password';
-GRANT CONNECT ON DATABASE mydb TO ai_readonly;
-GRANT USAGE ON SCHEMA public TO ai_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO ai_readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT SELECT ON TABLES TO ai_readonly;
-```
-
-**Oracle:**
-
-```sql
-CREATE USER ai_readonly IDENTIFIED BY "strong-password";
-GRANT CREATE SESSION TO ai_readonly;
-GRANT SELECT ANY DICTIONARY TO ai_readonly;  -- for metadata
--- For each required table/view:
-GRANT SELECT ON app_schema.customers TO ai_readonly;
--- ...or a role collecting all SELECT grants:
--- CREATE ROLE ai_ro_role; GRANT ai_ro_role TO ai_readonly;
-```
-
-**SQL Server:**
-
-```sql
-CREATE LOGIN ai_readonly WITH PASSWORD = 'strong-password';
-CREATE USER ai_readonly FOR LOGIN ai_readonly;
-GRANT SELECT ON SCHEMA::dbo TO ai_readonly;
-GRANT VIEW DEFINITION TO ai_readonly; -- for object definitions and richer metadata
-GRANT SHOWPLAN TO ai_readonly;        -- for explainQuery/analyzePlan estimated plans
-```
-
-### Disabling the Guard
-
-If you need to call, for example, a stored procedure with read-only semantics that the guard does
-not allow, you can disable client-side validation:
-
-```json
-"readonlyGuard": "off"
-```
-
-Connection-level protections (`setReadOnly` and, on PostgreSQL, `default_transaction_read_only`)
-remain enabled. On Oracle and SQL Server, `setReadOnly` is best-effort; use a read-only database
-user for the strongest guarantee.
+The strongest guarantee is a read-only database user. The layers per engine, `GRANT` snippets for
+PostgreSQL, Oracle and SQL Server, when the guard can be switched off, and why credentials live in a
+file: [docs/read-only.md](docs/read-only.md). Tool errors, including the guard's `rejected`, are
+listed in [docs/errors.md](docs/errors.md).
 
 ## Server Environment Variables
 
 Databases, credentials and everything that varies per database live in
-[`connections.json`](#configuring-connections) — deliberately
-[not in the environment](#why-credentials-live-in-a-file-not-in-environment-variables). The
+[`connections.json`](docs/connections.md) — deliberately
+[not in the environment](docs/read-only.md#why-credentials-live-in-a-file-not-in-environment-variables). The
 environment configures only the server process itself:
 
 | Variable | Required | Description |
