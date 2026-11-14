@@ -1,0 +1,11 @@
+{
+  "catalogs": {},
+  "aliases": {
+    "jdbc-mcp-server": {
+      "script-ref": "https://github.com/igorolv/jdbc-mcp-server/releases/download/v0.2.0/jdbc-mcp-server.jar",
+      "description": "Read-only SQL, plans, schema for AI agents: PostgreSQL, Oracle, SQL Server, Firebird, SQLite, JDBC",
+      "java": "21+"
+    }
+  },
+  "templates": {}
+}

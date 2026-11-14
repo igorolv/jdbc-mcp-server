@@ -1,8 +1,9 @@
 name: Release
 
 # Push a tag like v0.1.0 to build the fat jar, publish it as a GitHub Release, push the Docker
-# image to ghcr.io/igorolv/jdbc-mcp-server:<version> and :latest, and register that image
-# version in the official MCP Registry (registry.modelcontextprotocol.io).
+# image to ghcr.io/igorolv/jdbc-mcp-server:<version> and :latest, register that image
+# version in the official MCP Registry (registry.modelcontextprotocol.io), and point the JBang
+# alias in jbang-catalog.json on main at the released jar.
 on:
   push:
     tags: ['v*']
@@ -51,6 +52,32 @@ jobs:
           files: |
             build/libs/jdbc-mcp-server.jar
             build/libs/jdbc-mcp-server.jar.sha256
+
+  jbang-catalog:
+    name: Point the JBang catalog at this release
+    runs-on: ubuntu-latest
+    needs: release
+    # Pre-release tags such as v0.3.0-rc1 leave the alias on the last full release.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Stamp the release into jbang-catalog.json
+        run: |
+          jq --arg t "$GITHUB_REF_NAME" \
+            '.aliases["jdbc-mcp-server"]["script-ref"] = "https://github.com/igorolv/jdbc-mcp-server/releases/download/" + $t + "/jdbc-mcp-server.jar"' \
+            jbang-catalog.json > catalog.tmp && mv catalog.tmp jbang-catalog.json
+          cat jbang-catalog.json
+
+      - name: Commit and push the catalog
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Point the JBang catalog at $GITHUB_REF_NAME"
+          git push origin HEAD:main
 
   docker:
     name: Publish Docker image

@@ -11,6 +11,7 @@ How to register the server with each MCP client, and how to run it by hand or in
 - [Other clients](#other-clients)
 - [Tips for every client](#tips-for-every-client)
 - [Running by hand](#running-by-hand)
+- [JBang](#jbang)
 - [Docker](#docker)
 
 The server is a local stdio process, so every MCP client registers it the same way: the command is
@@ -165,6 +166,8 @@ Cursor (`.cursor/mcp.json` or `~/.cursor/mcp.json`), Claude Desktop
 - **Restart after editing `connections.json`** — the file is read once at startup.
 - **When the client only says "failed to start"**, run the same command in a terminal; see
   [Checking the configuration](connections.md#checking-a-configuration).
+- **JBang instead of a downloaded jar:** the command is `jbang` with the arguments
+  `--quiet jdbc-mcp-server@igorolv/jdbc-mcp-server` — see [JBang](#jbang).
 - **Docker instead of a local JDK:** the command is `docker` with the arguments
   `run -i --rm -v /home/me/.jdbc-mcp-server:/data ghcr.io/igorolv/jdbc-mcp-server:latest` — see
   [Docker](#docker).
@@ -181,6 +184,45 @@ java -jar jdbc-mcp-server.jar
 The server immediately starts listening for MCP over stdin/stdout; no port is opened. Logs are
 written to stderr and to `<data-dir>/logs/`. Running it by hand is mostly useful to
 [check a configuration](connections.md#checking-a-configuration); `Ctrl-D` stops it.
+
+## JBang
+
+[JBang](https://www.jbang.dev/) downloads the released jar, and a JDK when none of version 21 or
+newer is installed, then starts the server as an ordinary local process:
+
+```bash
+jbang --quiet jdbc-mcp-server@igorolv/jdbc-mcp-server
+```
+
+Without JBang installed, Node.js can fetch it:
+
+```bash
+npx -y @jbangdev/jbang --quiet jdbc-mcp-server@igorolv/jdbc-mcp-server
+```
+
+Either command is what an MCP client should launch, for example in the common `mcpServers` shape:
+
+```json
+{
+  "mcpServers": {
+    "jdbc": {
+      "command": "jbang",
+      "args": ["--quiet", "jdbc-mcp-server@igorolv/jdbc-mcp-server"]
+    }
+  }
+}
+```
+
+- The server reads the same `connections.json` and keeps its catalogs and logs in the same data
+  directory as when started with `java -jar`.
+- Keep `--quiet`: it stops JBang from printing its own messages while the client talks to the
+  server over stdin/stdout.
+- The first start downloads the jar, and possibly a JDK, so a client with a short startup timeout
+  may report a failure once. Run the command in a terminal first, stop it with `Ctrl-D`, then
+  register it.
+- The alias names one released version; `jbang-catalog.json` in this repository is updated with
+  every release. JBang caches what it downloads: if it keeps starting an older version, run
+  `jbang cache clear`.
 
 ## Docker
 

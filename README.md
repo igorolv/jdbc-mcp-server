@@ -71,7 +71,8 @@ all JDBC drivers are bundled), or build it yourself:
 ```
 
 No local JDK? Use the Docker image `ghcr.io/igorolv/jdbc-mcp-server` instead — see
-[Docker](docs/clients.md#docker).
+[Docker](docs/clients.md#docker). Or let [JBang](docs/clients.md#jbang) fetch the jar and a JDK:
+`jbang --quiet jdbc-mcp-server@igorolv/jdbc-mcp-server`.
 
 **2. Describe your databases** in `~/.jdbc-mcp-server/connections.json`
 (`%USERPROFILE%\.jdbc-mcp-server\connections.json` on Windows, `/data/connections.json` in the
