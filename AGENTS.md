@@ -24,7 +24,8 @@ inspected database:
 - **Catalog administration** — rebuild the persistent structure snapshot and usage index into a distributable SQLite catalog.
 - **Connections** — list the databases this server serves and which one answers by default.
 
-The server communicates over stdio (stdin/stdout). PostgreSQL, Oracle, SQL Server, Firebird (Jaybird),
+The server communicates over stdio (stdin/stdout) by default; `JDBC_MCP_TRANSPORT=http` serves the
+same tools over streamable HTTP instead (see [Streamable HTTP transport](#streamable-http-transport)). PostgreSQL, Oracle, SQL Server, Firebird (Jaybird),
 and SQLite JDBC drivers are bundled inside the fat jar.
 
 When explicitly enabled, the server exposes a catalog manifest and parameterized table/column MCP
@@ -176,13 +177,14 @@ The structure snapshot persists structural metadata in the local SQLite `<catalo
 forever", no TTL); live stats are not cached. SQLite WAL lets several local MCP processes share one
 catalog. Build and checkpoint it with `rebuildCatalog`; clear it only while all processes are stopped.
 
-Only two environment variables shape the server process itself:
+Only two environment variables shape where the server keeps its data:
 
 - **Data directory** — `JDBC_MCP_DATA_DIR` (default `~/.jdbc-mcp-server`). Shared root for all
   server-local data; each connection gets its own subdirectory under it.
 - **Connections file** — `JDBC_MCP_CONNECTIONS_FILE` (default `<data-dir>/connections.json`).
 
-(Plus `JDBC_MCP_RESOURCES_ENABLED` and the `JDBC_MCP_TOOLS_*` group flags, which shape the manifest.)
+(Plus `JDBC_MCP_RESOURCES_ENABLED` and the `JDBC_MCP_TOOLS_*` group flags, which shape the manifest,
+and the `JDBC_MCP_TRANSPORT` / `JDBC_MCP_HTTP_*` settings of the optional HTTP transport.)
 
 ## Step 2: Build
 
@@ -204,6 +206,25 @@ java -jar build/libs/jdbc-mcp-server.jar
 
 The server talks MCP over stdio (no HTTP ports are opened). If it starts without errors it is
 ready to be wired into an MCP client. Type `Ctrl-D` to stop.
+
+### Streamable HTTP transport
+
+For a long-running server shared by several clients (a backend service, several agents), start it
+with `JDBC_MCP_TRANSPORT=http`. It then listens on `http://127.0.0.1:8090/mcp` (streamable HTTP;
+`JDBC_MCP_HTTP_ADDRESS` / `JDBC_MCP_HTTP_PORT` change it) and reads nothing from stdin.
+
+- **Parallelism.** Over HTTP tool calls run in parallel, also within one session; stdio keeps them
+  sequential (`immediateExecution(true)`, MCP Java SDK #686, a stdio-only defect). Size each
+  connection's `poolMaximumSize` for the expected concurrency.
+- **Admission.** There are no user accounts. Requests are refused (`403`) when the `Host` header is
+  not a loopback name while the server is bound to loopback (DNS-rebinding guard), or when a browser
+  `Origin` is not a loopback origin; `JDBC_MCP_HTTP_ALLOWED_HOSTS` / `JDBC_MCP_HTTP_ALLOWED_ORIGINS`
+  extend these lists. With `JDBC_MCP_HTTP_TOKEN` set, every request needs
+  `Authorization: Bearer <token>` (`401` otherwise). Bind to a non-loopback address only together
+  with a token.
+- **Client config.** Clients register a URL instead of a command, e.g. Claude Code:
+  `claude mcp add --transport http jdbc http://127.0.0.1:8090/mcp`. See `docs/clients.md`
+  ("Streamable HTTP").
 
 ## Step 4: Connect to an MCP client
 

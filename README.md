@@ -8,7 +8,7 @@
 [![Glama score](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server/badges/score.svg)](https://glama.ai/mcp/servers/igorolv/jdbc-mcp-server)
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/igorolv/jdbc-mcp-server)
 
-MCP server (stdio) that exposes read-only access to relational databases over JDBC: schema
+MCP server (stdio, or streamable HTTP) that exposes read-only access to relational databases over JDBC: schema
 metadata, `SELECT` execution, execution plans, statistics and index analysis. Built-in dialects
 for PostgreSQL, Oracle, SQL Server, Firebird and SQLite (drivers bundled); other databases are
 served through `DatabaseMetaData` with an external driver.
@@ -44,7 +44,8 @@ served through `DatabaseMetaData` with an external driver.
   ([usage catalog](#usage-catalog)).
 - **Clients:** any MCP client with stdio transport; configuration examples for Claude Code, Codex
   CLI, OpenCode, VS Code, Copilot CLI, Cursor, Claude Desktop and Qwen Code in
-  [docs/clients.md](docs/clients.md).
+  [docs/clients.md](docs/clients.md). Optionally one long-running server over
+  [streamable HTTP](docs/clients.md#streamable-http) serves several clients at once.
 
 ## Typical Scenarios
 
@@ -198,7 +199,8 @@ If the first call against a database fails, see
 ```
 
 - **One process, many databases.** The client starts the server as a child process and talks to it
-  over stdio. The databases come from [`connections.json`](docs/connections.md); a connection's
+  over stdio — or, with `JDBC_MCP_TRANSPORT=http`, the server runs on its own and serves several
+  clients over [streamable HTTP](docs/clients.md#streamable-http). The databases come from [`connections.json`](docs/connections.md); a connection's
   pool, local catalog and services are created only when a tool call first names it, so a database
   that is down or misconfigured affects only the calls made against it.
 - **The SQL path.** Every statement goes through the read-only guard first, then runs on a
@@ -214,7 +216,9 @@ If the first call against a database fails, see
   [Persistent Structure Snapshot](#persistent-structure-snapshot) and [Usage Catalog](#usage-catalog).
 - **Execution model.** Tool calls on one stdio session run sequentially. The MCP Java SDK 2.0.0 used
   by Spring AI 2.0.1 can lose responses when several concurrently executed tools finish at the same
-  time, so the server keeps `immediateExecution(true)` until the SDK fixes this. A client's
+  time on the single stdout stream, so stdio keeps `immediateExecution(true)` until the SDK fixes
+  this. Over streamable HTTP every request has its own response, and tool calls — of one session or
+  of many — run in parallel, bounded by the connection's pool size and `queryTimeoutSeconds`. A client's
   `notifications/cancelled` is not propagated to JDBC `Statement.cancel()`; the configured
   `queryTimeoutSeconds` (or a tool call's `timeoutSeconds` override) remains the server-side limit
   for a running SQL statement.
@@ -632,6 +636,10 @@ environment configures only the server process itself:
 | Variable | Required | Description |
 |---|---|---|
 | `JDBC_MCP_CONNECTIONS_FILE` | no | Path of the JSON file describing the named connections this server serves; default `<data-dir>/connections.json`. A missing or empty file starts the server with no connections (warning logged); a malformed one is a startup error |
+| `JDBC_MCP_TRANSPORT` | no | `stdio` (default): the client starts the server and talks over stdin/stdout. `http`: streamable HTTP at `http://<address>:<port>/mcp`, for several clients and parallel tool calls — see [Streamable HTTP](docs/clients.md#streamable-http) |
+| `JDBC_MCP_HTTP_ADDRESS` / `JDBC_MCP_HTTP_PORT` | no | HTTP transport only: listen address (default `127.0.0.1`) and port (default `8090`) |
+| `JDBC_MCP_HTTP_TOKEN` | no | HTTP transport only: when set, every request needs `Authorization: Bearer <token>` |
+| `JDBC_MCP_HTTP_ALLOWED_HOSTS` / `JDBC_MCP_HTTP_ALLOWED_ORIGINS` | no | HTTP transport only: `Host` values and browser origins accepted besides loopback ones (comma-separated) |
 | `JDBC_MCP_DATA_DIR` | no | Root directory for server-local data, default `~/.jdbc-mcp-server`. Each connection gets its own subdirectory under it |
 | `JDBC_MCP_RESOURCES_ENABLED` | no | Expose the catalog-qualified manifest and table/column resource templates with argument completion; default `false` |
 | `JDBC_MCP_TOOLS_*` | no | Per-group tool toggles that control which tools appear in `tools/list`. All groups default to `true`; set a group to `false` to hide it (useful for small-context models). See [Tool Groups](#tool-groups) |
@@ -653,7 +661,7 @@ Result: `build/libs/jdbc-mcp-server.jar` (includes PostgreSQL, Oracle, SQL Serve
 
 ## Stack
 
-- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.1 (`stdio` transport)
+- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.1 (`stdio` transport; optional streamable HTTP on Spring MVC)
 - HikariCP through Spring Boot `starter-jdbc`
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10

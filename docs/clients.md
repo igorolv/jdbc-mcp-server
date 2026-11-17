@@ -13,8 +13,9 @@ How to register the server with each MCP client, and how to run it by hand or in
 - [Running by hand](#running-by-hand)
 - [JBang](#jbang)
 - [Docker](#docker)
+- [Streamable HTTP](#streamable-http)
 
-The server is a local stdio process, so every MCP client registers it the same way: the command is
+By default the server is a local stdio process, so every MCP client registers it the same way: the command is
 `java`, the arguments are `-jar <absolute-path>/jdbc-mcp-server.jar`, and there is no environment to
 set. The databases come from [`connections.json`](connections.md); credentials are kept
 out of the client config on purpose — see
@@ -242,3 +243,82 @@ must be inside the mounted directory or mounted separately — see
 ```bash
 docker build -t jdbc-mcp-server .
 ```
+
+## Streamable HTTP
+
+By default the client starts the server as a child process (stdio): one process per client, and the
+tool calls of a session run one after another. When one server should serve several clients — a
+backend service, several agents, a team machine — or run tool calls in parallel, start it on its
+own with the streamable HTTP transport:
+
+```bash
+JDBC_MCP_TRANSPORT=http java -jar jdbc-mcp-server.jar
+```
+
+```powershell
+$env:JDBC_MCP_TRANSPORT = "http"; java -jar jdbc-mcp-server.jar
+```
+
+The MCP endpoint is `http://127.0.0.1:8090/mcp`. The server reads nothing from stdin and runs until
+it is stopped. `connections.json` is still the only place databases are configured.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `JDBC_MCP_TRANSPORT` | `stdio` | `http` turns on this transport |
+| `JDBC_MCP_HTTP_ADDRESS` | `127.0.0.1` | Listen address; `0.0.0.0` for all interfaces |
+| `JDBC_MCP_HTTP_PORT` | `8090` | Listen port |
+| `JDBC_MCP_HTTP_TOKEN` | — | When set, every request needs `Authorization: Bearer <token>` |
+| `JDBC_MCP_HTTP_ALLOWED_HOSTS` | — | `Host` header values accepted besides `localhost`, `127.0.0.1`, `[::1]` (comma-separated; `*` turns the check off) |
+| `JDBC_MCP_HTTP_ALLOWED_ORIGINS` | — | Browser origins accepted besides loopback ones (comma-separated; `*` for any) |
+
+**Parallel tool calls.** Over HTTP each request gets its own response, so tool calls run in
+parallel — those of different clients and those of one session. (Over stdio they stay sequential:
+the MCP Java SDK can lose responses when concurrent calls finish together on the one stdout stream.)
+Concurrency against a database is bounded by that connection's `poolMaximumSize` and
+`queryTimeoutSeconds`; size them for the expected load.
+
+**Who may connect.** The server has no user accounts; every caller can use every configured
+connection, read-only. Keep it on loopback unless the network around it is trusted:
+
+- While bound to a loopback address, a request whose `Host` header is not a loopback name is
+  refused with `403`. A web page that rebinds its DNS name to `127.0.0.1` still sends its own name,
+  so this stops DNS-rebinding attacks from a browser.
+- A request with a browser `Origin` that is not a loopback origin is refused with `403`. MCP clients
+  send no `Origin` and are not affected.
+- With `JDBC_MCP_HTTP_TOKEN` set, a request without the right `Authorization: Bearer` header is
+  refused with `401`. Set a token whenever the server listens on a non-loopback address, and list
+  the names clients use for the machine in `JDBC_MCP_HTTP_ALLOWED_HOSTS`. The token protects access
+  to the server only — database credentials still never leave `connections.json`.
+
+**Registering the URL.** Clients register a URL instead of a command:
+
+```bash
+claude mcp add --transport http jdbc http://127.0.0.1:8090/mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "jdbc": {
+      "type": "http",
+      "url": "http://127.0.0.1:8090/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+The `headers` entry is needed only with `JDBC_MCP_HTTP_TOKEN`. VS Code (`"servers"`) uses the same
+`type: "http"` / `url` shape. From Java, Spring AI's MCP client connects with
+`spring.ai.mcp.client.streamable-http.connections.jdbc.url=http://127.0.0.1:8090`.
+
+**Docker.** Listen on all interfaces inside the container, publish the port on loopback, and set a
+token:
+
+```bash
+docker run -d --rm -p 127.0.0.1:8090:8090 -v ~/.jdbc-mcp-server:/data \
+  -e JDBC_MCP_TRANSPORT=http -e JDBC_MCP_HTTP_ADDRESS=0.0.0.0 \
+  -e JDBC_MCP_HTTP_TOKEN=<token> -e JDBC_MCP_HTTP_ALLOWED_HOSTS=localhost \
+  ghcr.io/igorolv/jdbc-mcp-server:latest
+```
+

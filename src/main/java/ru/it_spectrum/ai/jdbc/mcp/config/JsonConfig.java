@@ -12,9 +12,14 @@ import tools.jackson.databind.json.JsonMapper;
 @Configuration
 public class JsonConfig {
 
+    /**
+     * Declared as {@link JsonMapper}, not {@link ObjectMapper}: with the HTTP transport on the class
+     * path, Spring Boot's Jackson auto-configuration adds a primary {@code JsonMapper} of its own
+     * unless one exists, and two primary mappers fail every {@code ObjectMapper} injection.
+     */
     @Bean
     @Primary
-    public ObjectMapper jdbcMcpObjectMapper() {
+    public JsonMapper jdbcMcpObjectMapper() {
         // Jackson 3 mapper. WRITE_DATES_AS_TIMESTAMPS is off by default in J3 (moved to
         // DateTimeFeature), so it is no longer set explicitly. SORT_PROPERTIES_ALPHABETICALLY
         // is *on* by default in J3 — disabled here to preserve the existing key order our

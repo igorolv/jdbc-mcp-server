@@ -1,0 +1,2 @@
+# The MCP transport chosen by JDBC_MCP_TRANSPORT (stdio by default, or streamable HTTP)
+org.springframework.boot.EnvironmentPostProcessor=ru.it_spectrum.ai.jdbc.mcp.config.TransportSettings

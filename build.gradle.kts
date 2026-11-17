@@ -21,6 +21,7 @@ dependencies {
     implementation(libs.spring.boot.starter)
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.ai.mcp.server)
+    implementation(libs.spring.ai.mcp.server.webmvc)
     implementation(libs.jsqlparser)
     implementation(libs.sqlite.jdbc)
     implementation(libs.antlr4.runtime)
