@@ -1,5 +1,6 @@
 spring:
   main:
+    # Set by jdbc-mcp.transport (config/TransportSettings): none for stdio, servlet for http.
     web-application-type: none
     banner-mode: off
   ai:
@@ -8,6 +9,8 @@ spring:
         name: jdbc-mcp-server
         version: 0.1.0
         stdio: true
+        streamable-http:
+          mcp-endpoint: /mcp
   # Disable Spring Boot's default DataSource autoconfiguration. The root context has no
   # DataSource at all — each connection builds its own read-only, dialect-aware pool inside its
   # per-connection context, with the driver detected from the JDBC URL.
@@ -19,6 +22,20 @@ spring:
 # slot under <data-dir>/<connection>/ (usage-catalog/ and the persisted snapshot); the one server
 # process writes its shared log under <data-dir>/logs/.
 jdbc-mcp:
+  # MCP transport: stdio (default) for a client that starts the server as a child process, http for
+  # the streamable HTTP transport at http://<address>:<port>/mcp, which serves several clients and
+  # runs their tool calls in parallel.
+  transport: ${JDBC_MCP_TRANSPORT:stdio}
+  # Used by the http transport only (config/HttpTransportConfig).
+  http:
+    # When set, every request must carry "Authorization: Bearer <token>".
+    token: ${JDBC_MCP_HTTP_TOKEN:}
+    # Comma-separated browser origins allowed besides loopback ones (http://localhost:*, ...).
+    # A request without an Origin header (any non-browser client) is not affected.
+    allowed-origins: ${JDBC_MCP_HTTP_ALLOWED_ORIGINS:}
+    # Comma-separated Host header values allowed besides loopback names; guards a loopback-bound
+    # server against DNS rebinding. Listing "*" turns the Host check off.
+    allowed-hosts: ${JDBC_MCP_HTTP_ALLOWED_HOSTS:}
   data-dir: ${JDBC_MCP_DATA_DIR:${user.home}/.jdbc-mcp-server}
   # JSON file describing the named connections this server serves — the only place databases,
   # credentials and their per-connection settings are configured. Defaults to
@@ -44,3 +61,9 @@ jdbc-mcp:
     schema-context: ${JDBC_MCP_TOOLS_SCHEMA_CONTEXT:true} # tableContext/joinPaths/schemaGraph/lint
     connections: ${JDBC_MCP_TOOLS_CONNECTIONS:true}      # listConnections
 
+# Used by the http transport only. The server has no user accounts: the default address accepts
+# local clients only. Binding elsewhere (JDBC_MCP_HTTP_ADDRESS=0.0.0.0) should come with
+# JDBC_MCP_HTTP_TOKEN and JDBC_MCP_HTTP_ALLOWED_HOSTS.
+server:
+  address: ${JDBC_MCP_HTTP_ADDRESS:127.0.0.1}
+  port: ${JDBC_MCP_HTTP_PORT:8090}
