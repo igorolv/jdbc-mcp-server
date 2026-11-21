@@ -84,10 +84,11 @@ Why both flags are needed (this trips up everyone who skims one half of it):
   treats a `@Schema` without an explicit `requiredMode` as `AUTO` and emits the field into the
   schema's `required[]` array. Setting `nullable = true` alone does **not** remove the field
   from `required[]`.
-- The autoconfigured `mcpServerJsonMapper` bean
-  (`McpServerJsonMapperAutoConfiguration#mcpServerJsonMapper`) serialises responses with
-  `JsonInclude.Include.NON_NULL` for both values and content, so any field that is `null` at
-  runtime is **stripped from the wire JSON**.
+- The `mcpServerJsonMapper` bean (`JsonConfig#mcpServerJsonMapper`, overriding Spring AI's
+  `McpServerJsonMapperAutoConfiguration#mcpServerJsonMapper`) serialises responses with
+  `JsonInclude.Value.construct(NON_NULL, ALWAYS)`: `null` bean properties are **stripped from
+  the wire JSON**, while `null` entries inside maps (such as `namedParams: {"d": null}` and
+  SQL result rows) are preserved.
 - Combined, an optional field with default annotations produces a schema that says "required"
   while the actual JSON omits the key. The networknt validator running inside the MCP server
   then rejects the response with `MCP error -32602: ... must have required property 'X'`.
@@ -97,9 +98,9 @@ The fix on each axis:
 - `nullable = true` makes the JSON Schema type a union with `null`, so a backend that emits
   `"X": null` still validates.
 
-`OutputSchemaSmokeTest` (`src/test/java/.../model/`) reproduces the failure path against a
-faithful copy of the autoconfigured server mapper and locks the convention in. When you add a
-new response record, run that test plus `ToolOutputSchemaSmokeTest`.
+`OutputSchemaSmokeTest` (`src/test/java/.../model/`) validates against
+`JsonConfig#mcpServerJsonMapper()` and locks the convention in. When you add a new response
+record, run that test plus `ToolOutputSchemaSmokeTest`.
 
 ## Prerequisites
 
