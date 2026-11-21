@@ -661,7 +661,7 @@ Result: `build/libs/jdbc-mcp-server.jar` (includes PostgreSQL, Oracle, SQL Serve
 
 ## Stack
 
-- Java 21, Spring Boot 4.0, Spring AI MCP 2.0.1 (`stdio` transport; optional streamable HTTP on Spring MVC)
+- Java 21, Spring Boot 4.2, Spring AI MCP 2.1.0 (`stdio` transport; optional streamable HTTP on Spring MVC)
 - HikariCP through Spring Boot `starter-jdbc`
 - PostgreSQL JDBC 42.7.4
 - Oracle JDBC `ojdbc11` 23.6.0.24.10

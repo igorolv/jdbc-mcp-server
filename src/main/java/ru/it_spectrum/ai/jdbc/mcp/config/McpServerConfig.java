@@ -1,6 +1,7 @@
 package ru.it_spectrum.ai.jdbc.mcp.config;
 
-import org.springframework.ai.mcp.customizer.McpSyncServerCustomizer;
+import io.modelcontextprotocol.server.McpServer;
+import org.springframework.ai.mcp.customizer.McpServerCustomizer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,7 +24,7 @@ public class McpServerConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "spring.ai.mcp.server", name = "stdio", havingValue = "true")
-    McpSyncServerCustomizer stdioSyncServerCustomizer() {
+    McpServerCustomizer<McpServer.SyncSpecification<?>> stdioSyncServerCustomizer() {
         return serverBuilder -> serverBuilder.immediateExecution(true);
     }
 }

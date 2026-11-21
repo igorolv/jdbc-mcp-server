@@ -8,9 +8,9 @@ import io.modelcontextprotocol.json.schema.jackson3.DefaultJsonSchemaValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.annotation.method.tool.utils.McpJsonSchemaGenerator;
 import org.springframework.ai.util.JacksonUtils;
-import org.springframework.ai.util.json.JsonParser;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.ListTablesResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.metadata.TableEntry;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -70,9 +70,10 @@ class OutputSchemaSmokeTest {
 
         Object parsed = SERVER_MAPPER.readValue(wireJson, Object.class);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> schemaMap = JsonParser.fromJson(
-                McpJsonSchemaGenerator.generateFromClass(ListTablesResult.class), Map.class);
+        Map<String, Object> schemaMap = SERVER_MAPPER.readValue(
+                McpJsonSchemaGenerator.generateFromClass(ListTablesResult.class),
+                new TypeReference<>() {
+                });
 
         var result = VALIDATOR.validate(schemaMap, parsed);
         assertThat(result.valid())
