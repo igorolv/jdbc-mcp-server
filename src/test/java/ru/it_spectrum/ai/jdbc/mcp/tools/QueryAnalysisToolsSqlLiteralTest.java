@@ -20,6 +20,10 @@ class QueryAnalysisToolsSqlLiteralTest {
     void formatsTypedValuesForSqlServerShowplan() {
         assertThat(QueryAnalysisTools.sqlLiteral(null)).isEqualTo("NULL");
         assertThat(QueryAnalysisTools.sqlLiteral(new TypedNull(Types.TIMESTAMP))).isEqualTo("NULL");
+        assertThat(QueryAnalysisTools.sqlLiteral(LocalDate.of(2026, 11, 20)))
+                .isEqualTo("CAST('2026-11-20' AS DATE)");
+        assertThat(QueryAnalysisTools.sqlLiteral(LocalDateTime.of(2026, 11, 20, 15, 30, 45, 123_456_000)))
+                .isEqualTo("CAST('2026-11-20T15:30:45.123456' AS DATETIME2)");
         assertThat(QueryAnalysisTools.sqlLiteral(Date.valueOf(LocalDate.of(2026, 11, 20))))
                 .isEqualTo("CAST('2026-11-20' AS DATE)");
         assertThat(QueryAnalysisTools.sqlLiteral(Timestamp.valueOf(LocalDateTime.of(2026, 11, 20, 15, 30, 0))))

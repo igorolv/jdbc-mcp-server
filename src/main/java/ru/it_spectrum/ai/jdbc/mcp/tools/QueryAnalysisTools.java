@@ -29,6 +29,8 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -594,6 +596,12 @@ public class QueryAnalysisTools {
             }
             case SqlParameterTypes.TypedNull ignored -> {
                 return "NULL";
+            }
+            case LocalDate ld -> {
+                return "CAST('" + ld + "' AS DATE)";
+            }
+            case LocalDateTime ldt -> {
+                return "CAST('" + ldt + "' AS DATETIME2)";
             }
             case Date d -> {
                 return "CAST('" + d + "' AS DATE)";

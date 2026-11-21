@@ -34,9 +34,9 @@ class SqlParameterTypesTest {
         UUID uuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
 
         assertThat(SqlParameterTypes.convertValue(SqlParamType.parse("DATE"), "2026-11-20", "d"))
-                .isEqualTo(Date.valueOf(LocalDate.of(2026, 11, 20)));
-        assertThat(SqlParameterTypes.convertValue(SqlParamType.parse("Timestamp"), "2026-11-20T15:30:45", "ts"))
-                .isEqualTo(Timestamp.valueOf(LocalDateTime.of(2026, 11, 20, 15, 30, 45)));
+                .isEqualTo(LocalDate.of(2026, 11, 20));
+        assertThat(SqlParameterTypes.convertValue(SqlParamType.parse("Timestamp"), "2026-11-20T15:30:45.123456", "ts"))
+                .isEqualTo(LocalDateTime.of(2026, 11, 20, 15, 30, 45, 123_456_000));
         assertThat(SqlParameterTypes.convertValue(SqlParamType.parse("timestamptz"), "2026-11-20T15:30:45+03:00", "tz"))
                 .isEqualTo(OffsetDateTime.of(2026, 11, 20, 15, 30, 45, 0, ZoneOffset.ofHours(3)));
         assertThat(SqlParameterTypes.convertValue(SqlParamType.parse("UUID"), uuid.toString(), "id"))
@@ -63,11 +63,11 @@ class SqlParameterTypesTest {
     @Test
     void timestampAcceptsSpaceSeparatorAndDateOnly() {
         assertThat(SqlParameterTypes.convertValue(SqlParamType.timestamp, "2026-11-20 15:30:45", "ts"))
-                .isEqualTo(Timestamp.valueOf(LocalDateTime.of(2026, 11, 20, 15, 30, 45)));
+                .isEqualTo(LocalDateTime.of(2026, 11, 20, 15, 30, 45));
         assertThat(SqlParameterTypes.convertValue(SqlParamType.timestamp, "2026-11-20 15:30:45.5", "ts"))
-                .isEqualTo(Timestamp.valueOf(LocalDateTime.of(2026, 11, 20, 15, 30, 45, 500_000_000)));
+                .isEqualTo(LocalDateTime.of(2026, 11, 20, 15, 30, 45, 500_000_000));
         assertThat(SqlParameterTypes.convertValue(SqlParamType.timestamp, "2026-11-20", "ts"))
-                .isEqualTo(Timestamp.valueOf(LocalDateTime.of(2026, 11, 20, 0, 0, 0)));
+                .isEqualTo(LocalDateTime.of(2026, 11, 20, 0, 0, 0));
     }
 
     @Test
@@ -134,16 +134,18 @@ class SqlParameterTypesTest {
     }
 
     @Test
-    void bindsTypedObjectsAndFallsBackWhenOffsetDateTimeUnsupported() throws SQLException {
+    void bindsTypedObjectsWithExplicitSqlTypesAndFallsBackWhenUnsupported() throws SQLException {
         PreparedStatement ps = mock(PreparedStatement.class);
-        Date d = Date.valueOf(LocalDate.of(2026, 11, 20));
+        LocalDate ld = LocalDate.of(2024, 2, 29);
+        LocalDateTime ldt = LocalDateTime.of(2024, 2, 29, 15, 30, 45, 123_456_000);
+        Date d = Date.valueOf(ld);
         Timestamp ts = Timestamp.valueOf(LocalDateTime.of(2026, 11, 20, 12, 0, 0));
         OffsetDateTime odt = OffsetDateTime.of(2026, 11, 20, 12, 0, 0, 0, ZoneOffset.UTC);
         UUID uuid = UUID.randomUUID();
         BigDecimal dec = new BigDecimal("10.50");
 
-        SqlParameterTypes.bind(ps, 1, d);
-        SqlParameterTypes.bind(ps, 2, ts);
+        SqlParameterTypes.bind(ps, 1, ld);
+        SqlParameterTypes.bind(ps, 2, ldt);
         SqlParameterTypes.bind(ps, 3, uuid);
         SqlParameterTypes.bind(ps, 4, 42L);
         SqlParameterTypes.bind(ps, 5, dec);
@@ -151,9 +153,11 @@ class SqlParameterTypesTest {
         SqlParameterTypes.bind(ps, 7, "text");
         SqlParameterTypes.bind(ps, 8, null);
         SqlParameterTypes.bind(ps, 9, odt);
+        SqlParameterTypes.bind(ps, 10, d);
+        SqlParameterTypes.bind(ps, 11, ts);
 
-        verify(ps).setDate(1, d);
-        verify(ps).setTimestamp(2, ts);
+        verify(ps).setObject(1, ld, Types.DATE);
+        verify(ps).setObject(2, ldt, Types.TIMESTAMP);
         verify(ps).setObject(3, uuid);
         verify(ps).setLong(4, 42L);
         verify(ps).setBigDecimal(5, dec);
@@ -161,11 +165,21 @@ class SqlParameterTypesTest {
         verify(ps).setString(7, "text");
         verify(ps).setNull(8, Types.VARCHAR);
         verify(ps).setObject(9, odt);
+        verify(ps).setDate(10, d);
+        verify(ps).setTimestamp(11, ts);
 
         PreparedStatement legacyDriver = mock(PreparedStatement.class);
-        doThrow(new SQLFeatureNotSupportedException("no OffsetDateTime")).when(legacyDriver).setObject(1, odt);
-        SqlParameterTypes.bind(legacyDriver, 1, odt);
-        verify(legacyDriver).setTimestamp(1, Timestamp.from(odt.toInstant()));
+        doThrow(new SQLFeatureNotSupportedException("no LocalDate")).when(legacyDriver).setObject(1, ld, Types.DATE);
+        doThrow(new SQLFeatureNotSupportedException("no LocalDateTime")).when(legacyDriver).setObject(2, ldt, Types.TIMESTAMP);
+        doThrow(new SQLFeatureNotSupportedException("no OffsetDateTime")).when(legacyDriver).setObject(3, odt);
+
+        SqlParameterTypes.bind(legacyDriver, 1, ld);
+        SqlParameterTypes.bind(legacyDriver, 2, ldt);
+        SqlParameterTypes.bind(legacyDriver, 3, odt);
+
+        verify(legacyDriver).setDate(1, Date.valueOf(ld));
+        verify(legacyDriver).setTimestamp(2, Timestamp.valueOf(ldt));
+        verify(legacyDriver).setTimestamp(3, Timestamp.from(odt.toInstant()));
     }
 
     @Test
@@ -177,8 +191,8 @@ class SqlParameterTypesTest {
                 List.of(new SqlParamTypeEntry("dates", SqlParamType.date)));
 
         assertThat(binding.namedParams().get("dates")).isEqualTo(List.of(
-                Date.valueOf("2026-11-20"),
-                Date.valueOf("2026-11-21")));
+                LocalDate.of(2026, 11, 20),
+                LocalDate.of(2026, 11, 21)));
 
         NamedParameterRewriter.PreparedSql rewritten = NamedParameterRewriter.rewrite(
                 "SELECT * FROM events WHERE event_date IN (:dates)",
@@ -186,8 +200,8 @@ class SqlParameterTypesTest {
 
         assertThat(rewritten.sql()).isEqualTo("SELECT * FROM events WHERE event_date IN (?, ?)");
         assertThat(rewritten.params()).containsExactly(List.of(
-                Date.valueOf("2026-11-20"),
-                Date.valueOf("2026-11-21")));
+                LocalDate.of(2026, 11, 20),
+                LocalDate.of(2026, 11, 21)));
     }
 
     @Test
@@ -199,7 +213,7 @@ class SqlParameterTypesTest {
                 List.of(new SqlParamTypeEntry("1", SqlParamType.timestamp)));
 
         assertThat(binding.params()).containsExactly(
-                Timestamp.valueOf(LocalDateTime.of(2026, 11, 20, 9, 15, 0)),
+                LocalDateTime.of(2026, 11, 20, 9, 15, 0),
                 "PAID");
     }
 

@@ -169,8 +169,8 @@ public final class SqlParameterTypes {
             return new TypedNull(type.sqlType());
         }
         return switch (type) {
-            case date -> toSqlDate(value, paramLabel);
-            case timestamp -> toSqlTimestamp(value, paramLabel);
+            case date -> toLocalDate(value, paramLabel);
+            case timestamp -> toLocalDateTime(value, paramLabel);
             case timestamptz -> toOffsetDateTime(value, paramLabel);
             case uuid -> toUuid(value, paramLabel);
             case integer -> toLong(value, paramLabel);
@@ -182,6 +182,21 @@ public final class SqlParameterTypes {
         switch (value) {
             case null -> ps.setNull(index, Types.VARCHAR);
             case TypedNull typedNull -> ps.setNull(index, typedNull.sqlType());
+            case LocalDate ld -> {
+                try {
+                    // Explicit Types.DATE preserves PostgreSQL Oid.DATE and Oracle DATE (ojdbc maps bare LocalDate to TIMESTAMP).
+                    ps.setObject(index, ld, Types.DATE);
+                } catch (SQLFeatureNotSupportedException e) {
+                    ps.setDate(index, Date.valueOf(ld));
+                }
+            }
+            case LocalDateTime ldt -> {
+                try {
+                    ps.setObject(index, ldt, Types.TIMESTAMP);
+                } catch (SQLFeatureNotSupportedException e) {
+                    ps.setTimestamp(index, Timestamp.valueOf(ldt));
+                }
+            }
             case Date d -> ps.setDate(index, d);
             case Timestamp ts -> ps.setTimestamp(index, ts);
             case OffsetDateTime odt -> {
@@ -200,17 +215,17 @@ public final class SqlParameterTypes {
         }
     }
 
-    private static Date toSqlDate(Object value, String paramLabel) {
-        if (value instanceof Date d) {
-            return d;
-        }
+    private static LocalDate toLocalDate(Object value, String paramLabel) {
         if (value instanceof LocalDate ld) {
-            return Date.valueOf(ld);
+            return ld;
+        }
+        if (value instanceof Date d) {
+            return d.toLocalDate();
         }
         if (value instanceof String s) {
             String trimmed = s.trim();
             try {
-                return Date.valueOf(LocalDate.parse(trimmed));
+                return LocalDate.parse(trimmed);
             } catch (DateTimeParseException e) {
                 throw new IllegalArgumentException(
                         "Invalid date value '" + trimmed + "' for parameter '" + paramLabel
@@ -223,15 +238,15 @@ public final class SqlParameterTypes {
                         + " for parameter '" + paramLabel + "'. Expected ISO-8601 string YYYY-MM-DD.");
     }
 
-    private static Timestamp toSqlTimestamp(Object value, String paramLabel) {
-        if (value instanceof Timestamp ts) {
-            return ts;
-        }
+    private static LocalDateTime toLocalDateTime(Object value, String paramLabel) {
         if (value instanceof LocalDateTime ldt) {
-            return Timestamp.valueOf(ldt);
+            return ldt;
+        }
+        if (value instanceof Timestamp ts) {
+            return ts.toLocalDateTime();
         }
         if (value instanceof LocalDate ld) {
-            return Timestamp.valueOf(ld.atStartOfDay());
+            return ld.atStartOfDay();
         }
         if (value instanceof String s) {
             String trimmed = s.trim();
@@ -245,10 +260,10 @@ public final class SqlParameterTypes {
             }
             String normalized = normalizeSpaceTimestamp(trimmed);
             try {
-                return Timestamp.valueOf(LocalDateTime.parse(normalized));
+                return LocalDateTime.parse(normalized);
             } catch (DateTimeParseException ignored) {
                 try {
-                    return Timestamp.valueOf(LocalDate.parse(trimmed).atStartOfDay());
+                    return LocalDate.parse(trimmed).atStartOfDay();
                 } catch (DateTimeParseException e) {
                     throw new IllegalArgumentException(
                             "Invalid timestamp value '" + trimmed + "' for parameter '" + paramLabel

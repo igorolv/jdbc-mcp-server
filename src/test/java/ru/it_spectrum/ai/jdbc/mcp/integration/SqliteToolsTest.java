@@ -22,6 +22,8 @@ import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLineageService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryLintService;
 import ru.it_spectrum.ai.jdbc.mcp.sql.ReadOnlyGuard;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlExecutor;
+import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParamType;
+import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParamTypeEntry;
 import ru.it_spectrum.ai.jdbc.mcp.tools.BenchmarkTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.DistributionTools;
 import ru.it_spectrum.ai.jdbc.mcp.tools.JsonResponses;
@@ -282,5 +284,37 @@ class SqliteToolsTest extends AbstractToolsIntegrationTest {
     @Test
     void anUnknownTableIsNotFoundRatherThanAnEmptyDescription() {
         assertUnknownTableIsNotFound("orders", "no_such_table");
+    }
+
+    @Test
+    void executeQuerySupportsTypedParamTypes() {
+        ObjectNode typed = object(queryTools().executeQuery(connection(),
+                "SELECT :d AS d, :ts AS ts, :n AS n, :dec AS dec",
+                null,
+                Map.of(
+                        "d", "2024-02-29",
+                        "ts", "2024-02-29T15:30:45",
+                        "n", "9007199254740993",
+                        "dec", "123.45"),
+                java.util.List.of(
+                        new SqlParamTypeEntry("d", SqlParamType.date),
+                        new SqlParamTypeEntry("ts", SqlParamType.timestamp),
+                        new SqlParamTypeEntry("n", SqlParamType.integer),
+                        new SqlParamTypeEntry("dec", SqlParamType.decimal)),
+                null,
+                5));
+        assertThat(field(row(typed, 0), "d").asText()).isEqualTo("2024-02-29");
+        assertThat(field(row(typed, 0), "ts").asText()).isEqualTo("2024-02-29T15:30:45");
+        assertThat(field(row(typed, 0), "n").asLong()).isEqualTo(9007199254740993L);
+        assertThat(field(row(typed, 0), "dec").asDouble()).isCloseTo(123.45, within(1e-9));
+
+        ObjectNode typedNull = object(queryTools().executeQuery(connection(),
+                "SELECT ? IS NULL AS is_null",
+                java.util.Collections.singletonList(null),
+                null,
+                java.util.List.of(new SqlParamTypeEntry("1", SqlParamType.date)),
+                null,
+                5));
+        assertThat(field(row(typedNull, 0), "is_null").asInt()).isEqualTo(1);
     }
 }
