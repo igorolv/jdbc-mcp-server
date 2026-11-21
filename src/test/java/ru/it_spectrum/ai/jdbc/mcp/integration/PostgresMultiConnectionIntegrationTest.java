@@ -147,12 +147,12 @@ class PostgresMultiConnectionIntegrationTest {
     void queriesGoToTheDatabaseNamedByTheConnectionArgument() {
         QueryResult orders = queryTools.executeQuery("orders@dev",
                 "SELECT current_database() AS db, count(*) AS n FROM orders_only",
-                null, null, null, null);
+                null, null, null, null, null);
         assertThat(orders.rows().getFirst()).containsEntry("db", "orders").containsEntry("n", 3L);
 
         QueryResult billing = queryTools.executeQuery("billing",
                 "SELECT current_database() AS db, count(*) AS n FROM billing_only",
-                null, null, null, null);
+                null, null, null, null, null);
         assertThat(billing.rows().getFirst()).containsEntry("db", "billing").containsEntry("n", 1L);
     }
 
@@ -203,12 +203,12 @@ class PostgresMultiConnectionIntegrationTest {
                 .containsExactly("orders@dev", "billing", "down");
         assertThat(byName(before, "down").initialized()).isFalse();
 
-        assertThatThrownBy(() -> queryTools.executeQuery("down", "SELECT 1", null, null, null, null))
+        assertThatThrownBy(() -> queryTools.executeQuery("down", "SELECT 1", null, null, null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"kind\":\"sql\"");
 
         // The healthy connections are unaffected by the broken one.
-        assertThat(queryTools.executeQuery("billing", "SELECT 1 AS one", null, null, null, null)
+        assertThat(queryTools.executeQuery("billing", "SELECT 1 AS one", null, null, null, null, null)
                 .rows()).hasSize(1);
 
         assertThat(byName(connectionTools.listConnections(), "down").initialized()).isTrue();
@@ -216,7 +216,7 @@ class PostgresMultiConnectionIntegrationTest {
 
     @Test
     void unknownConnectionNamesAreRejectedWithTheAvailableOnes() {
-        assertThatThrownBy(() -> queryTools.executeQuery("nope", "SELECT 1", null, null, null, null))
+        assertThatThrownBy(() -> queryTools.executeQuery("nope", "SELECT 1", null, null, null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"kind\":\"argument\"")
                 .hasMessageContaining("orders@dev, billing, down");
@@ -224,7 +224,7 @@ class PostgresMultiConnectionIntegrationTest {
 
     @Test
     void aMissingConnectionNameIsRejectedWithTheAvailableOnes() {
-        assertThatThrownBy(() -> queryTools.executeQuery(null, "SELECT 1", null, null, null, null))
+        assertThatThrownBy(() -> queryTools.executeQuery(null, "SELECT 1", null, null, null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"kind\":\"argument\"")
                 .hasMessageContaining("orders@dev, billing, down");

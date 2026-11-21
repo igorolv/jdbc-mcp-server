@@ -14,7 +14,7 @@ class OracleIntegrationBenchmarkToolsTest extends AbstractOracleToolsIntegration
     @Test
     void benchmarkQueryReturnsTimingSummary() {
         ObjectNode result = object(benchmarkTools().benchmarkQuery(connection(),
-                "SELECT * FROM events ORDER BY id", null, null, 50, 5, 1, 3));
+                "SELECT * FROM events ORDER BY id", null, null, null, 50, 5, 1, 3));
         assertThat(field(result, "runs").asInt()).isEqualTo(4);
         assertThat(field(field(result, "resultSize"), "rowCount").asInt()).isEqualTo(50);
         assertThat(field(field(result, "resultSize"), "truncated").asBoolean()).isTrue();
@@ -24,7 +24,7 @@ class OracleIntegrationBenchmarkToolsTest extends AbstractOracleToolsIntegration
     void benchmarkQuerySupportsNamedParams() {
         ObjectNode result = object(benchmarkTools().benchmarkQuery(connection(),
                 "SELECT * FROM events WHERE status = :status ORDER BY id",
-                null, Map.of("status", "OK"), 50, 5, 1, 2));
+                null, Map.of("status", "OK"), null, 50, 5, 1, 2));
         assertThat(field(result, "runs").asInt()).isEqualTo(3);
         assertThat(field(field(result, "resultSize"), "rowCount").asInt()).isEqualTo(50);
     }
@@ -33,20 +33,20 @@ class OracleIntegrationBenchmarkToolsTest extends AbstractOracleToolsIntegration
     void timedQueryReportsRowsAndGuardFailures() {
         ObjectNode result = object(benchmarkTools().timedQuery(connection(),
                 "SELECT * FROM events WHERE status = ?",
-                java.util.List.of("OK"), null, 200, 5));
+                java.util.List.of("OK"), null, null, 200, 5));
         assertThat(field(result, "rowCount").asInt()).isEqualTo(90);
         assertThat(field(field(result, "pgStatStatements"), "available").asBoolean()).isFalse();
 
         assertRejected(() ->
-                benchmarkTools().benchmarkQuery(connection(), "DELETE FROM events", null, null, 10, 5, 1, 1),
+                benchmarkTools().benchmarkQuery(connection(), "DELETE FROM events", null, null, null, 10, 5, 1, 1),
                 "Only SELECT");
         assertInvalidArgument(() ->
-                benchmarkTools().benchmarkQuery(connection(), "SELECT 1", null, null, 0, 5, 1, 1),
+                benchmarkTools().benchmarkQuery(connection(), "SELECT 1", null, null, null, 0, 5, 1, 1),
                 "limit");
         assertInvalidArgument(() ->
                 benchmarkTools().timedQuery(connection(),
                         "SELECT * FROM events WHERE status = ?",
-                        null, Map.of("status", "OK"), 10, 5),
+                        null, Map.of("status", "OK"), null, 10, 5),
                 "pass values in 'params'");
     }
 }

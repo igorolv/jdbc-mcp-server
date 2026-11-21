@@ -13,7 +13,6 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -162,12 +161,7 @@ public class SqlExecutor {
             return;
         }
         for (int i = 0; i < params.size(); i++) {
-            Object v = params.get(i);
-            if (v == null) {
-                ps.setNull(i + 1, Types.VARCHAR);
-            } else {
-                ps.setObject(i + 1, v);
-            }
+            SqlParameterTypes.bind(ps, i + 1, params.get(i));
         }
     }
 

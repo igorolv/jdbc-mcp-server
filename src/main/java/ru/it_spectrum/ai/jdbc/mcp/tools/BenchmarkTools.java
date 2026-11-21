@@ -11,6 +11,7 @@ import ru.it_spectrum.ai.jdbc.mcp.connection.ConnectionRegistry;
 import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.BenchmarkResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.benchmark.TimedQueryResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlNotAllowedException;
+import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParamTypeEntry;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -59,14 +60,16 @@ public class BenchmarkTools {
     public BenchmarkResult benchmarkQuery(
             @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
-            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
-            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Values for '?' placeholders, in order", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = QueryToolSupport.PARAM_TYPES_DESCRIPTION, required = false) List<SqlParamTypeEntry> paramTypes,
             @McpToolParam(description = "Row limit per run (> 0).") Integer limit,
             @McpToolParam(description = "Timeout per run in seconds (> 0).") Integer timeoutSeconds,
             @McpToolParam(description = "Cold runs (default 1); executed first.", required = false) Integer coldRuns,
             @McpToolParam(description = "Warm runs (default 3).", required = false) Integer warmRuns
     ) {
-        log.info("Tool call: benchmarkQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={}, coldRuns={}, warmRuns={})", sql, params, namedParams, limit, timeoutSeconds, coldRuns, warmRuns);
+        log.info("Tool call: benchmarkQuery (sql={}, params={}, namedParams={}, paramTypes={}, limit={}, timeoutSeconds={}, coldRuns={}, warmRuns={})",
+                sql, params, namedParams, paramTypes, limit, timeoutSeconds, coldRuns, warmRuns);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         if (limit == null) {
@@ -80,7 +83,8 @@ public class BenchmarkTools {
         int cold = coldRuns == null ? 1 : coldRuns;
         int warm = warmRuns == null ? 3 : warmRuns;
         try {
-            BenchmarkResult result = ctx.benchmarks().benchmark(sql, params, namedParams, limit, timeoutSeconds, cold, warm);
+            BenchmarkResult result = ctx.benchmarks().benchmark(
+                    sql, params, namedParams, paramTypes, limit, timeoutSeconds, cold, warm);
             ToolLogger.completed(log, "benchmarkQuery", start);
             return result;
         } catch (SqlNotAllowedException e) {
@@ -108,16 +112,18 @@ public class BenchmarkTools {
     public TimedQueryResult timedQuery(
             @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
-            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
-            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Values for '?' placeholders, in order", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = QueryToolSupport.PARAM_TYPES_DESCRIPTION, required = false) List<SqlParamTypeEntry> paramTypes,
             @McpToolParam(description = "Row limit (default: the connection's maxRows).", required = false) Integer limit,
             @McpToolParam(description = "Timeout in seconds (default: the connection's queryTimeoutSeconds).", required = false) Integer timeoutSeconds
     ) {
-        log.info("Tool call: timedQuery (sql={}, params={}, namedParams={}, limit={}, timeoutSeconds={})", sql, params, namedParams, limit, timeoutSeconds);
+        log.info("Tool call: timedQuery (sql={}, params={}, namedParams={}, paramTypes={}, limit={}, timeoutSeconds={})",
+                sql, params, namedParams, paramTypes, limit, timeoutSeconds);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
-            TimedQueryResult result = ctx.benchmarks().timed(sql, params, namedParams, limit, timeoutSeconds);
+            TimedQueryResult result = ctx.benchmarks().timed(sql, params, namedParams, paramTypes, limit, timeoutSeconds);
             ToolLogger.completed(log, "timedQuery", start);
             return result;
         } catch (SqlNotAllowedException e) {

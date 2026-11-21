@@ -17,6 +17,10 @@ final class QueryToolSupport {
     static final String BINDING_EXAMPLES =
             "E.g. :status -> namedParams={status:'PAID'} — key is the bare name. ";
 
+    static final String PARAM_TYPES_DESCRIPTION =
+            "Omit for plain strings, booleans, and normal numbers; use only when a string value must bind as a "
+                    + "date, timestamp, UUID, 64-bit integer, or exact decimal.";
+
     /** Unescape the common backslash sequences an LLM may emit inside a JSON string before we run the SQL. */
     static String normalizeSql(String sql) {
         if (sql == null || sql.indexOf('\\') < 0) {

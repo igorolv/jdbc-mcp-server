@@ -202,12 +202,12 @@ class LiveOracleIntegrationTest {
                 "code", "A",
                 "userId", "DUMMY_USER");
 
-        String explainResult = queryAnalysisTools.explainQuery(CONNECTION, sql, null, namedParams, null);
+        String explainResult = queryAnalysisTools.explainQuery(CONNECTION, sql, null, namedParams, null, null);
         assertThat(explainResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error");
 
-        String analyzeResult = json.write(queryAnalysisTools.analyzePlan(CONNECTION, sql, null, namedParams, null));
+        String analyzeResult = json.write(queryAnalysisTools.analyzePlan(CONNECTION, sql, null, namedParams, null, null));
         assertThat(analyzeResult)
                 .doesNotContain("ORA-17041")
                 .doesNotContain("SQL error")

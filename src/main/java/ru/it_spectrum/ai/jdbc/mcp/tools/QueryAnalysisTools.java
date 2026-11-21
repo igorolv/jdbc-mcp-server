@@ -18,16 +18,22 @@ import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryLintResult;
 import ru.it_spectrum.ai.jdbc.mcp.model.query.QueryValidationResult;
 import ru.it_spectrum.ai.jdbc.mcp.sql.NamedParameterRewriter;
 import ru.it_spectrum.ai.jdbc.mcp.sql.QueryResult;
-import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParameterBindingResolver;
 import ru.it_spectrum.ai.jdbc.mcp.sql.SqlNotAllowedException;
+import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParamTypeEntry;
+import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParameterBindingResolver;
+import ru.it_spectrum.ai.jdbc.mcp.sql.SqlParameterTypes;
 
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -65,11 +71,13 @@ public class QueryAnalysisTools {
     public String explainQuery(
             @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
-            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
-            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Values for '?' placeholders, in order", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = QueryToolSupport.PARAM_TYPES_DESCRIPTION, required = false) List<SqlParamTypeEntry> paramTypes,
             @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze
     ) {
-        log.info("Tool call: explainQuery (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
+        log.info("Tool call: explainQuery (sql={}, params={}, namedParams={}, paramTypes={}, analyze={})",
+                sql, params, namedParams, paramTypes, analyze);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
@@ -77,12 +85,12 @@ public class QueryAnalysisTools {
             ctx.guard().check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
             if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.SESSION_SHOWPLAN) {
-                String result = explainSqlServer(ctx, normalizedSql, params, namedParams);
+                String result = explainSqlServer(ctx, normalizedSql, params, namedParams, paramTypes);
                 ToolLogger.completed(log, "explainQuery", start);
                 return result;
             }
             if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.DRIVER_API) {
-                String result = driverPlan(ctx, normalizedSql, params, namedParams);
+                String result = driverPlan(ctx, normalizedSql, params, namedParams, paramTypes);
                 ToolLogger.completed(log, "explainQuery", start);
                 return result;
             }
@@ -92,7 +100,7 @@ public class QueryAnalysisTools {
             List<Object> displayParams = displaySql == null ? Collections.emptyList() : List.of(statementId);
 
             String result = ctx.executor().withConnection(conn -> {
-                SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
+                SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams, paramTypes);
                 String preparedExplainSql;
                 List<Object> preparedParams;
                 if (binding.namedParams() != null) {
@@ -102,7 +110,7 @@ public class QueryAnalysisTools {
                     preparedParams = prep.params();
                 } else {
                     preparedExplainSql = explainSql;
-                    preparedParams = params != null ? params : Collections.emptyList();
+                    preparedParams = binding.params() != null ? binding.params() : Collections.emptyList();
                 }
 
                 // Two-step plan flow for Oracle (EXPLAIN PLAN FOR ... ; SELECT * FROM DBMS_XPLAN.DISPLAY).
@@ -144,11 +152,13 @@ public class QueryAnalysisTools {
     public PlanAnalysisSummary analyzePlan(
             @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
-            @McpToolParam(description = "Values for '?' placeholders, in order.", required = false) List<Object> params,
-            @McpToolParam(description = "Values for ':name' placeholders, keyed by name.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = "Values for '?' placeholders, in order", required = false) List<Object> params,
+            @McpToolParam(description = "Values for ':name' placeholders, keyed by name", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = QueryToolSupport.PARAM_TYPES_DESCRIPTION, required = false) List<SqlParamTypeEntry> paramTypes,
             @McpToolParam(description = "Execute the query to collect runtime stats where supported (default false).", required = false) Boolean analyze
     ) {
-        log.info("Tool call: analyzePlan (sql={}, params={}, namedParams={}, analyze={})", sql, params, namedParams, analyze);
+        log.info("Tool call: analyzePlan (sql={}, params={}, namedParams={}, paramTypes={}, analyze={})",
+                sql, params, namedParams, paramTypes, analyze);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         try {
@@ -156,13 +166,13 @@ public class QueryAnalysisTools {
             ctx.guard().check(normalizedSql);
             boolean doAnalyze = analyze != null && analyze;
             if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.SESSION_SHOWPLAN) {
-                ParsedPlan parsed = structuredSqlServerPlan(ctx, normalizedSql, params, namedParams);
+                ParsedPlan parsed = structuredSqlServerPlan(ctx, normalizedSql, params, namedParams, paramTypes);
                 PlanAnalysisSummary result = PlanAnalyzer.summarize(parsed);
                 ToolLogger.completed(log, "analyzePlan", start);
                 return result;
             }
             if (ctx.dialect().planCapture() == SqlDialect.PlanCapture.DRIVER_API) {
-                String planText = driverPlan(ctx, normalizedSql, params, namedParams);
+                String planText = driverPlan(ctx, normalizedSql, params, namedParams, paramTypes);
                 QueryResult planRows = new QueryResult(List.of("PLAN"), List.of("VARCHAR"),
                         List.of(Map.of("PLAN", planText)), false, 1);
                 PlanAnalysisSummary result = PlanAnalyzer.summarize(ctx.planParser().parse(planRows, false));
@@ -175,7 +185,7 @@ public class QueryAnalysisTools {
             List<Object> displayParams = displaySql == null ? Collections.emptyList() : List.of(statementId);
 
             ParsedPlan parsed = ctx.executor().withConnection(conn -> {
-                SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
+                SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams, paramTypes);
                 String preparedExplainSql;
                 List<Object> preparedParams;
                 if (binding.namedParams() != null) {
@@ -185,7 +195,7 @@ public class QueryAnalysisTools {
                     preparedParams = prep.params();
                 } else {
                     preparedExplainSql = explainSql;
-                    preparedParams = params != null ? params : Collections.emptyList();
+                    preparedParams = binding.params() != null ? binding.params() : Collections.emptyList();
                 }
 
                 QueryResult planRows;
@@ -230,9 +240,11 @@ public class QueryAnalysisTools {
             @McpToolParam(description = ToolConnections.CONNECTION_PARAM) String connection,
             @McpToolParam(description = "") String sql,
             @McpToolParam(description = "Positional parameters for '?' placeholders, in order. Required when SQL contains '?'.", required = false) List<Object> params,
-            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams
+            @McpToolParam(description = "Named parameters for ':name' placeholders. Required when SQL contains ':name'.", required = false) Map<String, Object> namedParams,
+            @McpToolParam(description = QueryToolSupport.PARAM_TYPES_DESCRIPTION, required = false) List<SqlParamTypeEntry> paramTypes
     ) {
-        log.info("Tool call: validateQuery (sql={}, params={}, namedParams={})", sql, params, namedParams);
+        log.info("Tool call: validateQuery (sql={}, params={}, namedParams={}, paramTypes={})",
+                sql, params, namedParams, paramTypes);
         ConnectionContext ctx = ToolConnections.resolve(connections, errors, connection);
         long start = System.nanoTime();
         String normalizedSql = QueryToolSupport.normalizeSql(sql);
@@ -243,7 +255,7 @@ public class QueryAnalysisTools {
             return validationFailure("guard", e.getMessage(), ctx.analysis().inspect(normalizedSql));
         }
         try {
-            SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams);
+            SqlParameterBindingResolver.Binding binding = resolveBinding(normalizedSql, params, namedParams, paramTypes);
             String preparedSql = normalizedSql;
             List<Object> preparedParams = binding.params();
             if (binding.namedParams() != null) {
@@ -363,8 +375,9 @@ public class QueryAnalysisTools {
     // ---------------- helpers ----------------
 
     private SqlParameterBindingResolver.Binding resolveBinding(String sql, List<Object> params,
-                                                               Map<String, Object> namedParams) {
-        return SqlParameterBindingResolver.resolve(sql, params, namedParams);
+                                                               Map<String, Object> namedParams,
+                                                               List<SqlParamTypeEntry> paramTypes) {
+        return SqlParameterBindingResolver.resolve(sql, params, namedParams, paramTypes);
     }
 
     private QueryResult queryWithParams(ConnectionContext ctx, Connection conn, String sql,
@@ -392,7 +405,7 @@ public class QueryAnalysisTools {
     private void bind(PreparedStatement ps, List<Object> params) throws SQLException {
         if (params == null) return;
         for (int i = 0; i < params.size(); i++) {
-            ps.setObject(i + 1, params.get(i));
+            SqlParameterTypes.bind(ps, i + 1, params.get(i));
         }
     }
 
@@ -427,9 +440,9 @@ public class QueryAnalysisTools {
     }
 
     private String explainSqlServer(ConnectionContext ctx, String sql, List<Object> params,
-                                    Map<String, Object> namedParams) throws SQLException {
+                                    Map<String, Object> namedParams, List<SqlParamTypeEntry> paramTypes) throws SQLException {
         return ctx.executor().withConnection(conn -> {
-            String planSql = sqlServerPlanSql(sql, params, namedParams);
+            String planSql = sqlServerPlanSql(sql, params, namedParams, paramTypes);
             runStatement(ctx, conn, "SET SHOWPLAN_TEXT ON");
             try {
                 QueryResult planRows = queryWithStatement(ctx, conn, planSql);
@@ -445,8 +458,8 @@ public class QueryAnalysisTools {
      * placeholders here: named ones are rewritten to {@code ?}, values are not bound.
      */
     private String driverPlan(ConnectionContext ctx, String sql, List<Object> params,
-                              Map<String, Object> namedParams) throws SQLException {
-        SqlParameterBindingResolver.Binding binding = resolveBinding(sql, params, namedParams);
+                              Map<String, Object> namedParams, List<SqlParamTypeEntry> paramTypes) throws SQLException {
+        SqlParameterBindingResolver.Binding binding = resolveBinding(sql, params, namedParams, paramTypes);
         String positionalSql = binding.namedParams() != null
                 ? NamedParameterRewriter.rewrite(sql, binding.namedParams()).sql()
                 : sql;
@@ -454,9 +467,10 @@ public class QueryAnalysisTools {
     }
 
     private ParsedPlan structuredSqlServerPlan(ConnectionContext ctx, String sql, List<Object> params,
-                                               Map<String, Object> namedParams) throws SQLException {
+                                               Map<String, Object> namedParams, List<SqlParamTypeEntry> paramTypes)
+            throws SQLException {
         return ctx.executor().withConnection(conn -> {
-            String planSql = sqlServerPlanSql(sql, params, namedParams);
+            String planSql = sqlServerPlanSql(sql, params, namedParams, paramTypes);
             runStatement(ctx, conn, "SET SHOWPLAN_XML ON");
             try {
                 QueryResult planRows = queryWithStatement(ctx, conn, planSql);
@@ -467,8 +481,9 @@ public class QueryAnalysisTools {
         });
     }
 
-    private String sqlServerPlanSql(String sql, List<Object> params, Map<String, Object> namedParams) {
-        SqlParameterBindingResolver.Binding binding = resolveBinding(sql, params, namedParams);
+    private String sqlServerPlanSql(String sql, List<Object> params, Map<String, Object> namedParams,
+                                    List<SqlParamTypeEntry> paramTypes) {
+        SqlParameterBindingResolver.Binding binding = resolveBinding(sql, params, namedParams, paramTypes);
         if (binding.namedParams() != null) {
             NamedParameterRewriter.PreparedSql prep =
                     NamedParameterRewriter.rewrite(sql, binding.namedParams());
@@ -572,10 +587,25 @@ public class QueryAnalysisTools {
         return out.toString();
     }
 
-    private String sqlLiteral(Object value) {
+    static String sqlLiteral(Object value) {
         switch (value) {
             case null -> {
                 return "NULL";
+            }
+            case SqlParameterTypes.TypedNull ignored -> {
+                return "NULL";
+            }
+            case Date d -> {
+                return "CAST('" + d + "' AS DATE)";
+            }
+            case Timestamp ts -> {
+                return "CAST('" + ts.toLocalDateTime() + "' AS DATETIME2)";
+            }
+            case OffsetDateTime odt -> {
+                return "CAST('" + odt + "' AS DATETIMEOFFSET)";
+            }
+            case UUID u -> {
+                return "CAST('" + u + "' AS UNIQUEIDENTIFIER)";
             }
             case Number n -> {
                 return n.toString();
@@ -594,7 +624,7 @@ public class QueryAnalysisTools {
         return "N'" + escapeSqlLiteral(value.toString()) + "'";
     }
 
-    private String escapeSqlLiteral(String value) {
+    private static String escapeSqlLiteral(String value) {
         return value.replace("'", "''");
     }
 

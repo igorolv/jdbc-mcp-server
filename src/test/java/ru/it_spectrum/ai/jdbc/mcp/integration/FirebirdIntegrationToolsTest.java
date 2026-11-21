@@ -113,12 +113,12 @@ class FirebirdIntegrationToolsTest extends AbstractFirebirdToolsIntegrationTest 
     @Test
     void executesQueriesAndDecodesWin1251Text() {
         ObjectNode limited = object(queryTools().executeQuery(connection(),
-                "SELECT name, email FROM customers ORDER BY id", null, null, 1, 5));
+                "SELECT name, email FROM customers ORDER BY id", null, null, null, 1, 5));
         assertThat(field(limited, "rowCount").asInt()).isEqualTo(1);
         assertThat(field(limited, "truncated").asBoolean()).isTrue();
 
         ObjectNode cyrillic = object(queryTools().executeQuery(connection(),
-                "SELECT name FROM customers WHERE id = :id", null, Map.of("id", 2), null, 5));
+                "SELECT name FROM customers WHERE id = :id", null, Map.of("id", 2), null, null, 5));
         assertThat(field(row(cyrillic, 0), "NAME").asText()).isEqualTo("Боб");
 
         ObjectNode sample = object(sampleTools().sampleRows(connection(), null, "CUSTOMER_NOTES", 1));
@@ -128,7 +128,7 @@ class FirebirdIntegrationToolsTest extends AbstractFirebirdToolsIntegrationTest 
     @Test
     void rejectsWritesInTheGuardAndOnTheServer() throws SQLException {
         assertRejected(() ->
-                queryTools().executeQuery(connection(), "DELETE FROM customers", null, null, null, null),
+                queryTools().executeQuery(connection(), "DELETE FROM customers", null, null, null, null, null),
                 "Only SELECT");
 
         try (Connection connection = pool().getConnection();
@@ -143,17 +143,17 @@ class FirebirdIntegrationToolsTest extends AbstractFirebirdToolsIntegrationTest 
     void plansComeFromTheDriverAndFlagFullScans() {
         String plan = queryAnalysisTools().explainQuery(connection(),
                 "SELECT o.total FROM orders o JOIN customers c ON c.id = o.customer_id WHERE c.name = :name",
-                null, Map.of("name", "Alice"), false);
+                null, Map.of("name", "Alice"), null, false);
         assertThat(plan).contains("Select Expression").contains("\"ORDERS\"").contains("\"CUSTOMERS\"");
 
         ObjectNode summary = object(queryAnalysisTools().analyzePlan(connection(),
-                "SELECT * FROM events WHERE amount > 10", null, null, false));
+                "SELECT * FROM events WHERE amount > 10", null, null, null, false));
         assertThat(field(summary, "engine").asText()).isEqualTo("firebird");
         assertThat(field(summary, "nodeCount").asInt()).isGreaterThan(1);
         assertThat(field(summary, "fullScans").toString()).contains("EVENTS");
 
         ObjectNode valid = object(queryAnalysisTools().validateQuery(connection(),
-                "SELECT FIRST 5 * FROM customers", null, null));
+                "SELECT FIRST 5 * FROM customers", null, null, null));
         assertThat(field(valid, "valid").asBoolean()).isTrue();
     }
 

@@ -41,6 +41,12 @@ public class BenchmarkService {
     public BenchmarkResult benchmark(String sql, List<Object> params, Map<String, Object> namedParams,
                                      int limit, int timeoutSeconds,
                                      int coldRuns, int warmRuns) throws SQLException {
+        return benchmark(sql, params, namedParams, null, limit, timeoutSeconds, coldRuns, warmRuns);
+    }
+
+    public BenchmarkResult benchmark(String sql, List<Object> params, Map<String, Object> namedParams,
+                                     List<SqlParamTypeEntry> paramTypes, int limit, int timeoutSeconds,
+                                     int coldRuns, int warmRuns) throws SQLException {
         if (limit <= 0) {
             throw new IllegalArgumentException("limit is required and must be > 0");
         }
@@ -58,7 +64,8 @@ public class BenchmarkService {
             throw new IllegalArgumentException("coldRuns + warmRuns must not exceed " + MAX_RUNS);
         }
 
-        SqlParameterBindingResolver.Binding binding = SqlParameterBindingResolver.resolve(sql, params, namedParams);
+        SqlParameterBindingResolver.Binding binding =
+                SqlParameterBindingResolver.resolve(sql, params, namedParams, paramTypes);
         boolean hasNamed = binding.namedParams() != null;
 
         List<Double> cold = new ArrayList<>(coldRuns);
@@ -111,7 +118,14 @@ public class BenchmarkService {
 
     public TimedQueryResult timed(String sql, List<Object> params, Map<String, Object> namedParams,
                                   Integer limit, Integer timeoutSeconds) throws SQLException {
-        SqlParameterBindingResolver.Binding binding = SqlParameterBindingResolver.resolve(sql, params, namedParams);
+        return timed(sql, params, namedParams, null, limit, timeoutSeconds);
+    }
+
+    public TimedQueryResult timed(String sql, List<Object> params, Map<String, Object> namedParams,
+                                  List<SqlParamTypeEntry> paramTypes, Integer limit, Integer timeoutSeconds)
+            throws SQLException {
+        SqlParameterBindingResolver.Binding binding =
+                SqlParameterBindingResolver.resolve(sql, params, namedParams, paramTypes);
         boolean hasNamed = binding.namedParams() != null;
 
         Map<String, Counters> before = snapshotPss();

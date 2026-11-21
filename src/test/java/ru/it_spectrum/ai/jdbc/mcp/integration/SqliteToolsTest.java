@@ -159,7 +159,7 @@ class SqliteToolsTest extends AbstractToolsIntegrationTest {
         assertInvalidArgument(() -> metadataTools().listTables(connection(), "temp", "%", null), "no schemas");
 
         ObjectNode qualified = object(queryTools().executeQuery(connection(),
-                "SELECT COUNT(*) AS n FROM main.orders", null, null, null, 5));
+                "SELECT COUNT(*) AS n FROM main.orders", null, null, null, null, 5));
         assertThat(field(row(qualified, 0), "n").asInt()).isEqualTo(3);
     }
 
@@ -216,18 +216,18 @@ class SqliteToolsTest extends AbstractToolsIntegrationTest {
     void plansComeFromExplainQueryPlan() {
         String plan = queryAnalysisTools().explainQuery(connection(),
                 "SELECT o.total FROM orders o JOIN customers c ON c.id = o.customer_id WHERE c.name = :name",
-                null, Map.of("name", "Alice"), false);
+                null, Map.of("name", "Alice"), null, false);
         assertThat(plan).startsWith("QUERY PLAN\n").contains("SCAN").contains("--");
 
         ObjectNode summary = object(queryAnalysisTools().analyzePlan(connection(),
-                "SELECT * FROM events WHERE amount > 10", null, null, false));
+                "SELECT * FROM events WHERE amount > 10", null, null, null, false));
         assertThat(field(summary, "engine").asText()).isEqualTo("sqlite");
         assertThat(field(summary, "fullScans").toString()).contains("events");
     }
 
     @Test
     void writesAreRejectedByTheGuardAndBySqlite() throws SQLException {
-        assertRejected(() -> queryTools().executeQuery(connection(), "DELETE FROM customers", null, null, null, null),
+        assertRejected(() -> queryTools().executeQuery(connection(), "DELETE FROM customers", null, null, null, null, null),
                 "Only SELECT");
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
@@ -236,7 +236,7 @@ class SqliteToolsTest extends AbstractToolsIntegrationTest {
                     .hasMessageContaining("readonly");
         }
         ObjectNode cyrillic = object(queryTools().executeQuery(connection(),
-                "SELECT name FROM customers WHERE id = ?", java.util.List.of(2), null, null, 5));
+                "SELECT name FROM customers WHERE id = ?", java.util.List.of(2), null, null, null, 5));
         assertThat(field(row(cyrillic, 0), "name").asText()).isEqualTo("Боб");
     }
 

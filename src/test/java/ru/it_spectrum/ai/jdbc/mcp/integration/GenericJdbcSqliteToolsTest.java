@@ -232,9 +232,9 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
                 "view definitions");
         assertUnsupported(() -> metadataTools().listSequences(connection(), null), "sequences");
         assertUnsupported(() -> queryAnalysisTools().explainQuery(connection(),
-                "SELECT * FROM customers", null, null, false), "plans");
+                "SELECT * FROM customers", null, null, null, false), "plans");
         assertUnsupported(() -> queryAnalysisTools().analyzePlan(connection(),
-                "SELECT * FROM customers", null, null, false), "plans");
+                "SELECT * FROM customers", null, null, null, false), "plans");
         assertThat(array(metadataTools().listRoutines(connection(), null, null).routines())).isEmpty();
     }
 
@@ -243,24 +243,24 @@ class GenericJdbcSqliteToolsTest extends AbstractToolsIntegrationTest {
     @Test
     void executesQueriesThroughTheExternalDriver() {
         ObjectNode limited = object(queryTools().executeQuery(connection(),
-                "SELECT name FROM customers ORDER BY id", null, null, 1, 5));
+                "SELECT name FROM customers ORDER BY id", null, null, null, 1, 5));
         assertThat(field(limited, "rowCount").asInt()).isEqualTo(1);
         assertThat(field(limited, "truncated").asBoolean()).isTrue();
 
         ObjectNode named = object(queryTools().executeQuery(connection(),
-                "SELECT name FROM customers WHERE id = :id", null, Map.of("id", 2), null, 5));
+                "SELECT name FROM customers WHERE id = :id", null, Map.of("id", 2), null, null, 5));
         assertThat(field(row(named, 0), "name").asText()).isEqualTo("Боб");
 
         ObjectNode sample = object(sampleTools().sampleRows(connection(), null, "events", 3));
         assertThat(field(sample, "rowCount").asInt()).isEqualTo(3);
 
-        ObjectNode valid = object(queryAnalysisTools().validateQuery(connection(), "SELECT * FROM orders", null, null));
+        ObjectNode valid = object(queryAnalysisTools().validateQuery(connection(), "SELECT * FROM orders", null, null, null));
         assertThat(field(valid, "valid").asBoolean()).isTrue();
     }
 
     @Test
     void writesAreRejectedByTheGuardAndTheReadOnlyUrl() throws SQLException {
-        assertRejected(() -> queryTools().executeQuery(connection(), "DELETE FROM customers", null, null, null, null),
+        assertRejected(() -> queryTools().executeQuery(connection(), "DELETE FROM customers", null, null, null, null, null),
                 "Only SELECT");
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {

@@ -16,8 +16,14 @@ public final class SqlParameterBindingResolver {
     }
 
     public static Binding resolve(String sql, List<Object> params, Map<String, Object> namedParams) {
+        return resolve(sql, params, namedParams, null);
+    }
+
+    public static Binding resolve(String sql, List<Object> params, Map<String, Object> namedParams,
+                                  List<SqlParamTypeEntry> paramTypes) {
         boolean hasPositional = params != null && !params.isEmpty();
         boolean hasNamed = namedParams != null && !namedParams.isEmpty();
+        boolean hasTypes = paramTypes != null && !paramTypes.isEmpty();
         if (hasPositional && hasNamed) {
             throw new IllegalArgumentException("Use either 'params' or 'namedParams', not both.");
         }
@@ -25,9 +31,9 @@ public final class SqlParameterBindingResolver {
         Analysis analysis = analyze(sql);
         return switch (analysis.mode()) {
             case NONE -> {
-                if (hasPositional || hasNamed) {
+                if (hasPositional || hasNamed || hasTypes) {
                     throw new IllegalArgumentException(
-                            "SQL contains no placeholders, so omit both 'params' and 'namedParams'.");
+                            "SQL contains no placeholders, so omit 'params', 'namedParams', and 'paramTypes'.");
                 }
                 yield new Binding(analysis.mode(), null, null);
             }
@@ -40,7 +46,7 @@ public final class SqlParameterBindingResolver {
                     throw new IllegalArgumentException(
                             "SQL contains '?' placeholders, so pass values in 'params' as an array in placeholder order.");
                 }
-                yield new Binding(analysis.mode(), params, null);
+                yield new Binding(analysis.mode(), SqlParameterTypes.convertPositional(params, paramTypes), null);
             }
             case NAMED -> {
                 if (hasPositional) {
@@ -53,7 +59,7 @@ public final class SqlParameterBindingResolver {
                             "SQL contains named placeholders like '" + analysis.exampleNamedPlaceholder()
                                     + "', so pass values in 'namedParams' as an object.");
                 }
-                yield new Binding(analysis.mode(), null, namedParams);
+                yield new Binding(analysis.mode(), null, SqlParameterTypes.convertNamed(namedParams, paramTypes));
             }
             case MIXED -> throw new IllegalArgumentException(
                     "SQL mixes '?' and ':name' placeholders; use only one placeholder style per statement.");

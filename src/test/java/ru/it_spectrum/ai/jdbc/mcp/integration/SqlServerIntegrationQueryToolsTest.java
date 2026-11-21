@@ -15,7 +15,7 @@ class SqlServerIntegrationQueryToolsTest extends AbstractSqlServerToolsIntegrati
     void executeQuerySupportsJsonLimitAndNamedParams() {
         ObjectNode result = object(queryTools().executeQuery(connection(),
                 "SELECT name, email FROM dbo.customers ORDER BY id",
-                null, null, 1, 5));
+                null, null, null, 1, 5));
 
         assertThat(field(result, "rowCount").asInt()).isEqualTo(1);
         assertThat(field(result, "truncated").asBoolean()).isTrue();
@@ -23,22 +23,22 @@ class SqlServerIntegrationQueryToolsTest extends AbstractSqlServerToolsIntegrati
 
         ObjectNode count = object(queryTools().executeQuery(connection(),
                 "SELECT COUNT(*) AS c FROM dbo.orders WHERE customer_id = :customerId",
-                null, Map.of("customerId", 1), null, 5));
+                null, Map.of("customerId", 1), null, null, 5));
         assertThat(field(row(count, 0), "c").asInt()).isEqualTo(2);
     }
 
     @Test
     void explainAnalyzeAndValidateReturnToolLevelResponses() {
         String plan = queryAnalysisTools().explainQuery(connection(),
-                "SELECT * FROM dbo.customers WHERE name LIKE 'A%'", null, null, false);
+                "SELECT * FROM dbo.customers WHERE name LIKE 'A%'", null, null, null, false);
         assertThat(plan).containsIgnoringCase("customers");
 
         ObjectNode summary = object(queryAnalysisTools().analyzePlan(connection(),
-                "SELECT * FROM dbo.customers WHERE name LIKE 'A%'", null, null, false));
+                "SELECT * FROM dbo.customers WHERE name LIKE 'A%'", null, null, null, false));
         assertThat(field(summary, "engine").asText()).isEqualTo("mssql");
         assertThat(field(summary, "nodeCount").asInt()).isGreaterThan(0);
 
-        ObjectNode valid = object(queryAnalysisTools().validateQuery(connection(), "SELECT * FROM dbo.customers", null, null));
+        ObjectNode valid = object(queryAnalysisTools().validateQuery(connection(), "SELECT * FROM dbo.customers", null, null, null));
         assertThat(field(valid, "valid").asBoolean()).isTrue();
         assertThat(field(field(valid, "inspection"), "parseable").asBoolean()).isTrue();
     }
@@ -46,7 +46,7 @@ class SqlServerIntegrationQueryToolsTest extends AbstractSqlServerToolsIntegrati
     @Test
     void queryToolsRejectWrites() {
         assertRejected(() ->
-                queryTools().executeQuery(connection(), "DELETE FROM dbo.customers", null, null, null, null),
+                queryTools().executeQuery(connection(), "DELETE FROM dbo.customers", null, null, null, null, null),
                 "Only SELECT");
     }
 
