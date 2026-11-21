@@ -214,11 +214,11 @@ If the first call against a database fails, see
   and fall back to the live database otherwise. The same file holds the usage index. Live
   statistics, samples and plans are never cached. See
   [Persistent Structure Snapshot](#persistent-structure-snapshot) and [Usage Catalog](#usage-catalog).
-- **Execution model.** Tool calls on one stdio session run sequentially. The MCP Java SDK 2.0.0 used
-  by Spring AI 2.0.1 can lose responses when several concurrently executed tools finish at the same
-  time on the single stdout stream, so stdio keeps `immediateExecution(true)` until the SDK fixes
-  this. Over streamable HTTP every request has its own response, and tool calls — of one session or
-  of many — run in parallel, bounded by the connection's pool size and `queryTimeoutSeconds`. A client's
+- **Execution model.** Tool calls on one stdio session run sequentially. Concurrent tool calls on a
+  single stdio stream can lose responses when multiple tools finish at the same time (MCP Java SDK
+  `#686`), so stdio keeps `immediateExecution(true)` until the SDK resolves that issue. Over
+  streamable HTTP every request has its own response, and tool calls — of one session or of many —
+  run in parallel, bounded by the connection's pool size and `queryTimeoutSeconds`. A client's
   `notifications/cancelled` is not propagated to JDBC `Statement.cancel()`; the configured
   `queryTimeoutSeconds` (or a tool call's `timeoutSeconds` override) remains the server-side limit
   for a running SQL statement.
@@ -261,13 +261,22 @@ regardless of its group.
 
 | Tool | Description |
 |---|---|
-| `executeQuery` | Execute a `SELECT`, `WITH`, or `EXPLAIN` statement. Parameters: `sql`, `params` (array for `?`) or `namedParams` (object for `:name`), `limit`, `timeoutSeconds`. The result is marked with `truncated: true` if the row limit is hit |
-| `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` plus `DBMS_XPLAN.DISPLAY`. SQL Server: `SET SHOWPLAN_TEXT ON` on the same session. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). `analyze=true` on PostgreSQL enables `EXPLAIN ANALYZE`; be careful, because the query is actually executed. SQL Server currently returns estimated plans only |
-| `analyzePlan` | Compact LLM-oriented plan summary instead of a large raw plan dump: highest-cost nodes, full scans on large tables, estimate errors (planner vs. reality, requires `analyze=true` on PostgreSQL), risky nested loops with large outer input, and disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` plus `PLAN_TABLE` (`analyze` is ignored because Oracle provides a static plan here). SQL Server: `SET SHOWPLAN_XML ON` estimated plan. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`) |
-| `validateQuery` | Validate syntax without execution: read-only guard plus driver `prepareStatement`, with a JSqlParser-derived `inspection` summary when parsing succeeds. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). Useful for LLM self-correction |
+| `executeQuery` | Execute a `SELECT`, `WITH`, or `EXPLAIN` statement. Parameters: `sql`, `params` (array for `?`) or `namedParams` (object for `:name`), optional `paramTypes`, `limit`, `timeoutSeconds`. The result is marked with `truncated: true` if the row limit is hit |
+| `explainQuery` | Return the execution plan. PostgreSQL: `EXPLAIN (FORMAT TEXT)`. Oracle: `EXPLAIN PLAN FOR` plus `DBMS_XPLAN.DISPLAY`. SQL Server: `SET SHOWPLAN_TEXT ON` on the same session. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`), with optional `paramTypes`. `analyze=true` on PostgreSQL enables `EXPLAIN ANALYZE`; be careful, because the query is actually executed. SQL Server currently returns estimated plans only |
+| `analyzePlan` | Compact LLM-oriented plan summary instead of a large raw plan dump: highest-cost nodes, full scans on large tables, estimate errors (planner vs. reality, requires `analyze=true` on PostgreSQL), risky nested loops with large outer input, and disk sort spills. PostgreSQL: `EXPLAIN (FORMAT JSON)` / `EXPLAIN ANALYZE`. Oracle: `EXPLAIN PLAN` plus `PLAN_TABLE` (`analyze` is ignored because Oracle provides a static plan here). SQL Server: `SET SHOWPLAN_XML ON` estimated plan. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`), with optional `paramTypes` |
+| `validateQuery` | Validate syntax without execution: read-only guard plus driver `prepareStatement`, with a JSqlParser-derived `inspection` summary when parsing succeeds. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`), with optional `paramTypes`. Useful for LLM self-correction |
 | `inspectQuery` | Parse SQL through JSqlParser without touching the database and return an AST summary: tables, aliases, CTEs, select items, joins, predicates, order by, columns, parameters, features, and parser warnings |
 | `queryLint` | Parse SQL and combine the AST with metadata, index, and FK checks. Returns advisory warnings such as unknown tables or columns, `SELECT *`, joins without conditions, FKs without supporting indexes, and predicate/order-by columns that are not leading index columns. SQL is not executed |
 | `resolveQueryLineage` | Resolve direct objects referenced by a query and recursively expand database views/materialized views to underlying physical tables. Function/procedure expansion is best-effort: embedded `SELECT` / `WITH` statements are extracted from routine source when available. Parameters: `sql`, `schema`, `expandViews`, `expandRoutines`, `maxDepth` |
+
+> **Typed parameters (`paramTypes`).** Omit `paramTypes` for plain strings, booleans, and normal
+> numbers; supply it as `[{"param": "<name-or-1-based-index>", "type": "<type>"}]` only when a
+> string value must bind as `date` (`YYYY-MM-DD`), `timestamp` (`YYYY-MM-DDTHH:mm:ss[.fff]`, no
+> offset), `timestamptz` (ISO with `Z` or `±HH:MM`), `uuid` (see [Oracle notes](docs/databases.md#oracle)),
+> `integer` (64-bit), or `decimal` (exact numeric). `null` entries in `namedParams` work both with
+> and without `paramTypes`. Large `integer` (`> 53` bits) and high-precision `decimal` values bind
+> accurately on input, while returning exact output digits in JSON requires `CAST(... AS text)` or
+> `TO_CHAR(...)` in the `SELECT` list.
 
 ### Benchmarking
 
@@ -276,8 +285,8 @@ can see actual milliseconds and buffer counters.
 
 | Tool | Description |
 |---|---|
-| `benchmarkQuery` | Run the query `coldRuns + warmRuns` times (defaults to 1 cold + 3 warm) and return wall-clock `min`, `median`, and `max` for warm runs; cold runs are reported separately. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). `limit` and `timeoutSeconds` are **required**; unbounded queries are rejected. Returns the size of the last result (`row_count`, columns, `truncated`), not the rows |
-| `timedQuery` | Regular `executeQuery` plus wall-clock `elapsed_ms`. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`). On PostgreSQL, it also captures `pg_stat_statements` snapshots before and after the query; the diff shows which query IDs added `calls`, `total_exec_time_ms`, `rows`, `shared_blks_hit`, and `shared_blks_read`, making it clear where the server spent time. Requires `pg_stat_statements` (`CREATE EXTENSION pg_stat_statements;` plus `shared_preload_libraries`); if the extension is missing, returns `pg_stat_statements.available: false` |
+| `benchmarkQuery` | Run the query `coldRuns + warmRuns` times (defaults to 1 cold + 3 warm) and return wall-clock `min`, `median`, and `max` for warm runs; cold runs are reported separately. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`), with optional `paramTypes`. `limit` and `timeoutSeconds` are **required**; unbounded queries are rejected. Returns the size of the last result (`row_count`, columns, `truncated`), not the rows |
+| `timedQuery` | Regular `executeQuery` plus wall-clock `elapsed_ms`. Parameters can be passed as `params` (`?`) or `namedParams` (`:name`), with optional `paramTypes`. On PostgreSQL, it also captures `pg_stat_statements` snapshots before and after the query; the diff shows which query IDs added `calls`, `total_exec_time_ms`, `rows`, `shared_blks_hit`, and `shared_blks_read`, making it clear where the server spent time. Requires `pg_stat_statements` (`CREATE EXTENSION pg_stat_statements;` plus `shared_preload_libraries`); if the extension is missing, returns `pg_stat_statements.available: false` |
 
 ### Metadata
 

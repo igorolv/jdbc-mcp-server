@@ -105,6 +105,10 @@ Oracle Database 12c and later (the integration tests run on 23ai Free), through 
 - **Plans.** `EXPLAIN PLAN SET STATEMENT_ID … FOR` into `PLAN_TABLE` (a session-private temporary
   table in current versions, usable by a read-only user), displayed with `DBMS_XPLAN.DISPLAY`. Plans
   are static optimizer estimates; `analyze` is ignored.
+- **Typed parameters (`paramTypes`).** `date`, `timestamp`, `timestamptz`, `integer`, and `decimal`
+  work with `ojdbc11`. `uuid` fails with `ORA-17004` because Oracle has no native SQL `UUID` type;
+  for `RAW(16)` columns, pass the UUID as a plain string without `paramTypes` and convert with
+  `HEXTORAW(REPLACE(:id, '-', ''))`.
 - **Statistics** reflect the last `DBMS_STATS` gather (`last_analyzed`): row counts from
   `ALL_TABLES`, index `distinct_keys`, `clustering_factor`, `blevel`, `leaf_blocks`. Sizes need
   `DBA_SEGMENTS` (for example via `SELECT_CATALOG_ROLE`) and are left out without it.

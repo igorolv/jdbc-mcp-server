@@ -675,7 +675,7 @@ Recommended flow when the user asks a data question:
 4. If the usage catalog is enabled, call `findQueriesByTable` or `findQueriesByColumn` to see
    how other queries reference the same tables — learn existing join patterns, filters, and business context.
 5. Write the SQL and call `inspectQuery`, `queryLint`, or `resolveQueryLineage` when you want an AST/metadata/lineage sanity pass before touching the database.
-6. Call `validateQuery` with the same `params` / `namedParams` you intend to use for execution — fix errors without wasting executions.
+6. Call `validateQuery` with the same `params` / `namedParams` (and `paramTypes`, if used) you intend to use for execution — fix errors without wasting executions.
 7. Call `analyzePlan` (compact LLM-friendly summary) or `explainQuery` (full textual plan) if the query might be expensive.
 8. Call `executeQuery`. Use `limit` to keep the response small.
 9. If the response has `"truncated": true`, either narrow the query or raise `limit`.
